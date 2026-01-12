@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}Мой сайт{% endblock title %}</title>
+</head>
+<body>
+    <header>
+        <nav>
+            <a href="/">Главная</a> | 
+            <a href="/about/">Обо мне</a> |
+            <a href="/lessons/">Уроки</a> |
+            <a href="/quizzes/">Тесты</a>
+            
+            <span style="float: right;">
+                {% if user.is_authenticated %}
+                    Привет, {{ user.username }}! | 
+                    <form action="{% url 'logout' %}" method="post" style="display: inline;">
+                        {% csrf_token %}
+                        <button type="submit" style="background: none; border: none; text-decoration: underline; cursor: pointer; color: blue; font-size: inherit; font-family: inherit; padding: 0;">Выйти</button>
+                    </form>
+                {% else %}
+                    <a href="{% url 'login' %}">Войти</a>
+                {% endif %}
+            </span>
+        </nav>
+        <hr>
+    </header>
+
+    <main>
+        {% block content %}
+        {% endblock content %}
+    </main>
+
+    <footer>
+        <hr>
+        <p>&copy; Новоселов Кирилл Васильевич. 2026</p>
+    </footer>
+</body>
+</html>

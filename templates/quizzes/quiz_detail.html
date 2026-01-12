@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ quiz.title }}{% endblock title %}
+
+{% block content %}
+    <h1>{{ quiz.title }}</h1>
+    <p>{{ quiz.description }}</p>
+    <hr>
+
+    <form method="post">
+        {% csrf_token %}
+        
+        {% for question in quiz.questions.all %}
+            <div style="margin-bottom: 20px;">
+                <h3>{{ question.text }}</h3>
+                
+                {% if question.question_type == 'choice' %}
+                    <!-- Логика для выбора ответа -->
+                    {% for choice in question.choices.all %}
+                        <div>
+                            <input type="radio" 
+                                   id="choice_{{ choice.id }}" 
+                                   name="question_{{ question.id }}" 
+                                   value="{{ choice.id }}"
+                                   required>
+                            <label for="choice_{{ choice.id }}">{{ choice.text }}</label>
+                        </div>
+                    {% endfor %}
+                
+                {% elif question.question_type == 'text' %}
+                    <!-- Логика для свободного ответа -->
+                     <div>
+                        <input type="text" 
+                               name="question_{{ question.id }}" 
+                               placeholder="Введите ваш ответ"
+                               required
+                               style="padding: 5px; width: 300px;">
+                     </div>
+
+                {% elif question.question_type == 'code' %}
+                    <!-- Логика для кода -->
+                     <div>
+                        <p><small>Напишите решение на Python:</small></p>
+                        <textarea name="question_{{ question.id }}" 
+                                  rows="10" 
+                                  cols="50"
+                                  placeholder="def my_function(): ..."
+                                  style="font-family: monospace; padding: 10px; width: 100%; border: 1px solid #ccc;"></textarea>
+                     </div>
+                {% endif %}
+            </div>
+        {% endfor %}
+
+        <button type="submit" style="padding: 10px 20px; font-size: 16px;">Отправить ответы</button>
+    </form>
+{% endblock content %}

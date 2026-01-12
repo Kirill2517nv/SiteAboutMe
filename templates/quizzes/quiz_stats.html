@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+
+{% block title %}Статистика: {{ quiz.title }}{% endblock title %}
+
+{% block content %}
+    <h1>Статистика: {{ quiz.title }}</h1>
+    <p>
+        <a href="/quizzes/">← Назад к списку тестов</a>
+    </p>
+
+    {% for group in stats_by_group %}
+        <div style="margin-bottom: 40px;">
+            <h2 style="background-color: #e2e8f0; padding: 10px; border-radius: 5px;">
+                Класс: {{ group.group_name }}
+            </h2>
+            
+            <table border="1" cellpadding="10" style="border-collapse: collapse; width: 100%;">
+                <thead>
+                    <tr style="background-color: #f8fafc;">
+                        <th>Ученик</th>
+                        <th>Кол-во попыток</th>
+                        <th>Лучший результат</th>
+                        <th>Последний результат</th>
+                        <th>Дата последнего прохождения</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in group.students %}
+                    <tr>
+                        <td>
+                            <a href="{% url 'user_attempts' quiz.id item.user.id %}">
+                                <strong>{{ item.full_name }}</strong>
+                            </a>
+                        </td>
+                        <td style="text-align: center;">{{ item.attempts_count }}</td>
+                        <td style="text-align: center;">{{ item.best_score }}</td>
+                        <td style="text-align: center;">{{ item.last_score }}</td>
+                        <td>{{ item.last_date|date:"d.m.Y H:i" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% empty %}
+        <p>Пока никто не проходил этот тест.</p>
+    {% endfor %}
+
+{% endblock content %}

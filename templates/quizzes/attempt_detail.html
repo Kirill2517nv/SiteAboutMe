@@ -1,0 +1,83 @@
+{% extends 'base.html' %}
+
+{% block title %}Детали попытки{% endblock title %}
+
+{% block content %}
+    <h1>Детальный отчет о попытке</h1>
+    <p>
+        <strong>Ученик:</strong> {{ result.user.username }}<br>
+        <strong>Тест:</strong> {{ result.quiz.title }}<br>
+        <strong>Результат:</strong> {{ result.score }} баллов<br>
+        <strong>Дата:</strong> {{ result.date_completed|date:"d.m.Y H:i" }}
+    </p>
+
+    <p>
+        <a href="{% url 'user_attempts' result.quiz.id result.user.id %}">← Назад к списку попыток</a>
+    </p>
+    <hr>
+
+    {% for answer in answers %}
+        <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #ccc; border-radius: 5px; background-color: {% if answer.is_correct %}#e6fffa{% else %}#fff5f5{% endif %};">
+            <h3>Вопрос: {{ answer.question.text }}</h3>
+            
+            {% if answer.question.question_type == 'choice' %}
+                <p>
+                    <strong>Ответ ученика:</strong> 
+                    {% if answer.selected_choice %}
+                        {{ answer.selected_choice.text }}
+                    {% else %}
+                        <span style="color: grey;">(Нет ответа)</span>
+                    {% endif %}
+                </p>
+                {% if not answer.is_correct %}
+                    <p style="color: green;">
+                        <strong>Правильный ответ:</strong> 
+                        {% for choice in answer.question.choices.all %}
+                            {% if choice.is_correct %}
+                                {{ choice.text }}
+                            {% endif %}
+                        {% endfor %}
+                    </p>
+                {% endif %}
+
+            {% elif answer.question.question_type == 'text' %}
+                <p>
+                    <strong>Ответ ученика:</strong> {{ answer.text_answer }}
+                </p>
+                {% if not answer.is_correct %}
+                    <p style="color: green;">
+                        <strong>Правильный ответ:</strong> {{ answer.question.correct_text_answer }}
+                    </p>
+                {% endif %}
+            
+            {% elif answer.question.question_type == 'code' %}
+                <div style="background: #2d2d2d; color: #f8f8f2; padding: 10px; border-radius: 5px; overflow-x: auto;">
+                    <pre><code>{{ answer.code_answer }}</code></pre>
+                </div>
+                
+                {% if not answer.is_correct %}
+                    {% if answer.error_log %}
+                        <div style="margin-top: 10px; padding: 10px; background-color: #ffe6e6; border: 1px solid red; border-radius: 3px;">
+                            <strong>Ошибка выполнения / Теста:</strong>
+                            <pre style="white-space: pre-wrap;">{{ answer.error_log }}</pre>
+                        </div>
+                    {% else %}
+                        <p style="color: red; margin-top: 10px;">
+                            <small>Решение не прошло тесты (без подробностей).</small>
+                        </p>
+                    {% endif %}
+                {% endif %}
+            {% endif %}
+
+            <p>
+                <strong>Статус:</strong> 
+                {% if answer.is_correct %}
+                    <span style="color: green;">✅ Верно</span>
+                {% else %}
+                    <span style="color: red;">❌ Ошибка</span>
+                {% endif %}
+            </p>
+        </div>
+    {% endfor %}
+
+{% endblock content %}

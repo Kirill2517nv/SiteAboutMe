@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+
+{% block title %}Тесты{% endblock title %}
+
+{% block content %}
+    <h1>Доступные тесты</h1>
+    
+    {% if quizzes_with_attempts %}
+        <ul>
+            {% for item in quizzes_with_attempts %}
+                <li style="margin-bottom: 15px;">
+                    
+                    {% if item.is_blocked %}
+                        <!-- Если заблокировано (по дате или попыткам) -->
+                        <span style="color: gray; text-decoration: line-through;">{{ item.quiz.title }}</span>
+                        
+                        {% if item.status_message %}
+                            <span style="color: red; font-size: small;">({{ item.status_message }})</span>
+                        {% elif item.remaining_attempts == 0 %}
+                            <span style="color: red; font-size: small;">(Попытки исчерпаны)</span>
+                        {% endif %}
+                    
+                    {% else %}
+                        <!-- Если доступно -->
+                        <a href="{% url 'quiz_detail' item.quiz.id %}">{{ item.quiz.title }}</a>
+                        
+                        <!-- Дополнительная информация о дедлайне, если он есть -->
+                        {% if item.quiz.end_date %}
+                            <br><span style="font-size: small; color: orange;">Дедлайн: {{ item.quiz.end_date|date:"d.m.Y H:i" }}</span>
+                        {% endif %}
+
+                        {% if item.quiz.max_attempts > 0 %}
+                            <br><span style="font-size: small; color: green;">
+                                (Осталось попыток: {{ item.remaining_attempts }})
+                            </span>
+                        {% endif %}
+                    {% endif %}
+
+                    
+                    {% if user.is_superuser %}
+                        <a href="{% url 'quiz_stats' item.quiz.id %}" style="font-size: small; color: blue; margin-left: 10px;">[Статистика]</a>
+                    {% endif %}
+
+                    {% if item.quiz.description %}
+                        <br><small>{{ item.quiz.description }}</small>
+                    {% endif %}
+                </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p>Пока нет доступных тестов.</p>
+    {% endif %}
+
+{% endblock content %}

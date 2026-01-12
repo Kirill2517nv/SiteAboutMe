@@ -1,0 +1,12 @@
+from django.urls import path
+from .views import quiz_list_view, quiz_detail_view, quiz_stats_view, user_attempts_view, attempt_detail_view
+
+urlpatterns = [
+    path('', quiz_list_view, name='quiz_list'),
+    path('<int:quiz_id>/', quiz_detail_view, name='quiz_detail'),
+    
+    # Статистика
+    path('<int:quiz_id>/stats/', quiz_stats_view, name='quiz_stats'),
+    path('<int:quiz_id>/stats/<int:user_id>/', user_attempts_view, name='user_attempts'),
+    path('attempt/<int:result_id>/', attempt_detail_view, name='attempt_detail'),
+]

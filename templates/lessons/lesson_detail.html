@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ lesson.title }}{% endblock title %}
+
+{% block content %}
+    <h1>{{ lesson.title }}</h1>
+    <p>{{ lesson.description|linebreaks }}</p>
+
+    {% if lesson.file %}
+        <p>
+            <a href="{{ lesson.file.url }}" download>Скачать материалы к уроку</a>
+        </p>
+    {% endif %}
+    
+    <hr>
+    <a href="/lessons/">← Назад к списку уроков</a>
+{% endblock content %}
