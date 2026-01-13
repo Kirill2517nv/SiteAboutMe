@@ -10,14 +10,6 @@ import os
 from .utils import run_code_in_docker
 
 def normalize_output(text):
-    """
-    Нормализует текст для сравнения:
-    1. Удаляет пустые строки в начале и конце.
-    2. Разбивает на строки.
-    3. Удаляет пробелы в конце каждой строки (rstrip).
-    4. Собирает обратно через \n.
-    Это позволяет игнорировать разницу между \r\n и \n, а также случайные пробелы.
-    """
     if not text:
         return ""
     lines = text.strip().splitlines()
@@ -72,39 +64,40 @@ def quiz_detail_view(request, quiz_id):
     quiz = get_object_or_404(Quiz, id=quiz_id)
     now = timezone.now()
     
-    if quiz.start_date and now < quiz.start_date:
-        return redirect('quiz_list') 
+    if quiz.start_date and now < quiz.start_date: return redirect('quiz_list') 
+    if quiz.end_date and now > quiz.end_date: return redirect('quiz_list') 
     
-    if quiz.end_date and now > quiz.end_date:
-        return redirect('quiz_list') 
-
     if quiz.max_attempts > 0:
         attempts_count = UserResult.objects.filter(user=request.user, quiz=quiz).count()
-        if attempts_count >= quiz.max_attempts:
-            return redirect('quiz_list')
+        if attempts_count >= quiz.max_attempts: return redirect('quiz_list')
+
+    # Находим уже решенные вопросы
+    correctly_answered_question_ids = UserAnswer.objects.filter(
+        user_result__user=request.user,
+        user_result__quiz=quiz,
+        is_correct=True
+    ).values_list('question_id', flat=True).distinct()
+    
+    # Считаем, сколько баллов уже "в кармане"
+    already_earned_score = len(correctly_answered_question_ids)
+
+    # Исключаем решенные из списка для показа
+    questions_to_show = quiz.questions.exclude(id__in=correctly_answered_question_ids)
 
     if request.method == 'POST':
-        score = 0
-        total_questions = quiz.questions.count()
+        current_attempt_score = 0
         
         duration = None
         start_time_str = request.session.get(f'quiz_{quiz_id}_start')
-        
         if start_time_str:
             start_time = datetime.datetime.fromisoformat(start_time_str)
             end_time = timezone.now()
             duration = end_time - start_time
-            if f'quiz_{quiz_id}_start' in request.session:
-                del request.session[f'quiz_{quiz_id}_start']
+            if f'quiz_{quiz_id}_start' in request.session: del request.session[f'quiz_{quiz_id}_start']
 
-        user_result = UserResult.objects.create(
-            user=request.user,
-            quiz=quiz,
-            score=0, 
-            duration=duration
-        )
+        user_result = UserResult.objects.create(user=request.user, quiz=quiz, score=0, duration=duration)
 
-        for question in quiz.questions.all():
+        for question in questions_to_show:
             user_input = request.POST.get(f'question_{question.id}')
             is_correct = False
             selected_choice = None
@@ -118,16 +111,15 @@ def quiz_detail_view(request, quiz_id):
                         selected_choice = Choice.objects.get(id=user_input)
                         if selected_choice.is_correct:
                             is_correct = True
-                            score += 1
-                    except Choice.DoesNotExist:
-                        pass
+                            current_attempt_score += 1
+                    except Choice.DoesNotExist: pass
             
             elif question.question_type == 'text':
                 text_answer = user_input
                 if user_input and question.correct_text_answer:
                     if user_input.strip().lower() == question.correct_text_answer.strip().lower():
                         is_correct = True
-                        score += 1
+                        current_attempt_score += 1
 
             elif question.question_type == 'code':
                 code_answer = user_input
@@ -159,7 +151,6 @@ def quiz_detail_view(request, quiz_id):
                                 error_log = error 
                                 break
                             
-                            # Умное сравнение вывода
                             if normalize_output(output) != normalize_output(test_case.output_data):
                                 all_tests_passed = False
                                 error_log = f"Неверный ответ на тесте.\nВход: {test_case.input_data}\nОжидалось:\n{test_case.output_data}\nПолучено:\n{output}"
@@ -167,7 +158,7 @@ def quiz_detail_view(request, quiz_id):
                     
                     if all_tests_passed:
                         is_correct = True
-                        score += 1
+                        current_attempt_score += 1
 
             UserAnswer.objects.create(
                 user_result=user_result,
@@ -179,17 +170,20 @@ def quiz_detail_view(request, quiz_id):
                 is_correct=is_correct
             )
         
-        user_result.score = score
+        # Финальный балл = (баллы за эту попытку) + (баллы за старые решенные вопросы)
+        total_score = current_attempt_score + already_earned_score
+        
+        user_result.score = total_score
         user_result.save()
         
         return render(request, 'quizzes/quiz_result.html', {
             'quiz': quiz,
-            'score': score,
-            'total': total_questions
+            'score': total_score,
+            'total': quiz.questions.count() # Общее кол-во вопросов в тесте
         })
 
     request.session[f'quiz_{quiz_id}_start'] = timezone.now().isoformat()
-    return render(request, 'quizzes/quiz_detail.html', {'quiz': quiz})
+    return render(request, 'quizzes/quiz_detail.html', {'quiz': quiz, 'questions_to_show': questions_to_show})
 
 # --- СТАТИСТИКА (без изменений) ---
 @user_passes_test(lambda u: u.is_superuser)

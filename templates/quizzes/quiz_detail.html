@@ -10,9 +10,15 @@
     <form method="post">
         {% csrf_token %}
         
-        {% for question in quiz.questions.all %}
-            <div style="margin-bottom: 20px;">
-                <h3>{{ question.text|linebreaksbr }}</h3>
+        {% for question in questions_to_show %}
+            <div style="margin-bottom: 30px; padding: 15px; border: 1px solid #eee; border-radius: 5px;">
+                <!-- Заголовок вопроса (первая строка) -->
+                <h3>{{ question.get_title }}</h3>
+                
+                <!-- Тело вопроса (остальное) -->
+                {% if question.get_body %}
+                    <div style="margin-bottom: 15px; white-space: pre-wrap;">{{ question.get_body }}</div>
+                {% endif %}
                 
                 {% if question.data_file %}
                     <p style="background-color: #f0f8ff; padding: 5px; border-radius: 3px;">
@@ -21,7 +27,6 @@
                 {% endif %}
                 
                 {% if question.question_type == 'choice' %}
-                    <!-- Логика для выбора ответа -->
                     {% for choice in question.choices.all %}
                         <div>
                             <input type="radio" 
@@ -34,7 +39,6 @@
                     {% endfor %}
                 
                 {% elif question.question_type == 'text' %}
-                    <!-- Логика для свободного ответа -->
                      <div>
                         <input type="text" 
                                name="question_{{ question.id }}" 
@@ -44,19 +48,23 @@
                      </div>
 
                 {% elif question.question_type == 'code' %}
-                    <!-- Логика для кода -->
                      <div>
                         <p><small>Напишите решение на Python:</small></p>
                         <textarea name="question_{{ question.id }}" 
                                   rows="10" 
                                   cols="50"
-                                  placeholder="def my_function(): ..."
+                                  placeholder="Вставь сюда решение..."
                                   style="font-family: monospace; padding: 10px; width: 100%; border: 1px solid #ccc;"></textarea>
                      </div>
                 {% endif %}
             </div>
+        {% empty %}
+            <h3 style="color: green;">Поздравляем! Вы правильно ответили на все вопросы этого теста.</h3>
+            <p><a href="/quizzes/">Вернуться к списку тестов</a></p>
         {% endfor %}
 
-        <button type="submit" style="padding: 10px 20px; font-size: 16px;">Отправить ответы</button>
+        {% if questions_to_show %}
+            <button type="submit" style="padding: 10px 20px; font-size: 16px;">Отправить ответы</button>
+        {% endif %}
     </form>
 {% endblock content %}
