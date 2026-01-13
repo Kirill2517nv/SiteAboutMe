@@ -10,12 +10,12 @@ class TestCaseInline(admin.StackedInline):
     extra = 1
 
 class QuestionAdmin(admin.ModelAdmin):
-    list_display = ('text', 'quiz', 'question_type')
+    list_display = ('__str__', 'quiz', 'question_type') # Используем __str__ для обрезанного текста
     list_filter = ('quiz', 'question_type')
     inlines = [ChoiceInline, TestCaseInline]
     fieldsets = (
         (None, {
-            'fields': ('quiz', 'text', 'question_type')
+            'fields': ('quiz', 'text', 'question_type', 'data_file')
         }),
         ('Для свободных ответов', {
             'fields': ('correct_text_answer',),
@@ -32,7 +32,7 @@ class QuizAdmin(admin.ModelAdmin):
 
 class UserAnswerInline(admin.TabularInline):
     model = UserAnswer
-    readonly_fields = ('question', 'selected_choice', 'text_answer', 'code_answer', 'is_correct')
+    readonly_fields = ('question', 'selected_choice', 'text_answer', 'code_answer', 'error_log', 'is_correct')
     can_delete = False
     extra = 0
 

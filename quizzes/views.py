@@ -6,7 +6,22 @@ from django.db.models import Max
 from .models import Quiz, Choice, UserResult, UserAnswer, TestCase
 from accounts.models import StudentGroup
 import datetime
+import os
 from .utils import run_code_in_docker
+
+def normalize_output(text):
+    """
+    Нормализует текст для сравнения:
+    1. Удаляет пустые строки в начале и конце.
+    2. Разбивает на строки.
+    3. Удаляет пробелы в конце каждой строки (rstrip).
+    4. Собирает обратно через \n.
+    Это позволяет игнорировать разницу между \r\n и \n, а также случайные пробелы.
+    """
+    if not text:
+        return ""
+    lines = text.strip().splitlines()
+    return "\n".join([line.rstrip() for line in lines])
 
 def quiz_list_view(request):
     quizzes = Quiz.objects.all()
@@ -18,9 +33,8 @@ def quiz_list_view(request):
         attempts_count = 0
         is_blocked = False
         remaining_attempts = None
-        status_message = None # Сообщение о статусе (не начался, закончился)
+        status_message = None 
         
-        # Проверка по датам
         is_open_by_date = True
         
         if quiz.start_date and now < quiz.start_date:
@@ -58,14 +72,12 @@ def quiz_detail_view(request, quiz_id):
     quiz = get_object_or_404(Quiz, id=quiz_id)
     now = timezone.now()
     
-    # 1. Проверка по датам
     if quiz.start_date and now < quiz.start_date:
-        return redirect('quiz_list') # Или страница ошибки "Рано"
+        return redirect('quiz_list') 
     
     if quiz.end_date and now > quiz.end_date:
-        return redirect('quiz_list') # Или страница ошибки "Поздно"
+        return redirect('quiz_list') 
 
-    # 2. Проверка лимита попыток
     if quiz.max_attempts > 0:
         attempts_count = UserResult.objects.filter(user=request.user, quiz=quiz).count()
         if attempts_count >= quiz.max_attempts:
@@ -127,18 +139,31 @@ def quiz_detail_view(request, quiz_id):
                         all_tests_passed = False 
                         error_log = "Нет тестовых примеров для проверки."
                     
-                    for test_case in test_cases:
-                        output, error = run_code_in_docker(user_input, test_case.input_data)
-                        
-                        if error:
+                    extra_files = {}
+                    if question.data_file:
+                        try:
+                            with question.data_file.open('rb') as f:
+                                content = f.read()
+                                filename = os.path.basename(question.data_file.name)
+                                extra_files[filename] = content
+                        except Exception as e:
+                            error_log = f"Ошибка чтения файла задания: {e}"
                             all_tests_passed = False
-                            error_log = error 
-                            break
-                        
-                        if output.strip() != test_case.output_data.strip():
-                            all_tests_passed = False
-                            error_log = f"Неверный ответ на тесте.\nВход: {test_case.input_data}\nОжидалось: {test_case.output_data}\nПолучено: {output}"
-                            break
+
+                    if all_tests_passed: 
+                        for test_case in test_cases:
+                            output, error = run_code_in_docker(user_input, test_case.input_data, extra_files)
+                            
+                            if error:
+                                all_tests_passed = False
+                                error_log = error 
+                                break
+                            
+                            # Умное сравнение вывода
+                            if normalize_output(output) != normalize_output(test_case.output_data):
+                                all_tests_passed = False
+                                error_log = f"Неверный ответ на тесте.\nВход: {test_case.input_data}\nОжидалось:\n{test_case.output_data}\nПолучено:\n{output}"
+                                break
                     
                     if all_tests_passed:
                         is_correct = True

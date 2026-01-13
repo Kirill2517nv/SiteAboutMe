@@ -24,9 +24,12 @@ class Question(models.Model):
     ]
 
     quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE, related_name='questions', verbose_name="Тест")
-    text = models.CharField(max_length=300, verbose_name="Текст вопроса")
+    text = models.TextField(verbose_name="Текст вопроса") # Было CharField
     question_type = models.CharField(max_length=10, choices=TYPE_CHOICES, default='choice', verbose_name="Тип вопроса")
     
+    # Файл с данными для скачивания
+    data_file = models.FileField(upload_to='question_files/', blank=True, null=True, verbose_name="Файл с данными (для скачивания)")
+
     correct_text_answer = models.CharField(max_length=200, blank=True, null=True, verbose_name="Правильный ответ (текст)")
     
     class Meta:
@@ -34,7 +37,8 @@ class Question(models.Model):
         verbose_name_plural = "Вопросы"
 
     def __str__(self):
-        return self.text
+        # Обрезаем текст для админки, чтобы не было простыни
+        return self.text[:50] + "..." if len(self.text) > 50 else self.text
 
 class TestCase(models.Model):
     question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name='test_cases', verbose_name="Вопрос")

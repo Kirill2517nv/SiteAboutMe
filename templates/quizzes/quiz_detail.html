@@ -12,7 +12,13 @@
         
         {% for question in quiz.questions.all %}
             <div style="margin-bottom: 20px;">
-                <h3>{{ question.text }}</h3>
+                <h3>{{ question.text|linebreaksbr }}</h3>
+                
+                {% if question.data_file %}
+                    <p style="background-color: #f0f8ff; padding: 5px; border-radius: 3px;">
+                        📄 <a href="{{ question.data_file.url }}" download>Скачать файл с данными</a>
+                    </p>
+                {% endif %}
                 
                 {% if question.question_type == 'choice' %}
                     <!-- Логика для выбора ответа -->
