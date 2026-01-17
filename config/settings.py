@@ -81,6 +81,24 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
+# ВНИМАНИЕ: SQLite НЕ подходит для продакшена с несколькими одновременными пользователями!
+# SQLite имеет ограничения:
+# - Блокирует всю БД при записи (даже один пользователь блокирует всех остальных)
+# - Очень медленный при конкурентных запросах
+# - Не поддерживает многие функции PostgreSQL/MySQL
+#
+# Для продакшена рекомендуется использовать PostgreSQL:
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.postgresql',
+#         'NAME': os.getenv('DB_NAME', 'mydb'),
+#         'USER': os.getenv('DB_USER', 'myuser'),
+#         'PASSWORD': os.getenv('DB_PASSWORD', 'mypassword'),
+#         'HOST': os.getenv('DB_HOST', 'localhost'),
+#         'PORT': os.getenv('DB_PORT', '5432'),
+#     }
+# }
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',

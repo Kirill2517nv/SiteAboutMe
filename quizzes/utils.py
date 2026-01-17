@@ -1,4 +1,5 @@
 import docker
+from docker.errors import DockerException, APIError
 import tarfile
 import io
 import time
@@ -34,10 +35,22 @@ def run_code_in_docker(code, input_data, extra_files=None):
     extra_files: словарь {'filename': content} дополнительных файлов (например, input.txt)
     Возвращает (output, error_message).
     """
-    client = docker.from_env()
-    
     container = None
     try:
+        # Пытаемся подключиться к Docker
+        try:
+            client = docker.from_env()
+            # Проверяем, что Docker работает
+            client.ping()
+        except (DockerException, APIError) as e:
+            error_msg = str(e)
+            if "CreateFile" in error_msg or "Не удается найти указанный файл" in error_msg:
+                return None, "Ошибка: Docker не запущен. Пожалуйста, запустите Docker Desktop и попробуйте снова."
+            elif "Connection refused" in error_msg or "connection" in error_msg.lower():
+                return None, "Ошибка: Не удается подключиться к Docker. Убедитесь, что Docker Desktop запущен."
+            else:
+                return None, f"Ошибка подключения к Docker: {error_msg}"
+        
         # 1. Создаем контейнер
         container = client.containers.run(
             "python:3.11-slim",
@@ -72,8 +85,16 @@ def run_code_in_docker(code, input_data, extra_files=None):
             
         return output, None
 
+    except (DockerException, APIError) as e:
+        error_msg = str(e)
+        if "CreateFile" in error_msg or "Не удается найти указанный файл" in error_msg:
+            return None, "Ошибка: Docker не запущен. Пожалуйста, запустите Docker Desktop и попробуйте снова."
+        elif "Connection refused" in error_msg or "connection" in error_msg.lower():
+            return None, "Ошибка: Не удается подключиться к Docker. Убедитесь, что Docker Desktop запущен."
+        else:
+            return None, f"Ошибка Docker: {error_msg}"
     except Exception as e:
-        return None, f"Ошибка Docker: {str(e)}"
+        return None, f"Неожиданная ошибка при выполнении кода: {str(e)}"
     
     finally:
         if container:

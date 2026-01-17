@@ -50,10 +50,16 @@
                 {% elif question.question_type == 'code' %}
                      <div>
                         <p><small>Напишите решение на Python:</small></p>
-                        <textarea name="question_{{ question.id }}" 
+                        <div class="code-restored-message" id="restored_msg_{{ question.id }}" style="display: none; background-color: #fff3e0; padding: 8px; border-left: 4px solid #ff9800; border-radius: 3px; margin-bottom: 10px;">
+                            <strong>💡 Ваш код из последней попытки был автоматически восстановлен. Исправьте ошибки и отправьте заново.</strong>
+                        </div>
+                        <textarea id="code_{{ question.id }}"
+                                  name="question_{{ question.id }}" 
                                   rows="10" 
                                   cols="50"
                                   placeholder="Вставь сюда решение..."
+                                  data-quiz-id="{{ quiz.id }}"
+                                  data-question-id="{{ question.id }}"
                                   style="font-family: monospace; padding: 10px; width: 100%; border: 1px solid #ccc;"></textarea>
                      </div>
                 {% endif %}
@@ -67,4 +73,56 @@
             <button type="submit" style="padding: 10px 20px; font-size: 16px;">Отправить ответы</button>
         {% endif %}
     </form>
+
+    <script>
+        // Сохранение кода при вводе
+        document.addEventListener('DOMContentLoaded', function() {
+            const quizId = {{ quiz.id }};
+            const codeTextareas = document.querySelectorAll('textarea[data-question-id]');
+            
+            // Коды из последней попытки с сервера
+            const serverCodes = {{ last_attempt_codes_json|safe }};
+            
+            // Восстанавливаем сохраненный код при загрузке страницы
+            codeTextareas.forEach(function(textarea) {
+                const questionId = textarea.getAttribute('data-question-id');
+                const storageKey = 'quiz_' + quizId + '_question_' + questionId;
+                
+                // Проверяем: есть ли код из последней попытки на сервере
+                const serverCode = serverCodes[questionId] || null;
+                const savedCode = sessionStorage.getItem(storageKey);
+                
+                // Приоритет: код с сервера > код из sessionStorage
+                if (serverCode) {
+                    textarea.value = serverCode;
+                    sessionStorage.setItem(storageKey, serverCode);
+                    // Показываем сообщение о восстановлении кода
+                    const msgElement = document.getElementById('restored_msg_' + questionId);
+                    if (msgElement) {
+                        msgElement.style.display = 'block';
+                    }
+                } else if (savedCode) {
+                    // Если нет кода с сервера, но есть в sessionStorage, восстанавливаем из sessionStorage
+                    textarea.value = savedCode;
+                }
+                
+                // Сохраняем код при вводе
+                textarea.addEventListener('input', function() {
+                    sessionStorage.setItem(storageKey, textarea.value);
+                });
+            });
+            
+            // Очищаем сохраненные данные при успешной отправке формы
+            const form = document.querySelector('form');
+            if (form) {
+                form.addEventListener('submit', function() {
+                    codeTextareas.forEach(function(textarea) {
+                        const questionId = textarea.getAttribute('data-question-id');
+                        const storageKey = 'quiz_' + quizId + '_question_' + questionId;
+                        sessionStorage.removeItem(storageKey);
+                    });
+                });
+            }
+        });
+    </script>
 {% endblock content %}

@@ -2,11 +2,12 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.utils import timezone
 from django.contrib.auth.models import User
-from django.db.models import Max
+from django.db.models import Max, Count
 from .models import Quiz, Choice, UserResult, UserAnswer, TestCase
 from accounts.models import StudentGroup
 import datetime
 import os
+import json
 from .utils import run_code_in_docker
 
 def normalize_output(text):
@@ -18,11 +19,19 @@ def normalize_output(text):
 def quiz_list_view(request):
     quizzes = Quiz.objects.all()
     
+    # Оптимизация: загружаем все попытки пользователя одним запросом
+    attempts_dict = {}
+    if request.user.is_authenticated:
+        attempts = UserResult.objects.filter(user=request.user).values('quiz_id').annotate(
+            count=Count('id')
+        )
+        attempts_dict = {item['quiz_id']: item['count'] for item in attempts}
+    
     quizzes_with_attempts = []
     now = timezone.now()
     
     for quiz in quizzes:
-        attempts_count = 0
+        attempts_count = attempts_dict.get(quiz.id, 0)
         is_blocked = False
         remaining_attempts = None
         status_message = None 
@@ -39,14 +48,11 @@ def quiz_list_view(request):
             is_blocked = True
             status_message = f"Завершился: {quiz.end_date.strftime('%d.%m.%Y %H:%M')}"
 
-        if request.user.is_authenticated:
-            attempts_count = UserResult.objects.filter(user=request.user, quiz=quiz).count()
-            
-            if quiz.max_attempts > 0:
-                remaining_attempts = quiz.max_attempts - attempts_count
-                if remaining_attempts <= 0:
-                    is_blocked = True
-                    remaining_attempts = 0
+        if request.user.is_authenticated and quiz.max_attempts > 0:
+            remaining_attempts = quiz.max_attempts - attempts_count
+            if remaining_attempts <= 0:
+                is_blocked = True
+                remaining_attempts = 0
         
         quizzes_with_attempts.append({
             'quiz': quiz,
@@ -61,7 +67,14 @@ def quiz_list_view(request):
 
 @login_required
 def quiz_detail_view(request, quiz_id):
-    quiz = get_object_or_404(Quiz, id=quiz_id)
+    # Оптимизация: предзагружаем связанные объекты
+    quiz = get_object_or_404(
+        Quiz.objects.prefetch_related(
+            'questions__choices',
+            'questions__test_cases'
+        ),
+        id=quiz_id
+    )
     now = timezone.now()
     
     if quiz.start_date and now < quiz.start_date: return redirect('quiz_list') 
@@ -82,7 +95,27 @@ def quiz_detail_view(request, quiz_id):
     already_earned_score = len(correctly_answered_question_ids)
 
     # Исключаем решенные из списка для показа
-    questions_to_show = quiz.questions.exclude(id__in=correctly_answered_question_ids)
+    # Вопросы уже предзагружены через prefetch_related
+    questions_to_show = list(quiz.questions.exclude(id__in=correctly_answered_question_ids))
+    
+    # Восстанавливаем код из последней неудачной попытки для задач с кодом
+    last_failed_attempt = UserResult.objects.filter(
+        user=request.user,
+        quiz=quiz
+    ).order_by('-date_completed').first()
+    
+    last_attempt_codes = {}
+    if last_failed_attempt:
+        # Получаем код из последней попытки для вопросов, которые были решены неверно
+        failed_code_answers = UserAnswer.objects.filter(
+            user_result=last_failed_attempt,
+            question__question_type='code',
+            is_correct=False,
+            code_answer__isnull=False
+        ).exclude(code_answer='').select_related('question')
+        
+        # Создаем словарь: question_id -> code_answer для быстрого доступа в шаблоне
+        last_attempt_codes = {answer.question_id: answer.code_answer for answer in failed_code_answers}
 
     if request.method == 'POST':
         current_attempt_score = 0
@@ -97,6 +130,15 @@ def quiz_detail_view(request, quiz_id):
 
         user_result = UserResult.objects.create(user=request.user, quiz=quiz, score=0, duration=duration)
 
+        # Оптимизация: предзагружаем все choices в словарь для быстрого доступа
+        all_choices = {}
+        for question in questions_to_show:
+            if question.question_type == 'choice':
+                all_choices[question.id] = {choice.id: choice for choice in question.choices.all()}
+
+        # Создаем список UserAnswer для bulk_create
+        user_answers_to_create = []
+
         for question in questions_to_show:
             user_input = request.POST.get(f'question_{question.id}')
             is_correct = False
@@ -107,12 +149,12 @@ def quiz_detail_view(request, quiz_id):
 
             if question.question_type == 'choice':
                 if user_input:
-                    try:
-                        selected_choice = Choice.objects.get(id=user_input)
-                        if selected_choice.is_correct:
-                            is_correct = True
-                            current_attempt_score += 1
-                    except Choice.DoesNotExist: pass
+                    # Используем предзагруженные choices
+                    choice_dict = all_choices.get(question.id, {})
+                    selected_choice = choice_dict.get(int(user_input)) if user_input.isdigit() else None
+                    if selected_choice and selected_choice.is_correct:
+                        is_correct = True
+                        current_attempt_score += 1
             
             elif question.question_type == 'text':
                 text_answer = user_input
@@ -125,9 +167,10 @@ def quiz_detail_view(request, quiz_id):
                 code_answer = user_input
                 if user_input:
                     all_tests_passed = True
-                    test_cases = question.test_cases.all()
+                    # test_cases уже предзагружены через prefetch_related
+                    test_cases = list(question.test_cases.all())
                     
-                    if not test_cases.exists():
+                    if not test_cases:
                         all_tests_passed = False 
                         error_log = "Нет тестовых примеров для проверки."
                     
@@ -153,22 +196,28 @@ def quiz_detail_view(request, quiz_id):
                             
                             if normalize_output(output) != normalize_output(test_case.output_data):
                                 all_tests_passed = False
-                                error_log = f"Неверный ответ на тесте.\nВход: {test_case.input_data}\nОжидалось:\n{test_case.output_data}\nПолучено:\n{output}"
+                                # Скрываем правильный ответ от пользователя
+                                error_log = f"Неверный ответ на тесте.\nВходные данные: {test_case.input_data}\nВаш ответ: {output}"
                                 break
                     
                     if all_tests_passed:
                         is_correct = True
                         current_attempt_score += 1
 
-            UserAnswer.objects.create(
-                user_result=user_result,
-                question=question,
-                selected_choice=selected_choice,
-                text_answer=text_answer,
-                code_answer=code_answer,
-                error_log=error_log, 
-                is_correct=is_correct
+            user_answers_to_create.append(
+                UserAnswer(
+                    user_result=user_result,
+                    question=question,
+                    selected_choice=selected_choice,
+                    text_answer=text_answer,
+                    code_answer=code_answer,
+                    error_log=error_log, 
+                    is_correct=is_correct
+                )
             )
+        
+        # Оптимизация: создаем все ответы одним запросом
+        UserAnswer.objects.bulk_create(user_answers_to_create)
         
         # Финальный балл = (баллы за эту попытку) + (баллы за старые решенные вопросы)
         total_score = current_attempt_score + already_earned_score
@@ -176,14 +225,33 @@ def quiz_detail_view(request, quiz_id):
         user_result.score = total_score
         user_result.save()
         
+        # Получаем неудачные ответы для детального отчета
+        failed_answers = UserAnswer.objects.filter(
+            user_result=user_result,
+            is_correct=False
+        ).select_related('question').order_by('question_id')
+        
+        # Используем предзагруженные вопросы вместо запроса к БД
+        total_questions = quiz.questions.count() if hasattr(quiz.questions, 'count') else len(list(quiz.questions.all()))
+        
         return render(request, 'quizzes/quiz_result.html', {
             'quiz': quiz,
             'score': total_score,
-            'total': quiz.questions.count() # Общее кол-во вопросов в тесте
+            'total': total_questions,  # Общее кол-во вопросов в тесте
+            'failed_answers': failed_answers,  # Неудачные ответы для детального отчета
+            'user_result': user_result,
         })
 
     request.session[f'quiz_{quiz_id}_start'] = timezone.now().isoformat()
-    return render(request, 'quizzes/quiz_detail.html', {'quiz': quiz, 'questions_to_show': questions_to_show})
+    # Конвертируем ключи в строки для JSON сериализации
+    last_attempt_codes_json = json.dumps({str(k): v for k, v in last_attempt_codes.items()})
+    
+    return render(request, 'quizzes/quiz_detail.html', {
+        'quiz': quiz, 
+        'questions_to_show': questions_to_show,
+        'last_attempt_codes': last_attempt_codes,  # Код из последней неудачной попытки (для шаблона)
+        'last_attempt_codes_json': last_attempt_codes_json,  # JSON версия для JavaScript
+    })
 
 # --- СТАТИСТИКА (без изменений) ---
 @user_passes_test(lambda u: u.is_superuser)

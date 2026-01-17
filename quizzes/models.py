@@ -82,6 +82,10 @@ class UserResult(models.Model):
     class Meta:
         verbose_name = "Результат пользователя"
         verbose_name_plural = "Результаты пользователей"
+        indexes = [
+            models.Index(fields=['user', 'quiz']),  # Для фильтрации по пользователю и квизу
+            models.Index(fields=['quiz', 'date_completed']),  # Для сортировки результатов по квизу
+        ]
 
     def __str__(self):
         return f"{self.user.username} - {self.quiz.title}: {self.score}"
@@ -100,3 +104,7 @@ class UserAnswer(models.Model):
     class Meta:
         verbose_name = "Ответ пользователя"
         verbose_name_plural = "Ответы пользователя"
+        indexes = [
+            models.Index(fields=['user_result', 'is_correct']),  # Для поиска правильных ответов
+            models.Index(fields=['question', 'is_correct']),  # Для статистики по вопросам
+        ]
