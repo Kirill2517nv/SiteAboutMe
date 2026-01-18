@@ -4,14 +4,19 @@
 
 {% block content %}
     <h1>{{ lesson.title }}</h1>
-    <p>{{ lesson.description|linebreaks }}</p>
-
-    {% if lesson.file %}
-        <p>
-            <a href="{{ lesson.file.url }}" download>Скачать материалы к уроку</a>
-        </p>
-    {% endif %}
     
-    <hr>
-    <a href="/lessons/">← Назад к списку уроков</a>
+    <div style="background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+        <p style="font-size: 1.1em; line-height: 1.6;">{{ lesson.description|linebreaks }}</p>
+
+        {% if lesson.file %}
+            <div style="margin-top: 20px;">
+                <a href="{{ lesson.file.url }}" download style="display: inline-block; padding: 10px 20px; background-color: #28a745; color: white; text-decoration: none; border-radius: 5px; font-weight: bold;">
+                    Скачать материалы к уроку
+                </a>
+            </div>
+        {% endif %}
+    </div>
+    
+    <hr style="margin: 30px 0;">
+    <a href="{% url 'lesson_list' %}" style="text-decoration: none; color: #6c757d;">← Назад к списку уроков</a>
 {% endblock content %}

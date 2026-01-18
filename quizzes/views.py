@@ -2,8 +2,8 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.utils import timezone
 from django.contrib.auth.models import User
-from django.db.models import Max, Count
-from .models import Quiz, Choice, UserResult, UserAnswer, TestCase
+from django.db.models import Max, Count, Q
+from .models import Quiz, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, Question
 from accounts.models import StudentGroup
 import datetime
 import os
@@ -16,53 +16,170 @@ def normalize_output(text):
     lines = text.strip().splitlines()
     return "\n".join([line.rstrip() for line in lines])
 
+def get_effective_quiz_settings(user, quiz):
+    """
+    Returns a dict with effective start_date, end_date, max_attempts
+    based on user/group assignments.
+    Returns None if no assignment found for this user (unless superuser).
+    """
+    # Check for individual assignment first
+    assignment = QuizAssignment.objects.filter(user=user, quiz=quiz).first()
+    
+    # If no individual, check group
+    if not assignment and hasattr(user, 'profile') and user.profile.group:
+        assignment = QuizAssignment.objects.filter(group=user.profile.group, quiz=quiz).first()
+    
+    if assignment:
+        return {
+            'start_date': assignment.start_date if assignment.start_date else quiz.start_date,
+            'end_date': assignment.end_date if assignment.end_date else quiz.end_date,
+            'max_attempts': assignment.max_attempts if assignment.max_attempts is not None else quiz.max_attempts
+        }
+
+    # If not assigned, but superuser -> show global settings
+    if user.is_superuser:
+        return {
+            'start_date': quiz.start_date,
+            'end_date': quiz.end_date,
+            'max_attempts': quiz.max_attempts
+        }
+
+    return None
+
 def quiz_list_view(request):
-    quizzes = Quiz.objects.all()
+    if not request.user.is_authenticated:
+        return render(request, 'quizzes/quiz_list.html', {'educational_tasks': [], 'assessments': []})
+
+    user = request.user
     
-    # Оптимизация: загружаем все попытки пользователя одним запросом
-    attempts_dict = {}
+    effective_assignments = {} # quiz_id -> {start, end, max}
+
+    # Get assignments for user (even if superuser, we want to see if they are assigned)
+    filters = Q(user=user)
+    if hasattr(user, 'profile') and user.profile.group:
+        filters |= Q(group=user.profile.group)
+    
+    assignments = QuizAssignment.objects.filter(filters).select_related('quiz')
+    
+    # Deduplicate, prioritizing user assignment over group
+    temp_assignments = {} # quiz_id -> assignment object
+
+    for a in assignments:
+        qid = a.quiz_id
+        if qid not in temp_assignments:
+            temp_assignments[qid] = a
+        else:
+            existing = temp_assignments[qid]
+            if existing.user is None and a.user is not None:
+                temp_assignments[qid] = a
+    
+    if user.is_superuser:
+        quizzes = Quiz.objects.all()
+    else:
+        quizzes = []
+        for qid, a in temp_assignments.items():
+            quizzes.append(a.quiz)
+
+    # Process effective settings
+    for quiz in quizzes:
+        a = temp_assignments.get(quiz.id)
+        if a:
+            effective_assignments[quiz.id] = {
+                'start_date': a.start_date if a.start_date else quiz.start_date,
+                'end_date': a.end_date if a.end_date else quiz.end_date,
+                'max_attempts': a.max_attempts if a.max_attempts is not None else quiz.max_attempts
+            }
+        else:
+            # Fallback for superuser viewing unassigned quizzes
+            effective_assignments[quiz.id] = {
+                'start_date': quiz.start_date,
+                'end_date': quiz.end_date,
+                'max_attempts': quiz.max_attempts
+            }
+
+    # Pre-load attempts and best scores
+    user_results = {}
     if request.user.is_authenticated:
-        attempts = UserResult.objects.filter(user=request.user).values('quiz_id').annotate(
-            count=Count('id')
+        stats = UserResult.objects.filter(user=request.user).values('quiz_id').annotate(
+            count=Count('id'),
+            best_score=Max('score')
         )
-        attempts_dict = {item['quiz_id']: item['count'] for item in attempts}
+        user_results = {item['quiz_id']: item for item in stats}
     
-    quizzes_with_attempts = []
+    # Pre-load question counts
+    all_quiz_ids = [q.id for q in quizzes]
+    question_counts = {}
+    if all_quiz_ids:
+        q_counts = Question.objects.filter(quiz_id__in=all_quiz_ids).values('quiz_id').annotate(count=Count('id'))
+        question_counts = {item['quiz_id']: item['count'] for item in q_counts}
+
+    educational_tasks = []
+    assessments = []
+    
     now = timezone.now()
     
     for quiz in quizzes:
-        attempts_count = attempts_dict.get(quiz.id, 0)
+        settings = effective_assignments.get(quiz.id)
+        if not settings:
+            continue
+
+        start_date = settings['start_date']
+        end_date = settings['end_date']
+        max_attempts = settings['max_attempts']
+
+        stats = user_results.get(quiz.id, {})
+        attempts_count = stats.get('count', 0)
+        best_score = stats.get('best_score')
+        total_questions = question_counts.get(quiz.id, 0)
+
         is_blocked = False
         remaining_attempts = None
-        status_message = None 
+        status_text = "(Открыто)"
+        status_color = "green"
         
-        is_open_by_date = True
-        
-        if quiz.start_date and now < quiz.start_date:
-            is_open_by_date = False
+        if start_date and now < start_date:
             is_blocked = True
-            status_message = f"Откроется: {quiz.start_date.strftime('%d.%m.%Y %H:%M')}"
+            status_text = "(Недоступно)"
+            status_color = "#e6b800" # Dark yellow/gold
         
-        elif quiz.end_date and now > quiz.end_date:
-            is_open_by_date = False
+        elif end_date and now > end_date:
             is_blocked = True
-            status_message = f"Завершился: {quiz.end_date.strftime('%d.%m.%Y %H:%M')}"
+            status_text = "(Завершился)"
+            status_color = "red"
 
-        if request.user.is_authenticated and quiz.max_attempts > 0:
-            remaining_attempts = quiz.max_attempts - attempts_count
+        if max_attempts > 0:
+            remaining_attempts = max_attempts - attempts_count
             if remaining_attempts <= 0:
                 is_blocked = True
                 remaining_attempts = 0
+                # If it was open by date, but blocked by attempts -> show attempts exhausted
+                if status_text == "(Открыто)":
+                    status_text = "(Попытки исчерпаны)"
+                    status_color = "red"
         
-        quizzes_with_attempts.append({
+        item_data = {
             'quiz': quiz,
             'attempts_count': attempts_count,
+            'best_score': best_score,
+            'total_questions': total_questions,
             'is_blocked': is_blocked,
             'remaining_attempts': remaining_attempts,
-            'status_message': status_message
-        })
+            'status_text': status_text,
+            'status_color': status_color,
+            'start_date': start_date,
+            'end_date': end_date,
+            'max_attempts': max_attempts
+        }
 
-    context = {'quizzes_with_attempts': quizzes_with_attempts}
+        if max_attempts == 0:
+            educational_tasks.append(item_data)
+        else:
+            assessments.append(item_data)
+
+    context = {
+        'educational_tasks': educational_tasks,
+        'assessments': assessments
+    }
     return render(request, 'quizzes/quiz_list.html', context)
 
 @login_required
@@ -75,14 +192,34 @@ def quiz_detail_view(request, quiz_id):
         ),
         id=quiz_id
     )
+    
+    # Check assignment/availability
+    eff_settings = get_effective_quiz_settings(request.user, quiz)
+    if not eff_settings:
+        # Not assigned to this user
+        return redirect('quiz_list')
+
+    start_date = eff_settings['start_date']
+    end_date = eff_settings['end_date']
+    max_attempts = eff_settings['max_attempts']
+
     now = timezone.now()
     
-    if quiz.start_date and now < quiz.start_date: return redirect('quiz_list') 
-    if quiz.end_date and now > quiz.end_date: return redirect('quiz_list') 
+    # Access checks
+    if start_date and now < start_date: return redirect('quiz_list')
     
-    if quiz.max_attempts > 0:
+    if end_date:
+        if request.method == 'POST':
+            # Allow 2 minutes grace period for network latency/clock drift during POST
+            if now > end_date + datetime.timedelta(minutes=2):
+                return redirect('quiz_list')
+        else:
+             # Strict check for GET
+             if now > end_date: return redirect('quiz_list')
+    
+    if max_attempts > 0:
         attempts_count = UserResult.objects.filter(user=request.user, quiz=quiz).count()
-        if attempts_count >= quiz.max_attempts: return redirect('quiz_list')
+        if attempts_count >= max_attempts: return redirect('quiz_list')
 
     # Находим уже решенные вопросы
     correctly_answered_question_ids = UserAnswer.objects.filter(
@@ -146,7 +283,8 @@ def quiz_detail_view(request, quiz_id):
             text_answer = None
             code_answer = None
             error_log = None 
-
+            
+            # TODO: Refactor into separate function to avoid massive duplication if needed, but keeping inline for now
             if question.question_type == 'choice':
                 if user_input:
                     # Используем предзагруженные choices
@@ -251,6 +389,7 @@ def quiz_detail_view(request, quiz_id):
         'questions_to_show': questions_to_show,
         'last_attempt_codes': last_attempt_codes,  # Код из последней неудачной попытки (для шаблона)
         'last_attempt_codes_json': last_attempt_codes_json,  # JSON версия для JavaScript
+        'end_date': end_date, # Передаем дату окончания в шаблон
     })
 
 # --- СТАТИСТИКА (без изменений) ---

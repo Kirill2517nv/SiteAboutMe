@@ -1,5 +1,9 @@
 from django.db import models
 from django.conf import settings
+from django.contrib.auth import get_user_model
+from accounts.models import StudentGroup
+
+User = get_user_model()
 
 class Quiz(models.Model):
     title = models.CharField(max_length=200, verbose_name="Название теста")
@@ -15,6 +19,26 @@ class Quiz(models.Model):
 
     def __str__(self):
         return self.title
+
+class QuizAssignment(models.Model):
+    quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE, related_name='assignments', verbose_name="Тест")
+    group = models.ForeignKey(StudentGroup, on_delete=models.CASCADE, null=True, blank=True, verbose_name="Группа", related_name='quiz_assignments')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, verbose_name="Ученик", related_name='quiz_assignments')
+    
+    start_date = models.DateTimeField(null=True, blank=True, verbose_name="Начало доступа", help_text="Переопределяет глобальную дату начала")
+    end_date = models.DateTimeField(null=True, blank=True, verbose_name="Конец доступа", help_text="Переопределяет глобальную дату конца")
+    max_attempts = models.PositiveIntegerField(null=True, blank=True, verbose_name="Максимум попыток", help_text="Переопределяет глобальное кол-во попыток")
+
+    class Meta:
+        verbose_name = "Назначение теста"
+        verbose_name_plural = "Назначения тестов"
+        # Ensure either group or user is set (can be enforced in clean() or just logically)
+        # Also maybe unique constraints (one assignment per user per quiz? or precedence?)
+
+    def __str__(self):
+        if self.user:
+            return f"{self.quiz} -> {self.user}"
+        return f"{self.quiz} -> {self.group}"
 
 class Question(models.Model):
     TYPE_CHOICES = [

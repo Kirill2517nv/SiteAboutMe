@@ -26,12 +26,11 @@ urlpatterns = [
     path('accounts/', include('django.contrib.auth.urls')),
     path('accounts/', include('accounts.urls')),
     path('quizzes/', include('quizzes.urls')),
-    path('', home_page_view),
-    path('about/', about_page_view),
-    path('lessons/', lesson_list_view),
-    path('lessons/<int:lesson_id>/', lesson_detail_view),
+    path('', home_page_view, name='home'),
+    path('about/', about_page_view, name='about'),
+    path('lessons/', lesson_list_view, name='lesson_list'),
+    path('lessons/<int:lesson_id>/', lesson_detail_view, name='lesson_detail'),
 ]
 
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-
