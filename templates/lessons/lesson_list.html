@@ -4,11 +4,45 @@
 
 {% block content %}
     <h1>Мои уроки</h1>
-    <ul>
-        {% for lesson in lessons %}
-            <li>
-                <a href="/lessons/{{ lesson.id }}/">{{ lesson.title }}</a>
-            </li>
+
+    {% if sections %}
+        {% for section in sections %}
+            <div class="section" style="margin-bottom: 30px;">
+                <h2 style="border-bottom: 2px solid #eee; padding-bottom: 10px; color: #333;">{{ section.title }}</h2>
+                {% if section.lessons.all %}
+                    <ul style="list-style-type: none; padding-left: 0;">
+                        {% for lesson in section.lessons.all %}
+                            <li style="margin-bottom: 10px; padding: 10px; background-color: #f9f9f9; border-radius: 5px;">
+                                <a href="{% url 'lesson_detail' lesson.id %}" style="text-decoration: none; color: #007bff; font-weight: bold; font-size: 1.1em; display: block;">
+                                    {{ lesson.title }}
+                                </a>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p style="color: #777;">В этом разделе пока нет уроков.</p>
+                {% endif %}
+            </div>
         {% endfor %}
-    </ul>
+    {% endif %}
+
+    {% if orphan_lessons %}
+        <div class="section" style="margin-bottom: 30px;">
+            <h2 style="border-bottom: 2px solid #eee; padding-bottom: 10px; color: #333;">Другие уроки</h2>
+            <ul style="list-style-type: none; padding-left: 0;">
+                {% for lesson in orphan_lessons %}
+                    <li style="margin-bottom: 10px; padding: 10px; background-color: #f9f9f9; border-radius: 5px;">
+                        <a href="{% url 'lesson_detail' lesson.id %}" style="text-decoration: none; color: #007bff; font-weight: bold; font-size: 1.1em; display: block;">
+                            {{ lesson.title }}
+                        </a>
+                    </li>
+                {% endfor %}
+            </ul>
+        </div>
+    {% endif %}
+
+    {% if not sections and not orphan_lessons %}
+        <p>Уроков пока нет.</p>
+    {% endif %}
+
 {% endblock content %}

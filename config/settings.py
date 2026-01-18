@@ -32,6 +32,9 @@ DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
 ALLOWED_HOSTS = ['*'] # Пока разрешим все, на сервере укажем IP
 
+# Trust X-Forwarded-Proto from Nginx for Cloudflare Flexible
+# SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
 
 # Application definition
 
@@ -81,32 +84,14 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
-# ВНИМАНИЕ: SQLite НЕ подходит для продакшена с несколькими одновременными пользователями!
-# SQLite имеет ограничения:
-# - Блокирует всю БД при записи (даже один пользователь блокирует всех остальных)
-# - Очень медленный при конкурентных запросах
-# - Не поддерживает многие функции PostgreSQL/MySQL
-#
-# Для продакшена рекомендуется использовать PostgreSQL:
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.postgresql',
-#         'NAME': os.getenv('DB_NAME', 'mydb'),
-#         'USER': os.getenv('DB_USER', 'myuser'),
-#         'PASSWORD': os.getenv('DB_PASSWORD', 'mypassword'),
-#         'HOST': os.getenv('DB_HOST', 'localhost'),
-#         'PORT': os.getenv('DB_PORT', '5432'),
-#     }
-# }
-
 DATABASES = {
     'default': {
-        'ENGINE': os.getenv('DB_ENGINE', 'django.db.backends.postgresql'),
-        'NAME': os.getenv('DB_NAME', 'site_db'),
-        'USER': os.getenv('DB_USER', 'postgres'),
-        'PASSWORD': os.getenv('DB_PASSWORD', 'zxcgule228'),
-        'HOST': os.getenv('DB_HOST', 'localhost'),
-        'PORT': os.getenv('DB_PORT', '5432'),
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.getenv('DB_NAME', 'mydb'),
+        'USER': os.getenv('DB_USER', ''),
+        'PASSWORD': os.getenv('DB_PASSWORD', ''),
+        'HOST': os.getenv('DB_HOST', ''),
+        'PORT': os.getenv('DB_PORT', ''),
     }
 }
 

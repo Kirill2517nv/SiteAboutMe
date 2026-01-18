@@ -1,54 +1,126 @@
 {% extends 'base.html' %}
 
-{% block title %}Тесты{% endblock title %}
+{% block title %}Задачи{% endblock title %}
 
 {% block content %}
-    <h1>Доступные тесты</h1>
+    <h1>Доступные задачи</h1>
     
-    {% if quizzes_with_attempts %}
+    <h2>Учебные задачи</h2>
+    {% if educational_tasks %}
         <ul>
-            {% for item in quizzes_with_attempts %}
-                <li style="margin-bottom: 15px;">
+            {% for item in educational_tasks %}
+                <li style="margin-bottom: 20px;">
                     
-                    {% if item.is_blocked %}
-                        <!-- Если заблокировано (по дате или попыткам) -->
-                        <span style="color: gray; text-decoration: line-through;">{{ item.quiz.title }}</span>
-                        
-                        {% if item.status_message %}
-                            <span style="color: red; font-size: small;">({{ item.status_message }})</span>
-                        {% elif item.remaining_attempts == 0 %}
-                            <span style="color: red; font-size: small;">(Попытки исчерпаны)</span>
+                    <div style="font-size: 1.2em; margin-bottom: 4px;">
+                        {% if item.is_blocked %}
+                            <!-- Если заблокировано -->
+                            <span style="color: gray;">{{ item.quiz.title }}</span>
+                        {% else %}
+                            <!-- Если доступно -->
+                            <a href="{% url 'quiz_detail' item.quiz.id %}">{{ item.quiz.title }}</a>
                         {% endif %}
+
+                        <span style="color: {{ item.status_color }}; margin-left: 10px; font-weight: bold; font-size: 0.9em;">
+                            {{ item.status_text }}
+                        </span>
+                    </div>
+
                     
+                    <!-- Время -->
+                    {% if item.status_text == "(Недоступно)" %}
+                        {% if item.start_date %}
+                            <div style="font-size: small; color: black;">
+                                Откроется: {{ item.start_date|date:"d.m.Y H:i" }}
+                            </div>
+                        {% endif %}
                     {% else %}
-                        <!-- Если доступно -->
-                        <a href="{% url 'quiz_detail' item.quiz.id %}">{{ item.quiz.title }}</a>
-                        
-                        <!-- Дополнительная информация о дедлайне, если он есть -->
-                        {% if item.quiz.end_date %}
-                            <br><span style="font-size: small; color: orange;">Дедлайн: {{ item.quiz.end_date|date:"d.m.Y H:i" }}</span>
-                        {% endif %}
-
-                        {% if item.quiz.max_attempts > 0 %}
-                            <br><span style="font-size: small; color: green;">
-                                (Осталось попыток: {{ item.remaining_attempts }})
-                            </span>
+                        {% if item.end_date %}
+                            <div style="font-size: small; color: black;">
+                                Дедлайн: {{ item.end_date|date:"d.m.Y H:i" }}
+                            </div>
                         {% endif %}
                     {% endif %}
 
-                    
+                    <!-- Лучший результат -->
+                    {% if item.best_score is not None %}
+                        <div style="font-size: small; color: green;">
+                            Лучший результат: {{ item.best_score }} из {{ item.total_questions }}
+                        </div>
+                    {% endif %}
+
+                    <!-- Статистика для админа -->
                     {% if user.is_superuser %}
-                        <a href="{% url 'quiz_stats' item.quiz.id %}" style="font-size: small; color: blue; margin-left: 10px;">[Статистика]</a>
-                    {% endif %}
-
-                    {% if item.quiz.description %}
-                        <br><small>{{ item.quiz.description }}</small>
+                        <div style="margin-top: 2px;">
+                            <a href="{% url 'quiz_stats' item.quiz.id %}" style="font-size: small; color: blue;">[Статистика]</a>
+                        </div>
                     {% endif %}
                 </li>
             {% endfor %}
         </ul>
     {% else %}
-        <p>Пока нет доступных тестов.</p>
+        <p>Нет доступных учебных задач.</p>
+    {% endif %}
+
+    <h2>Проверочные работы</h2>
+    {% if assessments %}
+        <ul>
+            {% for item in assessments %}
+                <li style="margin-bottom: 20px;">
+                    
+                    <div style="font-size: 1.2em; margin-bottom: 4px;">
+                        {% if item.is_blocked %}
+                            <!-- Если заблокировано -->
+                            <span style="color: gray;">{{ item.quiz.title }}</span>
+                        {% else %}
+                            <!-- Если доступно -->
+                            <a href="{% url 'quiz_detail' item.quiz.id %}">{{ item.quiz.title }}</a>
+                        {% endif %}
+
+                        <span style="color: {{ item.status_color }}; margin-left: 10px; font-weight: bold; font-size: 0.9em;">
+                            {{ item.status_text }}
+                        </span>
+                    </div>
+
+                    <!-- Время -->
+                    {% if item.status_text == "(Недоступно)" %}
+                        {% if item.start_date %}
+                            <div style="font-size: small; color: black;">
+                                Откроется: {{ item.start_date|date:"d.m.Y H:i" }}
+                            </div>
+                        {% endif %}
+                    {% else %}
+                        {% if item.end_date %}
+                            <div style="font-size: small; color: black;">
+                                Дедлайн: {{ item.end_date|date:"d.m.Y H:i" }}
+                            </div>
+                        {% endif %}
+                    {% endif %}
+
+                    <!-- Осталось попыток -->
+                    {% if not item.is_blocked %}
+                        <div style="font-size: small; color: gray;">
+                            (Осталось попыток: {{ item.remaining_attempts }})
+                        </div>
+                    {% endif %}
+
+                    <!-- Лучший результат -->
+                    {% if item.best_score is not None %}
+                        <div style="font-size: small; color: green;">
+                            Лучший результат: {{ item.best_score }} из {{ item.total_questions }}
+                        </div>
+                    {% endif %}
+
+                    <!-- Статистика для админа -->
+                    {% if user.is_superuser %}
+                        <div style="margin-top: 2px;">
+                            <a href="{% url 'quiz_stats' item.quiz.id %}" style="font-size: small; color: blue;">[Статистика]</a>
+                        </div>
+                    {% endif %}
+                </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p>Нет доступных проверочных работ.</p>
     {% endif %}
 
 {% endblock content %}

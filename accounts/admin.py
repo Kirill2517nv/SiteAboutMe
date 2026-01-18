@@ -12,8 +12,11 @@ class ProfileInline(admin.StackedInline):
 class UserAdmin(BaseUserAdmin):
     inlines = (ProfileInline,)
 
+class StudentGroupAdmin(admin.ModelAdmin):
+    search_fields = ['name']
+
 # Перерегистрируем User с новыми настройками
 admin.site.unregister(User)
 admin.site.register(User, UserAdmin)
 
-admin.site.register(StudentGroup)
+admin.site.register(StudentGroup, StudentGroupAdmin)
