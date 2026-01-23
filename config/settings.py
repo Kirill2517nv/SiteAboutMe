@@ -128,6 +128,10 @@ STATIC_ROOT = BASE_DIR / 'staticfiles' # Сюда соберутся все фа
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
+# If True, download endpoints will use Nginx X-Accel-Redirect to stream files.
+# Enable on production behind Nginx with an internal location mapping to MEDIA_ROOT.
+USE_X_ACCEL_REDIRECT = os.getenv('USE_X_ACCEL_REDIRECT', 'False') == 'True'
+
 # Redirect to home URL after login (Default redirects to /accounts/profile/)
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/'
