@@ -1,9 +1,17 @@
 from django.urls import path
-from .views import quiz_list_view, quiz_detail_view, quiz_stats_view, user_attempts_view, attempt_detail_view
+from .views import (
+    quiz_list_view,
+    quiz_detail_view,
+    quiz_stats_view,
+    user_attempts_view,
+    attempt_detail_view,
+    question_data_file_download_view,
+)
 
 urlpatterns = [
     path('', quiz_list_view, name='quiz_list'),
     path('<int:quiz_id>/', quiz_detail_view, name='quiz_detail'),
+    path('question/<int:question_id>/data-file/', question_data_file_download_view, name='question_data_file_download'),
     
     # Статистика
     path('<int:quiz_id>/stats/', quiz_stats_view, name='quiz_stats'),

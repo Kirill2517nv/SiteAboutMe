@@ -3,11 +3,13 @@ from django.contrib.auth.decorators import login_required, user_passes_test
 from django.utils import timezone
 from django.contrib.auth.models import User
 from django.db.models import Max, Count, Q
+from django.http import FileResponse, Http404
 from .models import Quiz, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, Question
 from accounts.models import StudentGroup
 import datetime
 import os
 import json
+import mimetypes
 from .utils import run_code_in_docker
 
 def normalize_output(text):
@@ -45,6 +47,26 @@ def get_effective_quiz_settings(user, quiz):
         }
 
     return None
+
+@login_required
+def question_data_file_download_view(request, question_id):
+    """
+    Download Question.data_file with a stable filename across browsers/OS.
+    Relying on <a download> + direct media URL can result in "download" filename
+    on some clients when headers are missing/overridden by the web server.
+    """
+    question = get_object_or_404(Question, id=question_id)
+    if not question.data_file:
+        raise Http404("Файл не найден")
+
+    filename = os.path.basename(question.data_file.name)
+    content_type, _ = mimetypes.guess_type(filename)
+    return FileResponse(
+        question.data_file.open('rb'),
+        as_attachment=True,
+        filename=filename,
+        content_type=content_type or 'application/octet-stream',
+    )
 
 def quiz_list_view(request):
     if not request.user.is_authenticated:

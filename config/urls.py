@@ -19,7 +19,7 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from pages.views import home_page_view, about_page_view
-from lessons.views import lesson_list_view, lesson_detail_view
+from lessons.views import lesson_list_view, lesson_detail_view, lesson_file_download_view
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -30,6 +30,7 @@ urlpatterns = [
     path('about/', about_page_view, name='about'),
     path('lessons/', lesson_list_view, name='lesson_list'),
     path('lessons/<int:lesson_id>/', lesson_detail_view, name='lesson_detail'),
+    path('lessons/<int:lesson_id>/file/', lesson_file_download_view, name='lesson_file_download'),
 ]
 
 if settings.DEBUG:

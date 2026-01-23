@@ -1,5 +1,8 @@
 from django.shortcuts import render, get_object_or_404
+from django.http import FileResponse, Http404
 from .models import Lesson, Section
+import os
+import mimetypes
 
 def lesson_list_view(request):
     sections = Section.objects.prefetch_related('lessons').all()
@@ -14,3 +17,20 @@ def lesson_detail_view(request, lesson_id):
     lesson = get_object_or_404(Lesson, id=lesson_id)
     context = {'lesson': lesson}
     return render(request, 'lessons/lesson_detail.html', context)
+
+def lesson_file_download_view(request, lesson_id):
+    """
+    Download Lesson.file with a stable filename across browsers/OS.
+    """
+    lesson = get_object_or_404(Lesson, id=lesson_id)
+    if not lesson.file:
+        raise Http404("Файл не найден")
+
+    filename = os.path.basename(lesson.file.name)
+    content_type, _ = mimetypes.guess_type(filename)
+    return FileResponse(
+        lesson.file.open('rb'),
+        as_attachment=True,
+        filename=filename,
+        content_type=content_type or 'application/octet-stream',
+    )

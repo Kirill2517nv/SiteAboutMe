@@ -130,7 +130,7 @@
                 
                 {% if question.data_file %}
                     <p style="background-color: #f0f8ff; padding: 5px; border-radius: 3px;">
-                        📄 <a href="{{ question.data_file.url }}" download>Скачать файл с данными</a>
+                        📄 <a href="{% url 'question_data_file_download' question.id %}">Скачать файл с данными</a>
                     </p>
                 {% endif %}
                 
