@@ -10,7 +10,7 @@
 
         {% if lesson.file %}
             <div style="margin-top: 20px;">
-                <a href="{{ lesson.file.url }}" download style="display: inline-block; padding: 10px 20px; background-color: #28a745; color: white; text-decoration: none; border-radius: 5px; font-weight: bold;">
+                <a href="{% url 'lesson_file_download' lesson.id %}" style="display: inline-block; padding: 10px 20px; background-color: #28a745; color: white; text-decoration: none; border-radius: 5px; font-weight: bold;">
                     Скачать материалы к уроку
                 </a>
             </div>
