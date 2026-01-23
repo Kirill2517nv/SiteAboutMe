@@ -5,14 +5,26 @@ from django.contrib.auth.models import User
 from django.db.models import Max, Count, Q
 from django.http import FileResponse, Http404, HttpResponse
 from django.conf import settings
-from django.utils.http import content_disposition_header
 from .models import Quiz, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, Question
 from accounts.models import StudentGroup
 import datetime
 import os
 import json
 import mimetypes
+import re
+from urllib.parse import quote
 from .utils import run_code_in_docker
+
+def _attachment_content_disposition(filename: str) -> str:
+    """
+    Nginx-friendly Content-Disposition:
+    - ASCII fallback in filename=""
+    - RFC 5987 filename*=UTF-8''...
+    Also strips CR/LF to prevent header injection / invalid headers.
+    """
+    safe = (filename or "download").replace("\r", "").replace("\n", "")
+    ascii_fallback = re.sub(r"[^A-Za-z0-9.\-_]", "_", safe) or "download"
+    return f'attachment; filename="{ascii_fallback}"; filename*=UTF-8\'\'{quote(safe)}'
 
 def normalize_output(text):
     if not text:
@@ -54,8 +66,6 @@ def get_effective_quiz_settings(user, quiz):
 def question_data_file_download_view(request, question_id):
     """
     Download Question.data_file with a stable filename across browsers/OS.
-    Relying on <a download> + direct media URL can result in "download" filename
-    on some clients when headers are missing/overridden by the web server.
     """
     question = get_object_or_404(Question, id=question_id)
     if not question.data_file:
@@ -64,24 +74,13 @@ def question_data_file_download_view(request, question_id):
     filename = os.path.basename(question.data_file.name)
     content_type, _ = mimetypes.guess_type(filename)
 
-    # Production optimization: let Nginx stream the file from disk.
-    # Django still controls auth + filename via headers.
-    if getattr(settings, "USE_X_ACCEL_REDIRECT", False):
-        internal_path = f"/_protected_media/{question.data_file.name.lstrip('/')}"
-        response = HttpResponse()
-        response["X-Accel-Redirect"] = internal_path
-        response["Content-Type"] = content_type or "application/octet-stream"
-        response["Content-Disposition"] = content_disposition_header(as_attachment=True, filename=filename)
-        response["Cache-Control"] = "no-store"
-        return response
-
-    # Fallback: Django streams the file itself (dev / no Nginx accel)
+    # Simple FileResponse is safer unless you have a very large traffic
     response = FileResponse(
         question.data_file.open("rb"),
         as_attachment=True,
         content_type=content_type or "application/octet-stream",
     )
-    response["Content-Disposition"] = content_disposition_header(as_attachment=True, filename=filename)
+    response["Content-Disposition"] = _attachment_content_disposition(filename)
     return response
 
 def quiz_list_view(request):

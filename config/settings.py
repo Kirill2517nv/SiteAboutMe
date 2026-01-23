@@ -135,3 +135,6 @@ USE_X_ACCEL_REDIRECT = os.getenv('USE_X_ACCEL_REDIRECT', 'False') == 'True'
 # Redirect to home URL after login (Default redirects to /accounts/profile/)
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/'
+
+# Добавьте это, чтобы Django понимал, что он за SSL-прокси (Nginx)
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')

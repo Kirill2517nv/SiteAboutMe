@@ -1,10 +1,16 @@
 from django.shortcuts import render, get_object_or_404
 from django.http import FileResponse, Http404, HttpResponse
 from django.conf import settings
-from django.utils.http import content_disposition_header
 from .models import Lesson, Section
 import os
 import mimetypes
+import re
+from urllib.parse import quote
+
+def _attachment_content_disposition(filename: str) -> str:
+    safe = (filename or "download").replace("\r", "").replace("\n", "")
+    ascii_fallback = re.sub(r"[^A-Za-z0-9.\-_]", "_", safe) or "download"
+    return f'attachment; filename="{ascii_fallback}"; filename*=UTF-8\'\'{quote(safe)}'
 
 def lesson_list_view(request):
     sections = Section.objects.prefetch_related('lessons').all()
@@ -31,19 +37,10 @@ def lesson_file_download_view(request, lesson_id):
     filename = os.path.basename(lesson.file.name)
     content_type, _ = mimetypes.guess_type(filename)
 
-    if getattr(settings, "USE_X_ACCEL_REDIRECT", False):
-        internal_path = f"/_protected_media/{lesson.file.name.lstrip('/')}"
-        response = HttpResponse()
-        response["X-Accel-Redirect"] = internal_path
-        response["Content-Type"] = content_type or "application/octet-stream"
-        response["Content-Disposition"] = content_disposition_header(as_attachment=True, filename=filename)
-        response["Cache-Control"] = "no-store"
-        return response
-
     response = FileResponse(
         lesson.file.open("rb"),
         as_attachment=True,
         content_type=content_type or "application/octet-stream",
     )
-    response["Content-Disposition"] = content_disposition_header(as_attachment=True, filename=filename)
+    response["Content-Disposition"] = _attachment_content_disposition(filename)
     return response
