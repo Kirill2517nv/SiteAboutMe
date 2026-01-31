@@ -26,11 +26,10 @@ urlpatterns = [
     path('accounts/', include('django.contrib.auth.urls')),
     path('accounts/', include('accounts.urls')),
     path('quizzes/', include('quizzes.urls')),
+    path('pages/', include('pages.urls')),
+    path('lessons/', include('lessons.urls')),
     path('', home_page_view, name='home'),
     path('about/', about_page_view, name='about'),
-    path('lessons/', lesson_list_view, name='lesson_list'),
-    path('lessons/<int:lesson_id>/', lesson_detail_view, name='lesson_detail'),
-    path('lessons/<int:lesson_id>/file/', lesson_file_download_view, name='lesson_file_download'),
 ]
 
 if settings.DEBUG:

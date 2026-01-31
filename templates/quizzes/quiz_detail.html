@@ -2,372 +2,372 @@
 
 {% block title %}{{ quiz.title }}{% endblock title %}
 
+{% block extra_css %}
+<style>
+    /* Стили для плавающего таймера */
+    #sticky-timer {
+        position: fixed;
+        top: 80px;
+        right: 20px;
+        width: 180px;
+        background-color: white;
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        z-index: 1000;
+        font-family: inherit;
+        transition: all 0.3s ease;
+        overflow: hidden;
+    }
+
+    #timer-header {
+        padding: 8px 12px;
+        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+        cursor: move;
+        border-bottom: 1px solid #e2e8f0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 12px;
+        color: #64748b;
+        user-select: none;
+    }
+
+    #minimize-btn {
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-weight: bold;
+        font-size: 18px;
+        line-height: 1;
+        padding: 0 5px;
+        color: #94a3b8;
+        transition: color 0.2s;
+    }
+    #minimize-btn:hover { color: #475569; }
+
+    #timer-body {
+        padding: 16px;
+        text-align: center;
+    }
+
+    .timer-label {
+        font-size: 11px;
+        color: #94a3b8;
+        margin-bottom: 4px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    #timer-display {
+        font-size: 28px;
+        font-weight: 700;
+        color: #1e293b;
+        font-variant-numeric: tabular-nums;
+        transition: all 0.3s;
+    }
+
+    /* Критический режим */
+    #sticky-timer.critical {
+        background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+        box-shadow: 0 4px 20px rgba(239, 68, 68, 0.25);
+    }
+    #sticky-timer.critical #timer-header {
+        background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+        border-bottom-color: #fca5a5;
+        color: #b91c1c;
+    }
+    #sticky-timer.critical #timer-display {
+        color: #dc2626;
+        font-size: 32px;
+    }
+
+    /* Свёрнутый режим */
+    #sticky-timer.minimized { width: auto; }
+    #sticky-timer.minimized #timer-body { display: none; }
+    #sticky-timer.minimized #timer-header { border-bottom: none; }
+</style>
+{% endblock extra_css %}
+
 {% block content %}
-    <style>
-        /* Стили для плавающего таймера */
-        #sticky-timer {
-            position: fixed;
-            top: 80px;
-            right: 20px;
-            width: 200px;
-            background-color: white;
-            border: 2px solid #ccc;
-            border-radius: 8px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-            z-index: 1000; /* Поверх всего */
-            font-family: sans-serif;
-            transition: background-color 0.3s, border-color 0.3s, width 0.3s;
-            overflow: hidden;
-        }
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Навигация -->
+    <nav class="mb-6" data-aos="fade-right">
+        <a href="{% url 'quizzes:quiz_list' %}" 
+           class="inline-flex items-center text-gray-500 hover:text-brand-600 transition-colors group">
+            <svg class="w-5 h-5 mr-2 transition-transform group-hover:-translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+            Назад к списку задач
+        </a>
+    </nav>
 
-        /* Шапка для перетаскивания */
-        #timer-header {
-            padding: 5px 10px;
-            background-color: #f1f1f1;
-            cursor: move; /* Курсор перетаскивания */
-            border-bottom: 1px solid #ddd;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 12px;
-            color: #555;
-            user-select: none;
-        }
-
-        /* Кнопка сворачивания */
-        #minimize-btn {
-            background: none;
-            border: none;
-            cursor: pointer;
-            font-weight: bold;
-            font-size: 16px;
-            line-height: 1;
-            padding: 0 5px;
-        }
-
-        /* Контент таймера */
-        #timer-body {
-            padding: 10px;
-            text-align: center;
-        }
-
-        .timer-label {
-            font-size: 12px;
-            color: #666;
-            margin-bottom: 5px;
-        }
-
-        #timer-display {
-            font-size: 20px;
-            font-weight: bold;
-            color: #333;
-            transition: font-size 0.3s, color 0.3s;
-        }
-
-        /* Критический режим (< 5 минут) */
-        #sticky-timer.critical {
-            background-color: #ffebee;
-            border-color: #d32f2f;
-        }
-
-        #sticky-timer.critical #timer-header {
-            background-color: #ffcdd2;
-            border-bottom-color: #e57373;
-            color: #b71c1c;
-        }
-
-        #sticky-timer.critical #timer-display {
-            color: #d32f2f;
-            font-size: 30px; /* Увеличение шрифта в 1.5 раза */
-        }
-
-        /* Свернутый режим */
-        #sticky-timer.minimized {
-            width: auto;
-            border-color: #aaa;
-        }
-        
-        #sticky-timer.minimized #timer-body {
-            display: none;
-        }
-
-        #sticky-timer.minimized #timer-header {
-            border-bottom: none;
-        }
-    </style>
-
-    <h1>{{ quiz.title }}</h1>
-    <p>{{ quiz.description }}</p>
+    <!-- Заголовок -->
+    <header class="mb-8" data-aos="fade-up">
+        <h1 class="text-3xl font-bold text-gray-900 mb-2">{{ quiz.title }}</h1>
+        {% if quiz.description %}
+        <p class="text-gray-600">{{ quiz.description }}</p>
+        {% endif %}
+    </header>
 
     <!-- Плавающий Таймер -->
     {% if end_date %}
     <div id="sticky-timer">
         <div id="timer-header">
-            <span>⏳ Таймер</span>
+            <span class="flex items-center gap-1">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                Таймер
+            </span>
             <button id="minimize-btn" title="Свернуть/Развернуть">–</button>
         </div>
         <div id="timer-body">
-            <div class="timer-label">Оставшееся время</div>
+            <div class="timer-label">Осталось</div>
             <div id="timer-display">--:--:--</div>
         </div>
     </div>
     {% endif %}
 
-    <hr>
-
-    <form method="post" id="quiz-form">
+    <!-- Форма с вопросами -->
+    <form method="post" id="quiz-form" class="space-y-6">
         {% csrf_token %}
         
         {% for question in questions_to_show %}
-            <div style="margin-bottom: 30px; padding: 15px; border: 1px solid #eee; border-radius: 5px;">
-                <!-- Заголовок вопроса (первая строка) -->
-                <h3>{{ question.get_title }}</h3>
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden" data-aos="fade-up" data-aos-delay="{{ forloop.counter0 }}50">
+            <div class="p-6">
+                <!-- Номер и заголовок вопроса -->
+                <div class="flex items-start gap-4 mb-4">
+                    <span class="flex-shrink-0 w-8 h-8 bg-brand-100 text-brand-600 rounded-full flex items-center justify-center font-bold text-sm">
+                        {{ forloop.counter }}
+                    </span>
+                    <h3 class="text-lg font-semibold text-gray-900 pt-0.5">{{ question.get_title }}</h3>
+                </div>
                 
-                <!-- Тело вопроса (остальное) -->
+                <!-- Тело вопроса -->
                 {% if question.get_body %}
-                    <div style="margin-bottom: 15px; white-space: pre-wrap;">{{ question.get_body }}</div>
+                <div class="ml-12 mb-4 text-gray-700 whitespace-pre-wrap bg-gray-50 rounded-lg p-4 font-mono text-sm">{{ question.get_body }}</div>
                 {% endif %}
                 
+                <!-- Файл с данными -->
                 {% if question.data_file %}
-                    <p style="background-color: #f0f8ff; padding: 5px; border-radius: 3px;">
-                        📄 <a href="{% url 'question_data_file_download' question.id %}">Скачать файл с данными</a>
-                    </p>
+                <div class="ml-12 mb-4">
+                    <a href="{% url 'quizzes:question_data_file_download' question.id %}" 
+                       class="inline-flex items-center px-4 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors">
+                        <svg class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                        </svg>
+                        Скачать файл с данными
+                    </a>
+                </div>
                 {% endif %}
                 
-                {% if question.question_type == 'choice' %}
-                    {% for choice in question.choices.all %}
-                        <div>
+                <!-- Варианты ответов -->
+                <div class="ml-12">
+                    {% if question.question_type == 'choice' %}
+                    <div class="space-y-2">
+                        {% for choice in question.choices.all %}
+                        <label class="flex items-center p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 hover:border-gray-300 transition-colors">
                             <input type="radio" 
                                    id="choice_{{ choice.id }}" 
                                    name="question_{{ question.id }}" 
                                    value="{{ choice.id }}"
-                                   required>
-                            <label for="choice_{{ choice.id }}">{{ choice.text }}</label>
-                        </div>
-                    {% endfor %}
-                
-                {% elif question.question_type == 'text' %}
-                     <div>
-                        <input type="text" 
-                               name="question_{{ question.id }}" 
-                               placeholder="Введите ваш ответ"
-                               required
-                               style="padding: 5px; width: 300px;">
-                     </div>
+                                   required
+                                   class="w-4 h-4 text-brand-600 border-gray-300 focus:ring-brand-500">
+                            <span class="ml-3 text-gray-700">{{ choice.text }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                    
+                    {% elif question.question_type == 'text' %}
+                    <input type="text" 
+                           name="question_{{ question.id }}" 
+                           placeholder="Введите ваш ответ"
+                           required
+                           class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors">
 
-                {% elif question.question_type == 'code' %}
-                     <div>
-                        <p><small>Напишите решение на Python:</small></p>
-                        <div class="code-restored-message" id="restored_msg_{{ question.id }}" style="display: none; background-color: #fff3e0; padding: 8px; border-left: 4px solid #ff9800; border-radius: 3px; margin-bottom: 10px;">
-                            <strong>💡 Ваш код из последней попытки был автоматически восстановлен. Исправьте ошибки и отправьте заново.</strong>
+                    {% elif question.question_type == 'code' %}
+                    <div>
+                        <p class="text-sm text-gray-500 mb-2">Напишите решение на Python:</p>
+                        
+                        <div class="code-restored-message hidden bg-amber-50 border-l-4 border-amber-400 p-4 rounded-r-lg mb-3" id="restored_msg_{{ question.id }}">
+                            <div class="flex items-center">
+                                <svg class="w-5 h-5 text-amber-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                                <span class="text-amber-800 text-sm font-medium">Ваш код из последней попытки был автоматически восстановлен</span>
+                            </div>
                         </div>
+                        
                         <textarea id="code_{{ question.id }}"
                                   name="question_{{ question.id }}" 
-                                  rows="10" 
-                                  cols="50"
-                                  placeholder="Вставь сюда решение..."
+                                  rows="12"
+                                  placeholder="# Вставьте сюда ваше решение..."
                                   data-quiz-id="{{ quiz.id }}"
                                   data-question-id="{{ question.id }}"
-                                  style="font-family: monospace; padding: 10px; width: 100%; border: 1px solid #ccc;"></textarea>
-                     </div>
-                {% endif %}
+                                  class="w-full px-4 py-3 border border-gray-300 rounded-lg font-mono text-sm bg-gray-900 text-gray-100 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors"></textarea>
+                    </div>
+                    {% endif %}
+                </div>
             </div>
+        </div>
         {% empty %}
-            <h3 style="color: green;">Поздравляем! Вы правильно ответили на все вопросы этого теста.</h3>
-            <p><a href="/quizzes/">Вернуться к списку тестов</a></p>
+        <div class="bg-green-50 border border-green-200 rounded-xl p-8 text-center" data-aos="fade-up">
+            <div class="text-green-500 mb-4">
+                <svg class="w-16 h-16 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+            </div>
+            <h3 class="text-xl font-bold text-green-800 mb-2">Поздравляем!</h3>
+            <p class="text-green-700 mb-4">Вы правильно ответили на все вопросы этого теста.</p>
+            <a href="{% url 'quizzes:quiz_list' %}" 
+               class="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+                Вернуться к списку тестов
+            </a>
+        </div>
         {% endfor %}
 
         {% if questions_to_show %}
-            <button type="submit" style="padding: 10px 20px; font-size: 16px;">Отправить ответы</button>
+        <div class="flex justify-end" data-aos="fade-up">
+            <button type="submit" 
+                    class="px-8 py-3 bg-brand-600 text-white font-medium rounded-lg hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 transition-colors">
+                Отправить ответы
+            </button>
+        </div>
         {% endif %}
     </form>
+</div>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            // --- ЛОГИКА СОХРАНЕНИЯ КОДА (без изменений) ---
-            const quizId = {{ quiz.id }};
-            const codeTextareas = document.querySelectorAll('textarea[data-question-id]');
-            const serverCodes = {{ last_attempt_codes_json|safe }};
-            
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // --- ЛОГИКА СОХРАНЕНИЯ КОДА ---
+    const quizId = {{ quiz.id }};
+    const codeTextareas = document.querySelectorAll('textarea[data-question-id]');
+    const serverCodes = {{ last_attempt_codes_json|safe }};
+    
+    codeTextareas.forEach(function(textarea) {
+        const questionId = textarea.getAttribute('data-question-id');
+        const storageKey = 'quiz_' + quizId + '_question_' + questionId;
+        const serverCode = serverCodes[questionId] || null;
+        const savedCode = sessionStorage.getItem(storageKey);
+        
+        if (savedCode) {
+            textarea.value = savedCode;
+        } else if (serverCode) {
+            textarea.value = serverCode;
+            sessionStorage.setItem(storageKey, serverCode);
+            const msgElement = document.getElementById('restored_msg_' + questionId);
+            if (msgElement) msgElement.classList.remove('hidden');
+        }
+        
+        textarea.addEventListener('input', function() {
+            sessionStorage.setItem(storageKey, textarea.value);
+        });
+    });
+    
+    const form = document.getElementById('quiz-form');
+    if (form) {
+        form.addEventListener('submit', function() {
             codeTextareas.forEach(function(textarea) {
                 const questionId = textarea.getAttribute('data-question-id');
                 const storageKey = 'quiz_' + quizId + '_question_' + questionId;
-                const serverCode = serverCodes[questionId] || null;
-                const savedCode = sessionStorage.getItem(storageKey);
-                
-                if (savedCode) {
-                    textarea.value = savedCode;
-                } else if (serverCode) {
-                    textarea.value = serverCode;
-                    sessionStorage.setItem(storageKey, serverCode);
-                    const msgElement = document.getElementById('restored_msg_' + questionId);
-                    if (msgElement) msgElement.style.display = 'block';
-                }
-                
-                textarea.addEventListener('input', function() {
-                    sessionStorage.setItem(storageKey, textarea.value);
-                });
+                sessionStorage.removeItem(storageKey);
             });
-            
-            const form = document.getElementById('quiz-form');
-            if (form) {
-                form.addEventListener('submit', function() {
-                    codeTextareas.forEach(function(textarea) {
-                        const questionId = textarea.getAttribute('data-question-id');
-                        const storageKey = 'quiz_' + quizId + '_question_' + questionId;
-                        sessionStorage.removeItem(storageKey);
-                    });
-                });
-            }
-
-            // --- ТАЙМЕР (НОВАЯ ЛОГИКА) ---
-            {% if end_date %}
-            const timerElement = document.getElementById('sticky-timer');
-            const timerHeader = document.getElementById('timer-header');
-            const minimizeBtn = document.getElementById('minimize-btn');
-            const timerDisplay = document.getElementById('timer-display');
-            
-            // 1. Логика таймера
-            const endDateStr = "{{ end_date|date:'c' }}";
-            const endDate = new Date(endDateStr).getTime();
-            
-            function updateTimer() {
-                const now = new Date().getTime();
-                const distance = endDate - now;
-                
-                if (distance < 0) {
-                    clearInterval(timerInterval);
-                    timerDisplay.innerHTML = "00:00:00";
-                    timerDisplay.style.color = "red";
-                    // Автоотправка
-                    const inputs = form.querySelectorAll('[required]');
-                    inputs.forEach(input => input.removeAttribute('required'));
-                    form.submit();
-                    return;
-                }
-                
-                // Форматирование
-                const days = Math.floor(distance / (1000 * 60 * 60 * 24));
-                const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-                const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
-                const seconds = Math.floor((distance % (1000 * 60)) / 1000);
-                
-                // Добавляем ведущие нули
-                const hh = String(hours).padStart(2, '0');
-                const mm = String(minutes).padStart(2, '0');
-                const ss = String(seconds).padStart(2, '0');
-                
-                if (days > 0) {
-                    timerDisplay.innerHTML = `${days}д ${hh}:${mm}:${ss}`;
-                } else {
-                    timerDisplay.innerHTML = `${hh}:${mm}:${ss}`;
-                }
-
-                // Критический режим (< 5 минут)
-                if (distance < 5 * 60 * 1000) {
-                    if (!timerElement.classList.contains('critical')) {
-                        timerElement.classList.add('critical');
-                    }
-                }
-            }
-            
-            const timerInterval = setInterval(updateTimer, 1000);
-            updateTimer();
-
-            // 2. Логика сворачивания/разворачивания
-            minimizeBtn.addEventListener('click', function(e) {
-                e.stopPropagation(); // Чтобы не срабатывал drag
-                timerElement.classList.toggle('minimized');
-                if (timerElement.classList.contains('minimized')) {
-                    minimizeBtn.textContent = '+';
-                } else {
-                    minimizeBtn.textContent = '–';
-                }
-            });
-
-            // 3. Логика перетаскивания (Drag & Drop)
-            let isDragging = false;
-            let currentX;
-            let currentY;
-            let initialX;
-            let initialY;
-            let xOffset = 0;
-            let yOffset = 0;
-
-            timerHeader.addEventListener("mousedown", dragStart);
-            document.addEventListener("mouseup", dragEnd);
-            document.addEventListener("mousemove", drag);
-
-            function dragStart(e) {
-                // Игнорируем клик по кнопке сворачивания
-                if (e.target === minimizeBtn) return;
-
-                initialX = e.clientX - xOffset;
-                initialY = e.clientY - yOffset;
-
-                if (e.target === timerHeader || timerHeader.contains(e.target)) {
-                    isDragging = true;
-                }
-            }
-
-            function dragEnd(e) {
-                initialX = currentX;
-                initialY = currentY;
-                isDragging = false;
-            }
-
-            function drag(e) {
-                if (isDragging) {
-                    e.preventDefault();
-                    
-                    // Предлагаемые новые координаты смещения
-                    let newCurrentX = e.clientX - initialX;
-                    let newCurrentY = e.clientY - initialY;
-                    
-                    // --- Ограничение области видимости (чтобы не утащить за экран) ---
-                    const width = timerElement.offsetWidth;
-                    const height = timerElement.offsetHeight;
-                    const winWidth = window.innerWidth;
-                    const winHeight = window.innerHeight;
-                    
-                    // Вычисляем базовую позицию (где элемент был бы без transform)
-                    // Поскольку мы используем fixed + right/top, то базовая позиция зависит от ширины окна.
-                    // right: 20px, top: 80px
-                    const baseLeft = winWidth - width - 20;
-                    const baseTop = 80;
-                    
-                    // Вычисляем, где окажется элемент с новым смещением
-                    let proposedLeft = baseLeft + newCurrentX;
-                    let proposedTop = baseTop + newCurrentY;
-                    
-                    // Ограничиваем Left (от 0 до winWidth - width)
-                    if (proposedLeft < 0) {
-                        newCurrentX = -baseLeft; // Прижимаем к левому краю
-                    } else if (proposedLeft + width > winWidth) {
-                        newCurrentX = winWidth - width - baseLeft; // Прижимаем к правому краю
-                    }
-                    
-                    // Ограничиваем Top (от 0 до winHeight - height)
-                    if (proposedTop < 0) {
-                        newCurrentY = -baseTop; // Прижимаем к верху
-                    } else if (proposedTop + height > winHeight) {
-                        newCurrentY = winHeight - height - baseTop; // Прижимаем к низу
-                    }
-
-                    currentX = newCurrentX;
-                    currentY = newCurrentY;
-
-                    xOffset = currentX;
-                    yOffset = currentY;
-
-                    setTranslate(currentX, currentY, timerElement);
-                }
-            }
-
-            function setTranslate(xPos, yPos, el) {
-                el.style.transform = "translate3d(" + xPos + "px, " + yPos + "px, 0)";
-            }
-            {% endif %}
         });
-    </script>
+    }
+
+    // --- ТАЙМЕР ---
+    {% if end_date %}
+    const timerElement = document.getElementById('sticky-timer');
+    const timerHeader = document.getElementById('timer-header');
+    const minimizeBtn = document.getElementById('minimize-btn');
+    const timerDisplay = document.getElementById('timer-display');
+    
+    const endDateStr = "{{ end_date|date:'c' }}";
+    const endDate = new Date(endDateStr).getTime();
+    
+    function updateTimer() {
+        const now = new Date().getTime();
+        const distance = endDate - now;
+        
+        if (distance < 0) {
+            clearInterval(timerInterval);
+            timerDisplay.innerHTML = "00:00:00";
+            const inputs = form.querySelectorAll('[required]');
+            inputs.forEach(input => input.removeAttribute('required'));
+            form.submit();
+            return;
+        }
+        
+        const days = Math.floor(distance / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+        
+        const hh = String(hours).padStart(2, '0');
+        const mm = String(minutes).padStart(2, '0');
+        const ss = String(seconds).padStart(2, '0');
+        
+        timerDisplay.innerHTML = days > 0 ? `${days}д ${hh}:${mm}:${ss}` : `${hh}:${mm}:${ss}`;
+
+        if (distance < 5 * 60 * 1000 && !timerElement.classList.contains('critical')) {
+            timerElement.classList.add('critical');
+        }
+    }
+    
+    const timerInterval = setInterval(updateTimer, 1000);
+    updateTimer();
+
+    // Сворачивание
+    minimizeBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        timerElement.classList.toggle('minimized');
+        minimizeBtn.textContent = timerElement.classList.contains('minimized') ? '+' : '–';
+    });
+
+    // Drag & Drop
+    let isDragging = false, currentX, currentY, initialX, initialY, xOffset = 0, yOffset = 0;
+
+    timerHeader.addEventListener("mousedown", dragStart);
+    document.addEventListener("mouseup", dragEnd);
+    document.addEventListener("mousemove", drag);
+
+    function dragStart(e) {
+        if (e.target === minimizeBtn) return;
+        initialX = e.clientX - xOffset;
+        initialY = e.clientY - yOffset;
+        if (e.target === timerHeader || timerHeader.contains(e.target)) isDragging = true;
+    }
+
+    function dragEnd() { initialX = currentX; initialY = currentY; isDragging = false; }
+
+    function drag(e) {
+        if (!isDragging) return;
+        e.preventDefault();
+        
+        let newX = e.clientX - initialX;
+        let newY = e.clientY - initialY;
+        
+        const width = timerElement.offsetWidth;
+        const height = timerElement.offsetHeight;
+        const winWidth = window.innerWidth;
+        const winHeight = window.innerHeight;
+        const baseLeft = winWidth - width - 20;
+        const baseTop = 80;
+        
+        let proposedLeft = baseLeft + newX;
+        let proposedTop = baseTop + newY;
+        
+        if (proposedLeft < 0) newX = -baseLeft;
+        else if (proposedLeft + width > winWidth) newX = winWidth - width - baseLeft;
+        
+        if (proposedTop < 0) newY = -baseTop;
+        else if (proposedTop + height > winHeight) newY = winHeight - height - baseTop;
+
+        currentX = newX; currentY = newY;
+        xOffset = currentX; yOffset = currentY;
+        timerElement.style.transform = `translate3d(${currentX}px, ${currentY}px, 0)`;
+    }
+    {% endif %}
+});
+</script>
 {% endblock content %}

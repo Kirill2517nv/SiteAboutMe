@@ -8,6 +8,8 @@ from .views import (
     question_data_file_download_view,
 )
 
+app_name = 'quizzes'
+
 urlpatterns = [
     path('', quiz_list_view, name='quiz_list'),
     path('<int:quiz_id>/', quiz_detail_view, name='quiz_detail'),

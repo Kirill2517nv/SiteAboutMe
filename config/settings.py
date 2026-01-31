@@ -122,7 +122,8 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
-STATIC_ROOT = BASE_DIR / 'staticfiles' # Сюда соберутся все файлы для Nginx
+STATICFILES_DIRS = [BASE_DIR / 'static']  # Папка со статикой для разработки
+STATIC_ROOT = BASE_DIR / 'staticfiles'  # Сюда соберутся все файлы для Nginx
 
 # Media files (Uploads)
 MEDIA_URL = '/media/'
