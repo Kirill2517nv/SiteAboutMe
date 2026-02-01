@@ -1,0 +1,58 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<h1>{{ title }}</h1>
+
+<form method="post">
+    {% csrf_token %}
+
+    <fieldset class="module aligned">
+        <h2>Параметры назначения</h2>
+        <div class="form-row">
+            <label for="id_start_date">{{ form.start_date.label }}:</label>
+            {{ form.start_date }}
+            {% if form.start_date.help_text %}<p class="help">{{ form.start_date.help_text }}</p>{% endif %}
+        </div>
+        <div class="form-row">
+            <label for="id_end_date">{{ form.end_date.label }}:</label>
+            {{ form.end_date }}
+            {% if form.end_date.help_text %}<p class="help">{{ form.end_date.help_text }}</p>{% endif %}
+        </div>
+        <div class="form-row">
+            <label for="id_max_attempts">{{ form.max_attempts.label }}:</label>
+            {{ form.max_attempts }}
+            {% if form.max_attempts.help_text %}<p class="help">{{ form.max_attempts.help_text }}</p>{% endif %}
+        </div>
+    </fieldset>
+
+    <fieldset class="module aligned">
+        <h2>{{ form.users.label }}</h2>
+        {% if form.users.errors %}
+            <ul class="errorlist">
+                {% for error in form.users.errors %}<li>{{ error }}</li>{% endfor %}
+            </ul>
+        {% endif %}
+        <div class="form-row" style="padding: 10px;">
+            <div style="margin-bottom: 8px;">
+                <a href="#" onclick="toggleAll(true); return false;" style="margin-right: 12px;">Выбрать всех</a>
+                <a href="#" onclick="toggleAll(false); return false;">Снять все</a>
+            </div>
+            {{ form.users }}
+        </div>
+    </fieldset>
+
+    <div class="submit-row">
+        <input type="submit" value="Назначить" class="default">
+        <a href="{% url 'admin:quizzes_quiz_change' quiz.pk %}">Отмена</a>
+    </div>
+</form>
+
+<script>
+function toggleAll(checked) {
+    document.querySelectorAll('input[name="users"]').forEach(cb => cb.checked = checked);
+}
+</script>
+{% endblock %}

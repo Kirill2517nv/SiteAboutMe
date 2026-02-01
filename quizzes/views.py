@@ -420,13 +420,33 @@ def quiz_detail_view(request, quiz_id):
     request.session[f'quiz_{quiz_id}_start'] = timezone.now().isoformat()
     # Конвертируем ключи в строки для JSON сериализации
     last_attempt_codes_json = json.dumps({str(k): v for k, v in last_attempt_codes.items()})
-    
+
+    # Все вопросы теста для навигации в сайдбаре
+    all_questions = list(quiz.questions.all())
+
+    # Данные о решённых вопросах (для просмотра удачного решения)
+    solved_answers = {}
+    if correctly_answered_question_ids:
+        solved_qs = UserAnswer.objects.filter(
+            user_result__user=request.user,
+            user_result__quiz=quiz,
+            is_correct=True,
+            question_id__in=correctly_answered_question_ids,
+        ).select_related('question', 'selected_choice').order_by('-user_result__date_completed')
+        for ans in solved_qs:
+            if ans.question_id not in solved_answers:
+                solved_answers[ans.question_id] = ans
+
     return render(request, 'quizzes/quiz_detail.html', {
-        'quiz': quiz, 
+        'quiz': quiz,
         'questions_to_show': questions_to_show,
-        'last_attempt_codes': last_attempt_codes,  # Код из последней неудачной попытки (для шаблона)
-        'last_attempt_codes_json': last_attempt_codes_json,  # JSON версия для JavaScript
-        'end_date': end_date, # Передаем дату окончания в шаблон
+        'all_questions': all_questions,
+        'solved_answers': solved_answers,
+        'correctly_answered_ids': set(correctly_answered_question_ids),
+        'last_attempt_codes': last_attempt_codes,
+        'last_attempt_codes_json': last_attempt_codes_json,
+        'end_date': end_date,
+        'is_admin': request.user.is_superuser,
     })
 
 # --- СТАТИСТИКА (без изменений) ---

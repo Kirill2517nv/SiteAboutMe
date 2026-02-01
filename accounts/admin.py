@@ -11,6 +11,7 @@ class ProfileInline(admin.StackedInline):
 # Переопределяем админку пользователя, чтобы видеть Профиль прямо внутри Пользователя
 class UserAdmin(BaseUserAdmin):
     inlines = (ProfileInline,)
+    search_fields = ('last_name', 'first_name', 'username', 'email')
 
 class StudentGroupAdmin(admin.ModelAdmin):
     search_fields = ['name']
