@@ -1,0 +1,233 @@
+/**
+ * Стили для редактора контента (Alpine.js версия)
+ * Дополнение к Tailwind CSS
+ */
+
+/* Редактируемый контент */
+[contenteditable] {
+    outline: none;
+    min-height: 1.5em;
+}
+
+[contenteditable]:empty::before {
+    content: attr(data-placeholder);
+    color: #9ca3af;
+    pointer-events: none;
+}
+
+[contenteditable]:focus {
+    background-color: #f9fafb;
+    border-radius: 0.375rem;
+}
+
+/* Drag & Drop индикаторы */
+.drag-over-top {
+    border-top: 3px solid #3b82f6 !important;
+}
+
+.drag-over-bottom {
+    border-bottom: 3px solid #3b82f6 !important;
+}
+
+.dragging {
+    opacity: 0.5;
+}
+
+/* Контекстное меню для изображений */
+.image-context-menu {
+    position: absolute;
+    background: white;
+    border-radius: 0.5rem;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+    padding: 0.5rem;
+    z-index: 100;
+    display: none;
+}
+
+.image-context-menu.visible {
+    display: block;
+}
+
+.image-context-menu button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 0.5rem 1rem;
+    border-radius: 0.375rem;
+    transition: background-color 0.15s;
+}
+
+.image-context-menu button:hover {
+    background-color: #f3f4f6;
+}
+
+/* Cropper.js интеграция */
+.cropper-container {
+    border-radius: 0.5rem;
+    overflow: hidden;
+}
+
+/* Resize handle */
+.resize-handle {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 20px;
+    height: 20px;
+    background: linear-gradient(135deg, transparent 50%, #3b82f6 50%);
+    cursor: se-resize;
+    border-radius: 0 0 0.5rem 0;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.group:hover .resize-handle,
+.resize-handle:hover {
+    opacity: 1;
+}
+
+/* Панель настроек блока */
+.block-settings-panel {
+    animation: slideIn 0.2s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Кнопки инструментов */
+.tool-btn {
+    @apply px-3 py-2 rounded-lg text-sm font-medium transition-colors;
+}
+
+.tool-btn:hover {
+    @apply bg-gray-100;
+}
+
+.tool-btn.active {
+    @apply bg-brand-100 text-brand-700;
+}
+
+/* Индикатор сохранения */
+.save-indicator {
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* Плейсхолдер для изображения */
+.image-placeholder {
+    @apply border-2 border-dashed border-gray-300 rounded-lg p-8 text-center text-gray-400;
+    @apply hover:border-brand-400 hover:text-brand-500 cursor-pointer transition-colors;
+}
+
+/* Блок в режиме редактирования */
+.block-edit-mode {
+    position: relative;
+}
+
+.block-edit-mode::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border: 2px solid transparent;
+    border-radius: 0.75rem;
+    pointer-events: none;
+    transition: border-color 0.2s;
+}
+
+.block-edit-mode:hover::before {
+    border-color: #dbeafe;
+}
+
+.block-edit-mode.active::before {
+    border-color: #3b82f6;
+}
+
+/* Toolbar кнопки */
+.editor-toolbar {
+    @apply flex flex-wrap gap-2 p-4 bg-gray-50 rounded-xl mb-6;
+}
+
+.editor-toolbar button {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-all;
+}
+
+.editor-toolbar .btn-add {
+    @apply bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300;
+}
+
+.editor-toolbar .btn-save {
+    @apply bg-green-600 text-white hover:bg-green-700;
+}
+
+.editor-toolbar .btn-cancel {
+    @apply bg-gray-200 text-gray-700 hover:bg-gray-300;
+}
+
+/* Переключатель режима редактирования */
+.edit-toggle {
+    @apply fixed bottom-6 right-6 z-50;
+    @apply px-5 py-3 rounded-full shadow-lg font-medium;
+    @apply transition-all hover:scale-105;
+}
+
+.edit-toggle.edit-mode {
+    @apply bg-red-500 text-white hover:bg-red-600;
+}
+
+.edit-toggle.view-mode {
+    @apply bg-brand-600 text-white hover:bg-brand-700;
+}
+
+/* Цветовой пикер */
+.color-picker {
+    @apply flex flex-wrap gap-2;
+}
+
+.color-swatch {
+    @apply w-8 h-8 rounded-full cursor-pointer border-2 border-transparent transition-all;
+    @apply hover:scale-110;
+}
+
+.color-swatch.active {
+    @apply border-gray-900 ring-2 ring-offset-2 ring-gray-400;
+}
+
+/* Секция настроек */
+.settings-section {
+    @apply border-t border-gray-100 pt-4 mt-4;
+}
+
+.settings-section:first-child {
+    @apply border-t-0 pt-0 mt-0;
+}
+
+.settings-label {
+    @apply block text-xs font-medium text-gray-500 uppercase tracking-wider mb-2;
+}
+
+/* Адаптивность для мобильных */
+@media (max-width: 768px) {
+    .edit-toggle {
+        @apply bottom-4 right-4 px-4 py-2 text-sm;
+    }
+    
+    .editor-toolbar {
+        @apply p-3;
+    }
+    
+    .editor-toolbar button {
+        @apply px-3 py-1.5 text-xs;
+    }
+}

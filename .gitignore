@@ -1,0 +1,62 @@
+# Environment
+.env
+.env.*
+
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Database
+db.sqlite3
+db_production.sqlite3
+
+# Project-specific
+data.json
+dump_script.py
+
+# Media & static (collected)
+media/
+staticfiles/
+
+# Node
+node_modules/
+package-lock.json
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+nul
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Claude Code
+.claude/
+.mcp.json
+
+# Logs
+*.log
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Coverage / testing
+htmlcov/
+.coverage
+.pytest_cache/
+
+# Backup & temp
+*.bak
+*.tmp
+*.orig

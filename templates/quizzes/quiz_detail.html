@@ -1,0 +1,935 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ quiz.title }}{% endblock title %}
+
+{% block extra_css %}
+<!-- CodeMirror -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/theme/material-darker.min.css">
+<style>
+    /* CodeMirror overrides */
+    .CodeMirror {
+        border: 1px solid #374151;
+        border-radius: 8px;
+        font-size: 14px;
+        height: auto;
+        min-height: 200px;
+        max-height: 500px;
+    }
+    .CodeMirror-gutters {
+        border-right: 1px solid #374151;
+    }
+    .CodeMirror-hscrollbar,
+    .CodeMirror-scrollbar-filler {
+        display: none !important;
+    }
+    .CodeMirror-scroll {
+        overflow-x: hidden !important;
+    }
+    /* Таймер */
+    #sticky-timer {
+        position: fixed;
+        bottom: 20px;
+        left: 20px;
+        width: 180px;
+        background-color: white;
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        z-index: 1000;
+        font-family: inherit;
+        transition: background 0.3s ease, box-shadow 0.3s ease, width 0.3s ease;
+        overflow: hidden;
+    }
+    #timer-header {
+        padding: 8px 12px;
+        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+        cursor: move;
+        border-bottom: 1px solid #e2e8f0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 12px;
+        color: #64748b;
+        user-select: none;
+    }
+    #minimize-btn {
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-weight: bold;
+        font-size: 18px;
+        line-height: 1;
+        padding: 0 5px;
+        color: #94a3b8;
+        transition: color 0.2s;
+    }
+    #minimize-btn:hover { color: #475569; }
+    #timer-body {
+        padding: 16px;
+        text-align: center;
+    }
+    .timer-label {
+        font-size: 11px;
+        color: #94a3b8;
+        margin-bottom: 4px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    #timer-display {
+        font-size: 28px;
+        font-weight: 700;
+        color: #1e293b;
+        font-variant-numeric: tabular-nums;
+        transition: all 0.3s;
+    }
+    #sticky-timer.critical {
+        background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+        box-shadow: 0 4px 20px rgba(239, 68, 68, 0.25);
+    }
+    #sticky-timer.critical #timer-header {
+        background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+        border-bottom-color: #fca5a5;
+        color: #b91c1c;
+    }
+    #sticky-timer.critical #timer-display {
+        color: #dc2626;
+        font-size: 32px;
+    }
+    #sticky-timer.minimized { width: auto; }
+    #sticky-timer.minimized #timer-body { display: none; }
+    #sticky-timer.minimized #timer-header { border-bottom: none; }
+
+    /* Сайдбар навигации */
+    #question-sidebar {
+        position: sticky;
+        top: 80px;
+        max-height: calc(100vh - 100px);
+        overflow-y: auto;
+    }
+    #question-sidebar::-webkit-scrollbar { width: 4px; }
+    #question-sidebar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+
+    .sidebar-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 8px;
+        font-size: 14px;
+        cursor: pointer;
+        transition: background 0.15s;
+        text-decoration: none;
+        color: #374151;
+    }
+    .sidebar-item:hover { background: #f1f5f9; }
+    .sidebar-item.active { background: #eff6ff; color: #2563eb; font-weight: 600; }
+    .sidebar-item.solved { color: #16a34a; }
+    .sidebar-item.solved .sidebar-num {
+        background: #dcfce7;
+        color: #16a34a;
+    }
+    .sidebar-num {
+        flex-shrink: 0;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: 700;
+        background: #f1f5f9;
+        color: #64748b;
+    }
+
+    /* Sticky кнопка отправки */
+    #submit-bar {
+        position: sticky;
+        bottom: 0;
+        background: white;
+        border-top: 1px solid #e5e7eb;
+        padding: 16px 0;
+        z-index: 50;
+    }
+
+    /* Code submission status styles */
+    .code-question-card {
+        transition: border-color 0.3s ease, box-shadow 0.3s ease;
+    }
+    .code-question-card.checking {
+        border-color: #fbbf24 !important;
+        box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.2);
+    }
+    .code-question-card.success {
+        border-color: #22c55e !important;
+        box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.2);
+    }
+    .code-question-card.failed {
+        border-color: #ef4444 !important;
+        box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
+    }
+
+    .submit-code-btn {
+        transition: all 0.2s ease;
+    }
+    .submit-code-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+    .submit-code-btn.checking {
+        background-color: #fbbf24;
+        border-color: #f59e0b;
+    }
+
+    .code-status-indicator {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 8px;
+        font-size: 14px;
+        margin-top: 12px;
+    }
+    .code-status-indicator.pending,
+    .code-status-indicator.running {
+        background: #fef3c7;
+        color: #92400e;
+    }
+    .code-status-indicator.success {
+        background: #dcfce7;
+        color: #166534;
+    }
+    .code-status-indicator.failed,
+    .code-status-indicator.error {
+        background: #fee2e2;
+        color: #991b1b;
+    }
+
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+    .animate-pulse {
+        animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+
+    @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+    .animate-spin {
+        animation: spin 1s linear infinite;
+    }
+
+    /* Блок решённого вопроса */
+    .solved-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 10px;
+        background: #dcfce7;
+        color: #16a34a;
+        border-radius: 9999px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+</style>
+{% endblock extra_css %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Навигация -->
+    <nav class="mb-6" data-aos="fade-right">
+        <a href="{% url 'quizzes:quiz_list' %}"
+           class="inline-flex items-center text-gray-500 hover:text-brand-600 transition-colors group">
+            <svg class="w-5 h-5 mr-2 transition-transform group-hover:-translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+            Назад к списку задач
+        </a>
+    </nav>
+
+    <!-- Заголовок -->
+    <header class="mb-8" data-aos="fade-up">
+        <h1 class="text-3xl font-bold text-gray-900 mb-2">{{ quiz.title }}</h1>
+        {% if quiz.description %}
+        <p class="text-gray-600">{{ quiz.description }}</p>
+        {% endif %}
+    </header>
+
+    <!-- Таймер -->
+    {% if end_date %}
+    <div id="sticky-timer">
+        <div id="timer-header">
+            <span class="flex items-center gap-1">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                Таймер
+            </span>
+            <button id="minimize-btn" title="Свернуть/Развернуть">–</button>
+        </div>
+        <div id="timer-body">
+            <div class="timer-label">Осталось</div>
+            <div id="timer-display">--:--:--</div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="flex gap-8">
+        <!-- Сайдбар -->
+        <aside class="hidden lg:block w-64 flex-shrink-0" data-aos="fade-right">
+            <div id="question-sidebar" class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 px-3">Задачи</div>
+                {% for q in all_questions %}
+                <a href="#question-{{ q.id }}"
+                   class="sidebar-item {% if q.id in correctly_answered_ids %}solved{% endif %}"
+                   data-question-id="{{ q.id }}">
+                    <span class="sidebar-num">{{ forloop.counter }}</span>
+                    <span class="truncate">{{ q.get_title|truncatechars:25 }}</span>
+                    {% if q.id in correctly_answered_ids %}
+                    <svg class="w-4 h-4 ml-auto flex-shrink-0 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                    </svg>
+                    {% endif %}
+                </a>
+                {% endfor %}
+            </div>
+        </aside>
+
+        <!-- Основной контент -->
+        <div class="flex-1 min-w-0">
+            <form method="post" id="quiz-form">
+                {% csrf_token %}
+
+                <div class="space-y-6">
+                    <!-- Решённые вопросы -->
+                    {% for q_id, answer in solved_answers.items %}
+                    <div id="question-{{ q_id }}" class="bg-white rounded-xl shadow-sm border-2 border-green-200 overflow-hidden" data-aos="fade-up">
+                        <div class="p-6">
+                            <div class="flex items-start gap-4 mb-4">
+                                <span class="flex-shrink-0 w-8 h-8 bg-green-100 text-green-600 rounded-full flex items-center justify-center font-bold text-sm">
+                                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                                    </svg>
+                                </span>
+                                <h3 class="text-lg font-semibold text-gray-900 pt-0.5">{{ answer.question.get_title }}</h3>
+                                <span class="solved-badge ml-auto">Решено</span>
+                            </div>
+
+                            {% if answer.question.get_body %}
+                            <div class="ml-12 mb-4 text-gray-700 whitespace-pre-wrap bg-gray-50 rounded-lg p-4 font-mono text-sm">{{ answer.question.get_body }}</div>
+                            {% endif %}
+
+                            <!-- Показ решения -->
+                            <div class="ml-12">
+                                <div x-data="{ open: false }">
+                                    <button type="button" @click="open = !open"
+                                            class="inline-flex items-center gap-1 text-sm text-green-600 hover:text-green-800 font-medium transition-colors">
+                                        <svg class="w-4 h-4 transition-transform" :class="open && 'rotate-90'" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                                        </svg>
+                                        Показать решение
+                                    </button>
+                                    <div x-show="open" x-transition class="mt-3 p-4 bg-green-50 rounded-lg border border-green-200">
+                                        {% if answer.question.question_type == 'choice' and answer.selected_choice %}
+                                        <div class="text-sm"><span class="font-medium text-gray-600">Ответ:</span> <span class="text-green-700">{{ answer.selected_choice.text }}</span></div>
+                                        {% elif answer.question.question_type == 'text' and answer.text_answer %}
+                                        <div class="text-sm"><span class="font-medium text-gray-600">Ответ:</span> <span class="text-green-700">{{ answer.text_answer }}</span></div>
+                                        {% elif answer.question.question_type == 'code' and answer.code_answer %}
+                                        <pre class="text-sm font-mono bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto">{{ answer.code_answer }}</pre>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+
+                    <!-- Нерешённые вопросы -->
+                    {% for question in questions_to_show %}
+                    <div id="question-{{ question.id }}" class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden {% if question.question_type == 'code' %}code-question-card{% endif %}" data-aos="fade-up" data-aos-delay="{{ forloop.counter0 }}50" data-question-type="{{ question.question_type }}" data-question-id="{{ question.id }}">
+                        <div class="p-6">
+                            <div class="flex items-start gap-4 mb-4">
+                                <span class="flex-shrink-0 w-8 h-8 bg-brand-100 text-brand-600 rounded-full flex items-center justify-center font-bold text-sm">
+                                    {{ forloop.counter }}
+                                </span>
+                                <h3 class="text-lg font-semibold text-gray-900 pt-0.5">{{ question.get_title }}</h3>
+                            </div>
+
+                            {% if question.get_body %}
+                            <div class="ml-12 mb-4 text-gray-700 whitespace-pre-wrap bg-gray-50 rounded-lg p-4 font-mono text-sm">{{ question.get_body }}</div>
+                            {% endif %}
+
+                            {% if question.data_file %}
+                            <div class="ml-12 mb-4">
+                                <a href="{% url 'quizzes:question_data_file_download' question.id %}"
+                                   class="inline-flex items-center px-4 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors">
+                                    <svg class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                    </svg>
+                                    Скачать файл с данными
+                                </a>
+                            </div>
+                            {% endif %}
+
+                            <div class="ml-12">
+                                {% if question.question_type == 'choice' %}
+                                <div class="space-y-2">
+                                    {% for choice in question.choices.all %}
+                                    <label class="flex items-center p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 hover:border-gray-300 transition-colors">
+                                        <input type="radio"
+                                               id="choice_{{ choice.id }}"
+                                               name="question_{{ question.id }}"
+                                               value="{{ choice.id }}"
+                                               required
+                                               class="w-4 h-4 text-brand-600 border-gray-300 focus:ring-brand-500">
+                                        <span class="ml-3 text-gray-700">{{ choice.text }}</span>
+                                    </label>
+                                    {% endfor %}
+                                </div>
+
+                                {% elif question.question_type == 'text' %}
+                                <input type="text"
+                                       name="question_{{ question.id }}"
+                                       placeholder="Введите ваш ответ"
+                                       required
+                                       class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors">
+
+                                {% elif question.question_type == 'code' %}
+                                <div>
+                                    <p class="text-sm text-gray-500 mb-2">Напишите решение на Python:</p>
+
+                                    <div class="code-restored-message hidden bg-amber-50 border-l-4 border-amber-400 p-4 rounded-r-lg mb-3" id="restored_msg_{{ question.id }}">
+                                        <div class="flex items-center">
+                                            <svg class="w-5 h-5 text-amber-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                            </svg>
+                                            <span class="text-amber-800 text-sm font-medium">Ваш код из последней попытки был автоматически восстановлен</span>
+                                        </div>
+                                    </div>
+
+                                    <textarea id="code_{{ question.id }}"
+                                              name="question_{{ question.id }}"
+                                              rows="12"
+                                              placeholder="# Вставьте сюда ваше решение..."
+                                              data-quiz-id="{{ quiz.id }}"
+                                              data-question-id="{{ question.id }}"
+                                              class="w-full px-4 py-3 border border-gray-300 rounded-lg font-mono text-sm bg-gray-900 text-gray-100 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors"></textarea>
+
+                                    <!-- Submit code button and status -->
+                                    <div class="flex items-center justify-between mt-3">
+                                        <button type="button"
+                                                id="submit-code-btn-{{ question.id }}"
+                                                data-question-id="{{ question.id }}"
+                                                class="submit-code-btn inline-flex items-center px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-colors">
+                                            <svg class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                            </svg>
+                                            <span class="btn-text">Проверить решение</span>
+                                        </button>
+                                    </div>
+
+                                    <!-- Status indicator -->
+                                    <div id="code-status-{{ question.id }}" class="code-status-indicator hidden">
+                                        <span class="status-icon"></span>
+                                        <span class="status-text"></span>
+                                    </div>
+
+                                    <!-- Error details (collapsible) -->
+                                    <div id="code-error-{{ question.id }}" class="hidden mt-3">
+                                        <div x-data="{ open: true }">
+                                            <button type="button" @click="open = !open"
+                                                    class="inline-flex items-center gap-1 text-sm text-red-600 hover:text-red-800 font-medium transition-colors">
+                                                <svg class="w-4 h-4 transition-transform" :class="open && 'rotate-90'" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                                                </svg>
+                                                Подробности ошибки
+                                            </button>
+                                            <div x-show="open" x-transition class="mt-2 p-4 bg-red-50 rounded-lg border border-red-200">
+                                                <pre class="text-sm font-mono text-red-800 whitespace-pre-wrap error-text"></pre>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endif %}
+                            </div>
+
+                            {% if is_admin %}
+                            <div class="ml-12 mt-4" x-data="{ show: false }">
+                                <button type="button" @click="show = !show"
+                                        class="inline-flex items-center gap-1 text-sm text-amber-600 hover:text-amber-800 font-medium transition-colors">
+                                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                                    </svg>
+                                    Показать ответ (админ)
+                                </button>
+                                <div x-show="show" x-transition class="mt-3 p-4 bg-amber-50 rounded-lg border border-amber-200">
+                                    {% if question.question_type == 'choice' %}
+                                        <div class="text-sm font-medium text-gray-600 mb-1">Правильный вариант:</div>
+                                        {% for choice in question.choices.all %}
+                                            {% if choice.is_correct %}
+                                            <div class="text-sm text-amber-800">{{ choice.text }}</div>
+                                            {% endif %}
+                                        {% endfor %}
+                                    {% elif question.question_type == 'text' %}
+                                        <div class="text-sm"><span class="font-medium text-gray-600">Правильный ответ:</span> <span class="text-amber-800">{{ question.correct_text_answer }}</span></div>
+                                    {% elif question.question_type == 'code' %}
+                                        <div class="text-sm font-medium text-gray-600 mb-1">Тест-кейсы:</div>
+                                        {% for tc in question.test_cases.all %}
+                                        <div class="mb-2 text-sm font-mono bg-white p-3 rounded border border-amber-100">
+                                            <div><span class="text-gray-500">Вход:</span> <span class="text-gray-800 whitespace-pre-wrap">{{ tc.input_data }}</span></div>
+                                            <div><span class="text-gray-500">Выход:</span> <span class="text-gray-800 whitespace-pre-wrap">{{ tc.output_data }}</span></div>
+                                        </div>
+                                        {% endfor %}
+                                    {% endif %}
+                                </div>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% empty %}
+                    {% if not solved_answers %}
+                    <div class="bg-green-50 border border-green-200 rounded-xl p-8 text-center" data-aos="fade-up">
+                        <div class="text-green-500 mb-4">
+                            <svg class="w-16 h-16 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                        </div>
+                        <h3 class="text-xl font-bold text-green-800 mb-2">Поздравляем!</h3>
+                        <p class="text-green-700 mb-4">Вы правильно ответили на все вопросы этого теста.</p>
+                        <a href="{% url 'quizzes:quiz_list' %}"
+                           class="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+                            Вернуться к списку тестов
+                        </a>
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+
+                <!-- Все решены — поздравление -->
+                {% if solved_answers and not questions_to_show %}
+                <div class="bg-green-50 border border-green-200 rounded-xl p-8 text-center mt-6" data-aos="fade-up">
+                    <div class="text-green-500 mb-4">
+                        <svg class="w-16 h-16 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-bold text-green-800 mb-2">Поздравляем!</h3>
+                    <p class="text-green-700 mb-4">Вы правильно ответили на все вопросы этого теста.</p>
+                    <a href="{% url 'quizzes:quiz_list' %}"
+                       class="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+                        Вернуться к списку тестов
+                    </a>
+                </div>
+                {% endif %}
+
+                <!-- Sticky кнопка отправки -->
+                {% if questions_to_show %}
+                <div id="submit-bar">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-4">
+                            <span class="text-sm text-gray-500">
+                                {% if solved_answers %}
+                                    Решено {{ solved_answers|length }} из {{ all_questions|length }} задач
+                                {% endif %}
+                            </span>
+                            <span id="pending-count" class="text-sm text-amber-600 hidden">
+                                <svg class="w-4 h-4 inline animate-spin" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                <span class="count-text">0</span> на проверке
+                            </span>
+                        </div>
+                        <button type="button"
+                                id="finish-quiz-btn"
+                                class="px-8 py-3 bg-brand-600 text-white font-medium rounded-lg hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                            Завершить тест
+                        </button>
+                    </div>
+                </div>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/python/python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/edit/closebrackets.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/edit/matchbrackets.min.js"></script>
+<script src="{% static 'js/quiz-async.js' %}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // --- СОХРАНЕНИЕ КОДА + CodeMirror ---
+    const quizId = {{ quiz.id }};
+    const codeTextareas = document.querySelectorAll('textarea[data-question-id]');
+    const serverCodes = {{ last_attempt_codes_json|safe }};
+    const editors = {};
+
+    codeTextareas.forEach(function(textarea) {
+        const questionId = textarea.getAttribute('data-question-id');
+        const storageKey = 'quiz_' + quizId + '_question_' + questionId;
+        const serverCode = serverCodes[questionId] || null;
+        const savedCode = sessionStorage.getItem(storageKey);
+
+        // Восстановление кода в textarea ДО инициализации CodeMirror
+        if (savedCode) {
+            textarea.value = savedCode;
+        } else if (serverCode) {
+            textarea.value = serverCode;
+            sessionStorage.setItem(storageKey, serverCode);
+            const msgElement = document.getElementById('restored_msg_' + questionId);
+            if (msgElement) msgElement.classList.remove('hidden');
+        }
+
+        // Инициализация CodeMirror
+        var cm = CodeMirror.fromTextArea(textarea, {
+            mode: 'python',
+            theme: 'material-darker',
+            lineNumbers: true,
+            matchBrackets: true,
+            autoCloseBrackets: true,
+            indentUnit: 4,
+            tabSize: 4,
+            indentWithTabs: false,
+            lineWrapping: true,
+            viewportMargin: Infinity,
+            extraKeys: {
+                'Tab': function(cm) {
+                    cm.replaceSelection('    ', 'end');
+                }
+            }
+        });
+
+        editors[questionId] = cm;
+
+        // Синхронизация с sessionStorage
+        cm.on('change', function() {
+            textarea.value = cm.getValue();
+            sessionStorage.setItem(storageKey, cm.getValue());
+        });
+    });
+
+    const form = document.getElementById('quiz-form');
+
+    // --- ASYNC CODE SUBMISSION ---
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    const codeChecker = new QuizCodeChecker(quizId, csrfToken);
+    const pendingCountEl = document.getElementById('pending-count');
+    const pendingCountText = pendingCountEl ? pendingCountEl.querySelector('.count-text') : null;
+    const finishBtn = document.getElementById('finish-quiz-btn');
+
+    // Track solved questions
+    const solvedQuestions = new Set();
+
+    // Update pending count display
+    function updatePendingCount() {
+        const count = codeChecker.getPendingQuestions().length;
+        if (pendingCountEl) {
+            if (count > 0) {
+                pendingCountEl.classList.remove('hidden');
+                if (pendingCountText) pendingCountText.textContent = count;
+            } else {
+                pendingCountEl.classList.add('hidden');
+            }
+        }
+    }
+
+    // Update UI for a question based on status
+    function updateQuestionUI(questionId, status, isCorrect, errorLog) {
+        const card = document.getElementById('question-' + questionId);
+        const btn = document.getElementById('submit-code-btn-' + questionId);
+        const statusEl = document.getElementById('code-status-' + questionId);
+        const errorEl = document.getElementById('code-error-' + questionId);
+        const sidebarItem = document.querySelector('.sidebar-item[data-question-id="' + questionId + '"]');
+
+        if (!card) return;
+
+        // Reset card classes
+        card.classList.remove('checking', 'success', 'failed');
+
+        // Update button state
+        if (btn) {
+            const btnText = btn.querySelector('.btn-text');
+            btn.disabled = false;
+            btn.classList.remove('checking');
+
+            if (status === 'pending' || status === 'running') {
+                btn.disabled = true;
+                btn.classList.add('checking');
+                if (btnText) btnText.textContent = status === 'pending' ? 'В очереди...' : 'Проверяется...';
+                card.classList.add('checking');
+            } else if (status === 'success' && isCorrect) {
+                btn.disabled = true;
+                if (btnText) btnText.textContent = 'Решено!';
+                card.classList.add('success');
+                solvedQuestions.add(questionId);
+            } else if (status === 'failed' || status === 'error' || (status === 'success' && !isCorrect)) {
+                if (btnText) btnText.textContent = 'Попробовать снова';
+                card.classList.add('failed');
+            }
+        }
+
+        // Update status indicator
+        if (statusEl) {
+            statusEl.classList.remove('hidden', 'pending', 'running', 'success', 'failed', 'error');
+            const statusIcon = statusEl.querySelector('.status-icon');
+            const statusText = statusEl.querySelector('.status-text');
+
+            if (status === 'pending') {
+                statusEl.classList.add('pending');
+                statusIcon.innerHTML = '<svg class="w-5 h-5 animate-pulse" fill="currentColor" viewBox="0 0 20 20"><circle cx="10" cy="10" r="8"/></svg>';
+                statusText.textContent = 'В очереди на проверку...';
+            } else if (status === 'running') {
+                statusEl.classList.add('running');
+                statusIcon.innerHTML = '<svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>';
+                statusText.textContent = 'Выполняется проверка...';
+            } else if (status === 'success' && isCorrect) {
+                statusEl.classList.add('success');
+                statusIcon.innerHTML = '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>';
+                statusText.textContent = 'Все тесты пройдены!';
+            } else if (status === 'failed' || (status === 'success' && !isCorrect)) {
+                statusEl.classList.add('failed');
+                statusIcon.innerHTML = '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>';
+                statusText.textContent = 'Тесты не пройдены';
+            } else if (status === 'error') {
+                statusEl.classList.add('error');
+                statusIcon.innerHTML = '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>';
+                statusText.textContent = 'Системная ошибка';
+            } else {
+                statusEl.classList.add('hidden');
+            }
+        }
+
+        // Update error details
+        if (errorEl) {
+            if (errorLog && (status === 'failed' || status === 'error' || (status === 'success' && !isCorrect))) {
+                errorEl.classList.remove('hidden');
+                const errorText = errorEl.querySelector('.error-text');
+                if (errorText) errorText.textContent = errorLog;
+            } else {
+                errorEl.classList.add('hidden');
+            }
+        }
+
+        // Update sidebar
+        if (sidebarItem && status === 'success' && isCorrect) {
+            sidebarItem.classList.add('solved');
+            if (!sidebarItem.querySelector('.text-green-500')) {
+                const checkIcon = document.createElement('span');
+                checkIcon.innerHTML = '<svg class="w-4 h-4 ml-auto flex-shrink-0 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>';
+                sidebarItem.appendChild(checkIcon.firstChild);
+            }
+        }
+
+        updatePendingCount();
+    }
+
+    // Set up WebSocket callback
+    codeChecker.onStatusChange = updateQuestionUI;
+
+    // Attach click handlers to submit buttons
+    document.querySelectorAll('.submit-code-btn').forEach(function(btn) {
+        btn.addEventListener('click', async function() {
+            const questionId = this.getAttribute('data-question-id');
+            const editor = editors[questionId];
+            if (!editor) return;
+
+            const code = editor.getValue().trim();
+            if (!code) {
+                alert('Введите код для проверки');
+                return;
+            }
+
+            // Submit code
+            const result = await codeChecker.submitCode(parseInt(questionId), code);
+            if (result.error) {
+                alert(result.error);
+            }
+        });
+    });
+
+    // Finish quiz button handler
+    if (finishBtn) {
+        finishBtn.addEventListener('click', async function() {
+            // Check for pending submissions
+            if (codeChecker.hasPendingSubmissions()) {
+                alert('Дождитесь завершения проверки всех решений');
+                return;
+            }
+
+            // Collect answers for non-code questions
+            const answers = {};
+            document.querySelectorAll('[data-question-type]').forEach(function(card) {
+                const qType = card.getAttribute('data-question-type');
+                const qId = card.getAttribute('data-question-id');
+
+                if (qType === 'choice') {
+                    const checked = card.querySelector('input[type="radio"]:checked');
+                    if (checked) answers[qId] = checked.value;
+                } else if (qType === 'text') {
+                    const input = card.querySelector('input[type="text"]');
+                    if (input) answers[qId] = input.value;
+                }
+                // Code answers are handled via CodeSubmission
+            });
+
+            // Sync CodeMirror editors
+            Object.keys(editors).forEach(function(qId) {
+                editors[qId].save();
+                var storageKey = 'quiz_' + quizId + '_question_' + qId;
+                sessionStorage.removeItem(storageKey);
+            });
+
+            // Disable button during submission
+            finishBtn.disabled = true;
+            finishBtn.textContent = 'Отправка...';
+
+            const result = await codeChecker.finishQuiz(answers);
+
+            if (result.error) {
+                alert(result.error);
+                finishBtn.disabled = false;
+                finishBtn.textContent = 'Завершить тест';
+                return;
+            }
+
+            if (result.success) {
+                // Redirect to quiz result or reload
+                window.location.href = '/quizzes/' + quizId + '/';
+            }
+        });
+    }
+
+    // --- САЙДБАР: подсветка активного вопроса при скролле ---
+    const sidebarItems = document.querySelectorAll('.sidebar-item');
+    const questionBlocks = document.querySelectorAll('[id^="question-"]');
+
+    if (questionBlocks.length && sidebarItems.length) {
+        const observer = new IntersectionObserver(function(entries) {
+            entries.forEach(function(entry) {
+                if (entry.isIntersecting) {
+                    const id = entry.target.id;
+                    const qId = id.replace('question-', '');
+                    sidebarItems.forEach(function(item) {
+                        item.classList.toggle('active', item.getAttribute('data-question-id') === qId);
+                    });
+                }
+            });
+        }, { rootMargin: '-20% 0px -60% 0px' });
+
+        questionBlocks.forEach(function(block) { observer.observe(block); });
+    }
+
+    // Плавный скролл при клике на сайдбар
+    sidebarItems.forEach(function(item) {
+        item.addEventListener('click', function(e) {
+            e.preventDefault();
+            const target = document.querySelector(this.getAttribute('href'));
+            if (target) {
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        });
+    });
+
+    // --- ТАЙМЕР ---
+    {% if end_date %}
+    const timerElement = document.getElementById('sticky-timer');
+    const timerHeader = document.getElementById('timer-header');
+    const minimizeBtn = document.getElementById('minimize-btn');
+    const timerDisplay = document.getElementById('timer-display');
+
+    const endDateStr = "{{ end_date|date:'c' }}";
+    const endDate = new Date(endDateStr).getTime();
+
+    function updateTimer() {
+        const now = new Date().getTime();
+        const distance = endDate - now;
+
+        if (distance < 0) {
+            clearInterval(timerInterval);
+            timerDisplay.innerHTML = "00:00:00";
+            // Auto-finish quiz when time runs out
+            if (finishBtn && !finishBtn.disabled) {
+                finishBtn.click();
+            }
+            return;
+        }
+
+        const days = Math.floor(distance / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+
+        const hh = String(hours).padStart(2, '0');
+        const mm = String(minutes).padStart(2, '0');
+        const ss = String(seconds).padStart(2, '0');
+
+        timerDisplay.innerHTML = days > 0 ? `${days}д ${hh}:${mm}:${ss}` : `${hh}:${mm}:${ss}`;
+
+        if (distance < 5 * 60 * 1000 && !timerElement.classList.contains('critical')) {
+            timerElement.classList.add('critical');
+        }
+    }
+
+    const timerInterval = setInterval(updateTimer, 1000);
+    updateTimer();
+
+    minimizeBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        timerElement.classList.toggle('minimized');
+        minimizeBtn.textContent = timerElement.classList.contains('minimized') ? '+' : '–';
+    });
+
+    // Drag & Drop таймера
+    let isDragging = false, currentX, currentY, initialX, initialY, xOffset = 0, yOffset = 0;
+
+    timerHeader.addEventListener("mousedown", dragStart);
+    document.addEventListener("mouseup", dragEnd);
+    document.addEventListener("mousemove", drag);
+
+    function dragStart(e) {
+        if (e.target === minimizeBtn) return;
+        initialX = e.clientX - xOffset;
+        initialY = e.clientY - yOffset;
+        if (e.target === timerHeader || timerHeader.contains(e.target)) isDragging = true;
+    }
+
+    function dragEnd() { initialX = currentX; initialY = currentY; isDragging = false; }
+
+    function drag(e) {
+        if (!isDragging) return;
+        e.preventDefault();
+
+        let newX = e.clientX - initialX;
+        let newY = e.clientY - initialY;
+
+        const width = timerElement.offsetWidth;
+        const height = timerElement.offsetHeight;
+        const winWidth = window.innerWidth;
+        const winHeight = window.innerHeight;
+        const baseLeft = 20;
+        const baseTop = winHeight - height - 20;
+
+        let proposedLeft = baseLeft + newX;
+        let proposedTop = baseTop + newY;
+
+        if (proposedLeft < 0) newX = -baseLeft;
+        else if (proposedLeft + width > winWidth) newX = winWidth - width - baseLeft;
+
+        if (proposedTop < 0) newY = -baseTop;
+        else if (proposedTop + height > winHeight) newY = winHeight - height - baseTop;
+
+        currentX = newX; currentY = newY;
+        xOffset = currentX; yOffset = currentY;
+        timerElement.style.transform = `translate3d(${currentX}px, ${currentY}px, 0)`;
+    }
+    {% endif %}
+});
+</script>
+{% endblock content %}

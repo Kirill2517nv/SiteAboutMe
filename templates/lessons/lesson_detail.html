@@ -1,0 +1,254 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ lesson.title }}{% endblock title %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Навигация назад -->
+    <nav class="mb-6" data-aos="fade-right">
+        <a href="{% url 'lessons:lesson_list' %}" 
+           class="inline-flex items-center text-gray-500 hover:text-brand-600 transition-colors group">
+            <svg class="w-5 h-5 mr-2 transition-transform group-hover:-translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+            Назад к списку уроков
+        </a>
+    </nav>
+
+    <!-- Заголовок урока -->
+    <header class="mb-8" data-aos="fade-up">
+        {% if lesson.section %}
+        <div class="text-sm text-brand-600 font-medium mb-2">{{ lesson.section.title }}</div>
+        {% endif %}
+        <h1 class="text-3xl md:text-4xl font-bold text-gray-900">{{ lesson.title }}</h1>
+    </header>
+
+    <!-- Контейнер для редактора -->
+    <div id="content-editor-container">
+        <!-- Блоки контента -->
+        <div class="blocks-container space-y-6">
+            {% for block in blocks %}
+            <article class="content-block lesson-block lesson-block-{{ block.block_type }} bg-white rounded-xl shadow-sm overflow-hidden"
+                     data-aos="fade-up"
+                     data-aos-delay="{{ forloop.counter0 }}50"
+                     data-block-id="{{ block.id }}"
+                     data-block-type="{{ block.block_type }}"
+                     data-block-title="{{ block.title }}"
+                     data-block-content="{{ block.content }}"
+                     data-block-image="{% if block.image %}{{ block.image.url }}{% endif %}"
+                     data-block-link-url=""
+                     data-block-order="{{ block.order }}"
+                     data-block-layout="{{ block.layout }}"
+                     data-block-image-width="{{ block.image_width }}"
+                     data-block-image-height="{{ block.image_height }}"
+                     data-block-image-align="{{ block.image_align }}"
+                     data-block-image-crop-x="{{ block.image_crop_x }}"
+                     data-block-image-crop-y="{{ block.image_crop_y }}"
+                     data-block-image-crop-width="{{ block.image_crop_width }}"
+                     data-block-image-crop-height="{{ block.image_crop_height }}"
+                     data-block-image-natural-width="{{ block.image_natural_width }}"
+                     data-block-image-natural-height="{{ block.image_natural_height }}"
+                     data-block-text-pos-x="{{ block.text_pos_x }}"
+                     data-block-text-pos-y="{{ block.text_pos_y }}"
+                     data-block-image-pos-x="{{ block.image_pos_x }}"
+                     data-block-image-pos-y="{{ block.image_pos_y }}"
+                     data-block-text-align="{{ block.text_align }}">
+                
+                {% if block.title %}
+                <div class="px-6 pt-6">
+                    <h2 class="block-title text-xl font-bold text-gray-900">{{ block.title }}</h2>
+                </div>
+                {% endif %}
+                
+                <!-- Layout: вертикальный -->
+                {% if block.layout == 'vertical' or not block.layout %}
+                <div class="block-content-wrapper layout-{{ block.layout|default:'vertical' }} p-6">
+                    {% if block.block_type == 'text' or block.block_type == 'text_image' %}
+                    <div class="block-text-container" style="text-align: {{ block.text_align }};">
+                        <div class="block-content prose prose-lg max-w-none text-gray-700">
+                            {{ block.content|safe|linebreaks }}
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    {% if block.block_type == 'image' or block.block_type == 'text_image' %}
+                        {% if block.image %}
+                        <div class="block-image-container pswp-gallery mt-4" 
+                             style="width: {{ block.image_width }}%; margin: 0 {% if block.image_align == 'center' %}auto{% elif block.image_align == 'right' %}0 0 auto{% else %}auto 0 0{% endif %};">
+                            <a href="{{ block.image.url }}"
+                               data-pswp-width="1200"
+                               data-pswp-height="800"
+                               target="_blank">
+                                <img src="{{ block.image.url }}" 
+                                     alt="{{ block.title }}" 
+                                     class="block-image rounded-lg w-full cursor-zoom-in hover:opacity-90 transition-opacity"
+                                     style="{% if block.image_height %}height: {{ block.image_height }}px; object-fit: cover;{% endif %}">
+                            </a>
+                        </div>
+                        {% endif %}
+                    {% endif %}
+                </div>
+                
+                <!-- Layout: горизонтальный (текст слева) -->
+                {% elif block.layout == 'horizontal' %}
+                <div class="block-content-wrapper layout-{{ block.layout }} p-6 flex flex-col md:flex-row gap-6">
+                    {% if block.block_type == 'text' or block.block_type == 'text_image' %}
+                    <div class="block-text-container flex-1" style="text-align: {{ block.text_align }};">
+                        <div class="block-content prose prose-lg max-w-none text-gray-700">
+                            {{ block.content|safe|linebreaks }}
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    {% if block.block_type == 'image' or block.block_type == 'text_image' %}
+                        {% if block.image %}
+                        <div class="block-image-container pswp-gallery flex-shrink-0" 
+                             style="width: {{ block.image_width }}%;">
+                            <a href="{{ block.image.url }}"
+                               data-pswp-width="1200"
+                               data-pswp-height="800"
+                               target="_blank">
+                                <img src="{{ block.image.url }}" 
+                                     alt="{{ block.title }}" 
+                                     class="block-image rounded-lg w-full cursor-zoom-in hover:opacity-90 transition-opacity"
+                                     style="{% if block.image_height %}height: {{ block.image_height }}px; object-fit: cover;{% endif %}">
+                            </a>
+                        </div>
+                        {% endif %}
+                    {% endif %}
+                </div>
+                
+                <!-- Layout: горизонтальный (картинка слева) -->
+                {% elif block.layout == 'horizontal-reverse' %}
+                <div class="block-content-wrapper layout-{{ block.layout }} p-6 flex flex-col md:flex-row-reverse gap-6">
+                    {% if block.block_type == 'text' or block.block_type == 'text_image' %}
+                    <div class="block-text-container flex-1" style="text-align: {{ block.text_align }};">
+                        <div class="block-content prose prose-lg max-w-none text-gray-700">
+                            {{ block.content|safe|linebreaks }}
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    {% if block.block_type == 'image' or block.block_type == 'text_image' %}
+                        {% if block.image %}
+                        <div class="block-image-container pswp-gallery flex-shrink-0" 
+                             style="width: {{ block.image_width }}%;">
+                            <a href="{{ block.image.url }}"
+                               data-pswp-width="1200"
+                               data-pswp-height="800"
+                               target="_blank">
+                                <img src="{{ block.image.url }}" 
+                                     alt="{{ block.title }}" 
+                                     class="block-image rounded-lg w-full cursor-zoom-in hover:opacity-90 transition-opacity"
+                                     style="{% if block.image_height %}height: {{ block.image_height }}px; object-fit: cover;{% endif %}">
+                            </a>
+                        </div>
+                        {% endif %}
+                    {% endif %}
+                </div>
+                {% endif %}
+            </article>
+            {% empty %}
+            <!-- Показываем старое описание если блоков нет -->
+            {% if lesson.description %}
+            <article class="content-block lesson-block bg-white rounded-xl shadow-sm p-6"
+                     data-aos="fade-up"
+                     data-block-id="legacy"
+                     data-block-type="text"
+                     data-block-content="{{ lesson.description }}"
+                     data-block-order="0">
+                <div class="block-content prose prose-lg max-w-none text-gray-700">
+                    {{ lesson.description|linebreaks }}
+                </div>
+            </article>
+            {% else %}
+            <div class="content-block lesson-block bg-white rounded-xl shadow-sm p-8 text-center"
+                 data-aos="fade-up"
+                 data-block-id="placeholder"
+                 data-block-type="text"
+                 data-block-content=""
+                 data-block-order="0">
+                <div class="text-gray-400 mb-4">
+                    <svg class="w-16 h-16 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                </div>
+                <p class="block-content text-gray-500">
+                    {% if user.is_staff %}
+                    Нажмите "Редактировать" чтобы добавить контент урока.
+                    {% else %}
+                    Контент скоро появится...
+                    {% endif %}
+                </p>
+            </div>
+            {% endif %}
+            {% endfor %}
+        </div>
+
+        <!-- Скачивание файла -->
+        {% if lesson.file %}
+        <div class="mt-8" data-aos="fade-up">
+            <div class="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-6">
+                <div class="flex items-center justify-between flex-wrap gap-4">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0 w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mr-4">
+                            <svg class="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 class="font-semibold text-gray-900">Материалы к уроку</h3>
+                            <p class="text-sm text-gray-600">Скачайте дополнительные файлы</p>
+                        </div>
+                    </div>
+                    <a href="{% url 'lessons:lesson_file_download' lesson.id %}" 
+                       class="inline-flex items-center px-5 py-2.5 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors">
+                        <svg class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                        </svg>
+                        Скачать
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Навигация внизу -->
+    <div class="mt-12 pt-8 border-t border-gray-200" data-aos="fade-up">
+        <a href="{% url 'lessons:lesson_list' %}" 
+           class="inline-flex items-center text-gray-500 hover:text-brand-600 transition-colors group">
+            <svg class="w-5 h-5 mr-2 transition-transform group-hover:-translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+            Назад к списку уроков
+        </a>
+    </div>
+</div>
+{% endblock content %}
+
+{% block extra_css %}
+{% if user.is_staff %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css">
+{% endif %}
+{% endblock extra_css %}
+
+{% block extra_js %}
+{% if user.is_staff %}
+{# TODO: Переделать на block-editor.js с Alpine.js #}
+<script src="{% static 'js/content-editor.js' %}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    new ContentEditor({
+        container: '#content-editor-container',
+        apiSaveUrl: '{% url "lessons:lesson_save_api" lesson.id %}',
+        apiUploadUrl: '{% url "lessons:lesson_upload_image_api" lesson.id %}',
+        csrfToken: '{{ csrf_token }}',
+        pageType: 'lesson',
+        lessonId: {{ lesson.id }}
+    });
+});
+</script>
+{% endif %}
+{% endblock extra_js %}

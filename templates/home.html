@@ -1,0 +1,650 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Главная{% endblock title %}
+
+{% block extra_css %}
+{% if user.is_staff %}
+<link rel="stylesheet" href="{% static 'css/block-editor.css' %}">
+{% endif %}
+{% endblock extra_css %}
+
+{% block content %}
+<div id="block-editor-container" 
+     class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8"
+     {% if user.is_staff %}
+     x-data="blockEditor({
+         apiSaveUrl: '{% url 'pages:content_save_api' %}',
+         apiUploadUrl: '{% url 'pages:content_upload_image_api' %}',
+         csrfToken: '{{ csrf_token }}',
+         pageType: 'home'
+     })"
+     {% endif %}>
+    
+    <!-- Заголовок страницы -->
+    <div class="text-center mb-12" data-aos="fade-down">
+        <h1 class="text-4xl font-bold text-gray-900 mb-4">Добро пожаловать!</h1>
+        <p class="text-lg text-gray-600 max-w-2xl mx-auto">
+            Образовательный портал с уроками, материалами и интерактивными задачами
+        </p>
+    </div>
+    
+    {% if user.is_staff %}
+    <!-- Кнопка редактирования (видна по умолчанию, скрывается в режиме редактирования) -->
+    <div class="flex justify-center mb-8" :class="{ 'hidden': isEditMode }">
+        <button @click="toggleEditMode()" 
+                class="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-lg">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+            </svg>
+            Редактировать
+        </button>
+    </div>
+    
+    <!-- Toolbar в режиме редактирования -->
+    <div x-show="isEditMode" 
+         x-transition
+         x-cloak
+         class="block-editor-toolbar">
+        <div class="block-editor-dropdown" x-data="{ open: false }">
+            <button @click="open = !open" 
+                    class="block-editor-toolbar-btn secondary">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                </svg>
+                Добавить блок
+            </button>
+            <div x-show="open" 
+                 @click.away="open = false"
+                 x-transition
+                 class="block-editor-dropdown-menu">
+                <button @click="addBlock('text'); open = false" class="block-editor-dropdown-item">
+                    Текст
+                </button>
+                <button @click="addBlock('image'); open = false" class="block-editor-dropdown-item">
+                    Изображение
+                </button>
+                <button @click="addBlock('text_image'); open = false" class="block-editor-dropdown-item">
+                    Текст + Изображение
+                </button>
+            </div>
+        </div>
+        <button @click="save()" 
+                :disabled="isSaving"
+                class="block-editor-toolbar-btn success">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            </svg>
+            <span x-text="isSaving ? 'Сохранение...' : 'Сохранить'"></span>
+        </button>
+        <button @click="cancel()" class="block-editor-toolbar-btn danger">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+            Отмена
+        </button>
+    </div>
+    {% endif %}
+    
+    <!-- Сетка карточек -->
+    <div class="blocks-container grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {% for block in blocks %}
+        <article class="home-card group relative rounded-xl shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden {{ block.card_bg|default:'bg-white' }}"
+                 data-aos="fade-up"
+                 data-aos-delay="{{ forloop.counter0 }}00"
+                 data-block-id="{{ block.id }}"
+                 data-block-type="{{ block.block_type }}"
+                 data-block-title="{{ block.title }}"
+                 data-block-content="{{ block.content }}"
+                 data-block-image="{% if block.image %}{{ block.image.url }}{% endif %}"
+                 data-block-link-url="{{ block.link_url }}"
+                 data-block-order="{{ block.order }}"
+                 data-block-layout="{{ block.layout }}"
+                 data-block-image-width="{{ block.image_width }}"
+                 data-block-image-align="{{ block.image_align }}"
+                 data-block-text-align="{{ block.text_align }}"
+                 data-block-title-font-size="{{ block.title_font_size|default:'text-xl' }}"
+                 data-block-title-color="{{ block.title_color|default:'text-gray-900' }}"
+                 data-block-content-font-size="{{ block.content_font_size|default:'text-base' }}"
+                 data-block-content-color="{{ block.content_color|default:'text-gray-700' }}"
+                 data-block-card-bg="{{ block.card_bg|default:'bg-white' }}"
+                 {% if user.is_staff %}
+                 :class="getBlockClasses(blocks[{{ forloop.counter0 }}], {{ forloop.counter0 }})"
+                 @click="isEditMode && selectBlock({{ forloop.counter0 }})"
+                 {% endif %}>
+            
+            {% if block.link_url %}
+            <a href="{{ block.link_url }}" class="absolute inset-0 z-10" aria-label="{{ block.title|default:'Перейти' }}"
+               {% if user.is_staff %}x-show="!isEditMode"{% endif %}></a>
+            {% endif %}
+
+            <!-- Вертикальный layout (по умолчанию) -->
+            {% if block.layout == 'vertical' or block.block_type == 'text' or block.block_type == 'image' %}
+                {% if block.block_type == 'text_image' or block.block_type == 'image' %}
+                    {% if block.image %}
+                    <div class="overflow-hidden">
+                        <img src="{{ block.image.url }}" 
+                             alt="{{ block.title }}" 
+                             class="w-full transition-transform duration-500 group-hover:scale-105"
+                             style="width: {{ block.image_width|default:100 }}%; object-fit: {{ block.image_object_fit|default:'cover' }}; object-position: {{ block.image_position_x|default:50 }}% {{ block.image_position_y|default:50 }}%; {% if block.image_height %}height: {{ block.image_height }}px;{% else %}aspect-ratio: 16/9;{% endif %} {% if block.image_border_radius %}border-radius: {{ block.image_border_radius }};{% endif %} {% if block.image_align == 'center' %}margin: 0 auto;{% elif block.image_align == 'right' %}margin-left: auto;{% endif %}">
+                    </div>
+                    {% endif %}
+                {% endif %}
+                
+                <div class="p-5" style="text-align: {{ block.text_align|default:'left' }};">
+                    {% if block.title %}
+                    <h3 class="{{ block.title_font_size|default:'text-xl' }} {{ block.title_color|default:'text-gray-900' }} font-bold mb-2 group-hover:text-blue-600 transition-colors">
+                        {{ block.title }}
+                    </h3>
+                    {% endif %}
+                    
+                    {% if block.content %}
+                    <p class="{{ block.content_font_size|default:'text-base' }} {{ block.content_color|default:'text-gray-600' }} line-clamp-3">
+                        {{ block.content|safe|truncatewords:30 }}
+                    </p>
+                    {% endif %}
+                    
+                    {% if block.link_url %}
+                    <div class="mt-3 flex items-center text-blue-600 font-medium text-sm group-hover:text-blue-700"
+                         style="{% if block.text_align == 'center' %}justify-content: center;{% elif block.text_align == 'right' %}justify-content: flex-end;{% endif %}">
+                        <span>Подробнее</span>
+                        <svg class="w-4 h-4 ml-1 transition-transform group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                        </svg>
+                    </div>
+                    {% endif %}
+                </div>
+            
+            <!-- Горизонтальный layout (текст слева, картинка справа) -->
+            {% elif block.layout == 'horizontal' %}
+                <div class="flex flex-col sm:flex-row h-full">
+                    <div class="flex-1 p-5 flex flex-col justify-center" style="text-align: {{ block.text_align|default:'left' }};">
+                        {% if block.title %}
+                        <h3 class="{{ block.title_font_size|default:'text-xl' }} {{ block.title_color|default:'text-gray-900' }} font-bold mb-2 group-hover:text-blue-600 transition-colors">
+                            {{ block.title }}
+                        </h3>
+                        {% endif %}
+                        
+                        {% if block.content %}
+                        <p class="{{ block.content_font_size|default:'text-base' }} {{ block.content_color|default:'text-gray-600' }} line-clamp-3">
+                            {{ block.content|safe|truncatewords:30 }}
+                        </p>
+                        {% endif %}
+                        
+                        {% if block.link_url %}
+                        <div class="mt-3 flex items-center text-blue-600 font-medium text-sm group-hover:text-blue-700">
+                            <span>Подробнее</span>
+                            <svg class="w-4 h-4 ml-1 transition-transform group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                            </svg>
+                        </div>
+                        {% endif %}
+                    </div>
+                    
+                    {% if block.image %}
+                    <div class="sm:w-2/5 overflow-hidden">
+                        <img src="{{ block.image.url }}" 
+                             alt="{{ block.title }}" 
+                             class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                             style="object-position: {{ block.image_position_x|default:50 }}% {{ block.image_position_y|default:50 }}%; min-height: 150px;">
+                    </div>
+                    {% endif %}
+                </div>
+            
+            <!-- Горизонтальный layout (картинка слева, текст справа) -->
+            {% elif block.layout == 'horizontal-reverse' %}
+                <div class="flex flex-col sm:flex-row-reverse h-full">
+                    <div class="flex-1 p-5 flex flex-col justify-center" style="text-align: {{ block.text_align|default:'left' }};">
+                        {% if block.title %}
+                        <h3 class="{{ block.title_font_size|default:'text-xl' }} {{ block.title_color|default:'text-gray-900' }} font-bold mb-2 group-hover:text-blue-600 transition-colors">
+                            {{ block.title }}
+                        </h3>
+                        {% endif %}
+                        
+                        {% if block.content %}
+                        <p class="{{ block.content_font_size|default:'text-base' }} {{ block.content_color|default:'text-gray-600' }} line-clamp-3">
+                            {{ block.content|safe|truncatewords:30 }}
+                        </p>
+                        {% endif %}
+                        
+                        {% if block.link_url %}
+                        <div class="mt-3 flex items-center text-blue-600 font-medium text-sm group-hover:text-blue-700">
+                            <span>Подробнее</span>
+                            <svg class="w-4 h-4 ml-1 transition-transform group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                            </svg>
+                        </div>
+                        {% endif %}
+                    </div>
+                    
+                    {% if block.image %}
+                    <div class="sm:w-2/5 overflow-hidden">
+                        <img src="{{ block.image.url }}" 
+                             alt="{{ block.title }}" 
+                             class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                             style="object-position: {{ block.image_position_x|default:50 }}% {{ block.image_position_y|default:50 }}%; min-height: 150px;">
+                    </div>
+                    {% endif %}
+                </div>
+            {% endif %}
+            
+            {% if user.is_staff %}
+            <div class="block-edit-indicator" x-show="isEditMode">
+                Нажмите для редактирования
+            </div>
+            {% endif %}
+        </article>
+        {% empty %}
+        <div class="col-span-full bg-white rounded-xl shadow-md p-12 text-center"
+             data-block-id="placeholder">
+            <svg class="w-16 h-16 mx-auto text-gray-300 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+            </svg>
+            <p class="text-gray-500 text-lg">
+                {% if user.is_staff %}
+                Нажмите "Редактировать" чтобы добавить контент
+                {% else %}
+                Контент скоро появится...
+                {% endif %}
+            </p>
+        </div>
+        {% endfor %}
+        
+        {% if user.is_staff %}
+        <!-- Новые блоки (добавленные в режиме редактирования) -->
+        <template x-for="(block, index) in blocks.filter(b => b._isNew)" :key="block.id">
+            <article class="home-card group relative rounded-xl shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden"
+                     :class="[block.card_bg, getBlockClasses(block, blocks.indexOf(block))]"
+                     @click="isEditMode && selectBlock(blocks.indexOf(block))">
+                
+                <template x-if="block.image && (block.block_type === 'image' || block.block_type === 'text_image')">
+                    <div class="overflow-hidden" :style="getImageContainerStyles(block)">
+                        <img :src="block.image" 
+                             :alt="block.title" 
+                             class="w-full transition-all duration-300"
+                             :style="getImageStyles(block)">
+                    </div>
+                </template>
+                
+                <div class="p-5" :style="'text-align: ' + block.text_align">
+                    <h3 x-show="block.title" 
+                        :class="[block.title_font_size, block.title_color]"
+                        class="font-bold mb-2"
+                        x-text="block.title"></h3>
+                    
+                    <p x-show="block.content" 
+                       :class="[block.content_font_size, block.content_color]"
+                       class="line-clamp-3"
+                       x-text="block.content"></p>
+                    
+                    <p x-show="!block.title && !block.content && !block.image" class="text-gray-400 italic">
+                        Новый блок (нажмите для редактирования)
+                    </p>
+                </div>
+                
+                <div class="block-edit-indicator" x-show="isEditMode">
+                    Нажмите для редактирования
+                </div>
+            </article>
+        </template>
+        {% endif %}
+    </div>
+    
+    {% if user.is_staff %}
+    <!-- Backdrop -->
+    <div class="block-editor-backdrop" 
+         :class="{ 'visible': selectedBlock !== null }"
+         @click="closeSidebar()"></div>
+    
+    <!-- Sidebar Panel -->
+    <div class="block-editor-sidebar" :class="{ 'open': selectedBlock !== null }">
+        <template x-if="selectedBlock">
+            <div class="flex flex-col h-full">
+                <!-- Header -->
+                <div class="block-editor-sidebar-header">
+                    <h3>Редактор блока</h3>
+                    <button @click="closeSidebar()" class="text-gray-500 hover:text-gray-700">
+                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+                
+                <!-- Move buttons -->
+                <div class="block-editor-move-btns px-5 pt-4">
+                    <button @click="moveBlockUp()" 
+                            :disabled="selectedBlockIndex <= 0"
+                            class="block-editor-move-btn">
+                        ↑ Выше
+                    </button>
+                    <button @click="moveBlockDown()" 
+                            :disabled="selectedBlockIndex >= blocks.length - 1"
+                            class="block-editor-move-btn">
+                        ↓ Ниже
+                    </button>
+                </div>
+                
+                <!-- Tabs -->
+                <div class="block-editor-tabs">
+                    <button @click="activeTab = 'basic'" 
+                            :class="{ 'active': activeTab === 'basic' }"
+                            class="block-editor-tab">Основное</button>
+                    <button @click="activeTab = 'image'" 
+                            :class="{ 'active': activeTab === 'image' }"
+                            x-show="selectedBlock.block_type !== 'text'"
+                            class="block-editor-tab">Картинка</button>
+                    <button @click="activeTab = 'style'" 
+                            :class="{ 'active': activeTab === 'style' }"
+                            class="block-editor-tab">Стиль</button>
+                </div>
+                
+                <!-- Content -->
+                <div class="block-editor-sidebar-content">
+                    <!-- Basic Tab -->
+                    <div x-show="activeTab === 'basic'">
+                        <div class="block-editor-field">
+                            <label class="block-editor-label">Тип блока</label>
+                            <select x-model="selectedBlock.block_type" class="block-editor-select">
+                                <template x-for="type in blockTypes" :key="type.value">
+                                    <option :value="type.value" x-text="type.label"></option>
+                                </template>
+                            </select>
+                        </div>
+                        
+                        <div class="block-editor-field">
+                            <label class="block-editor-label">Заголовок</label>
+                            <input type="text" x-model="selectedBlock.title" 
+                                   class="block-editor-input" 
+                                   placeholder="Введите заголовок">
+                        </div>
+                        
+                        <div class="block-editor-field" x-show="selectedBlock.block_type !== 'image'">
+                            <label class="block-editor-label">Содержимое</label>
+                            <textarea x-model="selectedBlock.content" 
+                                      class="block-editor-textarea" 
+                                      placeholder="Введите текст"></textarea>
+                        </div>
+                        
+                        <div class="block-editor-field" x-show="selectedBlock.block_type !== 'text'">
+                            <label class="block-editor-label">Изображение</label>
+                            <template x-if="selectedBlock.image">
+                                <div class="block-editor-image-preview">
+                                    <img :src="selectedBlock.image" alt="Preview">
+                                    <button @click="removeImage()" class="remove-btn" title="Удалить">×</button>
+                                </div>
+                            </template>
+                            <template x-if="!selectedBlock.image">
+                                <label class="block-editor-upload-btn">
+                                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                    </svg>
+                                    Загрузить изображение
+                                    <input type="file" accept="image/*" @change="uploadImage($event)" class="hidden">
+                                </label>
+                            </template>
+                        </div>
+                        
+                        <div class="block-editor-field">
+                            <label class="block-editor-label">URL ссылки</label>
+                            <input type="text" x-model="selectedBlock.link_url" 
+                                   class="block-editor-input" 
+                                   placeholder="/about/ или https://...">
+                        </div>
+                    </div>
+                    
+                    <!-- Image Tab -->
+                    <div x-show="activeTab === 'image'">
+                        <!-- Live Preview -->
+                        <div class="block-editor-field">
+                            <label class="block-editor-label">Превью</label>
+                            <div class="bg-gray-100 rounded-lg p-3 mb-4">
+                                <template x-if="selectedBlock.image">
+                                    <div class="overflow-hidden bg-white rounded" :style="getImageContainerStyles(selectedBlock)">
+                                        <img :src="selectedBlock.image" 
+                                             alt="Preview" 
+                                             class="transition-all duration-200"
+                                             :style="getImageStyles(selectedBlock)">
+                                    </div>
+                                </template>
+                                <template x-if="!selectedBlock.image">
+                                    <div class="text-center py-8 text-gray-400">
+                                        <svg class="w-12 h-12 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                        </svg>
+                                        <p class="text-sm">Изображение не загружено</p>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                        
+                        <!-- Upload/Change Image -->
+                        <div class="block-editor-field">
+                            <label class="block-editor-upload-btn">
+                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                </svg>
+                                <span x-text="selectedBlock.image ? 'Заменить изображение' : 'Загрузить изображение'"></span>
+                                <input type="file" accept="image/*" @change="uploadImage($event)" class="hidden">
+                            </label>
+                            <button x-show="selectedBlock.image" 
+                                    @click="removeImage()" 
+                                    class="w-full mt-2 px-4 py-2 text-sm text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors">
+                                Удалить изображение
+                            </button>
+                        </div>
+                        
+                        <!-- Width -->
+                        <div class="block-editor-field">
+                            <label class="block-editor-label">Ширина: <span x-text="selectedBlock.image_width + '%'" class="text-blue-600 font-semibold"></span></label>
+                            <input type="range" 
+                                   x-model="selectedBlock.image_width" 
+                                   min="20" max="100" step="5"
+                                   class="block-editor-range">
+                        </div>
+                        
+                        <!-- Height -->
+                        <div class="block-editor-field">
+                            <label class="block-editor-label">Высота: <span x-text="selectedBlock.image_height > 0 ? selectedBlock.image_height + 'px' : 'Авто'" class="text-blue-600 font-semibold"></span></label>
+                            <input type="range" 
+                                   x-model="selectedBlock.image_height" 
+                                   min="0" max="500" step="10"
+                                   class="block-editor-range">
+                            <p class="text-xs text-gray-500 mt-1">0 = автоматическая высота</p>
+                        </div>
+                        
+                        <!-- Object Fit -->
+                        <div class="block-editor-field">
+                            <label class="block-editor-label">Заполнение</label>
+                            <select x-model="selectedBlock.image_object_fit" class="block-editor-select">
+                                <template x-for="fit in objectFits" :key="fit.value">
+                                    <option :value="fit.value" x-text="fit.label"></option>
+                                </template>
+                            </select>
+                        </div>
+                        
+                        <!-- Crop / Focus Position -->
+                        <div class="block-editor-field">
+                            <label class="block-editor-label">Фокус / Обрезка</label>
+                            <p class="text-xs text-gray-500 mb-2">Выберите какая часть изображения будет в центре</p>
+                            
+                            <!-- Visual crop selector -->
+                            <div class="relative bg-gray-200 rounded-lg overflow-hidden mb-3" style="aspect-ratio: 16/9;">
+                                <template x-if="selectedBlock.image">
+                                    <img :src="selectedBlock.image" class="w-full h-full object-cover opacity-50">
+                                </template>
+                                <div class="absolute inset-0 flex items-center justify-center">
+                                    <div class="grid grid-cols-3 grid-rows-3 w-full h-full">
+                                        <button @click="selectedBlock.image_position_x = 0; selectedBlock.image_position_y = 0" 
+                                                class="hover:bg-blue-500/30 border border-white/30 transition-colors"
+                                                :class="{'bg-blue-500/50': selectedBlock.image_position_x <= 16 && selectedBlock.image_position_y <= 16}"></button>
+                                        <button @click="selectedBlock.image_position_x = 50; selectedBlock.image_position_y = 0" 
+                                                class="hover:bg-blue-500/30 border border-white/30 transition-colors"
+                                                :class="{'bg-blue-500/50': selectedBlock.image_position_x > 16 && selectedBlock.image_position_x < 84 && selectedBlock.image_position_y <= 16}"></button>
+                                        <button @click="selectedBlock.image_position_x = 100; selectedBlock.image_position_y = 0" 
+                                                class="hover:bg-blue-500/30 border border-white/30 transition-colors"
+                                                :class="{'bg-blue-500/50': selectedBlock.image_position_x >= 84 && selectedBlock.image_position_y <= 16}"></button>
+                                        <button @click="selectedBlock.image_position_x = 0; selectedBlock.image_position_y = 50" 
+                                                class="hover:bg-blue-500/30 border border-white/30 transition-colors"
+                                                :class="{'bg-blue-500/50': selectedBlock.image_position_x <= 16 && selectedBlock.image_position_y > 16 && selectedBlock.image_position_y < 84}"></button>
+                                        <button @click="selectedBlock.image_position_x = 50; selectedBlock.image_position_y = 50" 
+                                                class="hover:bg-blue-500/30 border border-white/30 transition-colors"
+                                                :class="{'bg-blue-500/50': selectedBlock.image_position_x > 16 && selectedBlock.image_position_x < 84 && selectedBlock.image_position_y > 16 && selectedBlock.image_position_y < 84}"></button>
+                                        <button @click="selectedBlock.image_position_x = 100; selectedBlock.image_position_y = 50" 
+                                                class="hover:bg-blue-500/30 border border-white/30 transition-colors"
+                                                :class="{'bg-blue-500/50': selectedBlock.image_position_x >= 84 && selectedBlock.image_position_y > 16 && selectedBlock.image_position_y < 84}"></button>
+                                        <button @click="selectedBlock.image_position_x = 0; selectedBlock.image_position_y = 100" 
+                                                class="hover:bg-blue-500/30 border border-white/30 transition-colors"
+                                                :class="{'bg-blue-500/50': selectedBlock.image_position_x <= 16 && selectedBlock.image_position_y >= 84}"></button>
+                                        <button @click="selectedBlock.image_position_x = 50; selectedBlock.image_position_y = 100" 
+                                                class="hover:bg-blue-500/30 border border-white/30 transition-colors"
+                                                :class="{'bg-blue-500/50': selectedBlock.image_position_x > 16 && selectedBlock.image_position_x < 84 && selectedBlock.image_position_y >= 84}"></button>
+                                        <button @click="selectedBlock.image_position_x = 100; selectedBlock.image_position_y = 100" 
+                                                class="hover:bg-blue-500/30 border border-white/30 transition-colors"
+                                                :class="{'bg-blue-500/50': selectedBlock.image_position_x >= 84 && selectedBlock.image_position_y >= 84}"></button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Fine tune sliders -->
+                            <div class="space-y-2">
+                                <div>
+                                    <label class="text-xs text-gray-500">По горизонтали: <span x-text="selectedBlock.image_position_x + '%'" class="text-blue-600"></span></label>
+                                    <input type="range" x-model="selectedBlock.image_position_x" min="0" max="100" step="5" class="block-editor-range">
+                                </div>
+                                <div>
+                                    <label class="text-xs text-gray-500">По вертикали: <span x-text="selectedBlock.image_position_y + '%'" class="text-blue-600"></span></label>
+                                    <input type="range" x-model="selectedBlock.image_position_y" min="0" max="100" step="5" class="block-editor-range">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Alignment -->
+                        <div class="block-editor-field">
+                            <label class="block-editor-label">Выравнивание</label>
+                            <div class="block-editor-align-group">
+                                <button @click="selectedBlock.image_align = 'left'" 
+                                        :class="{ 'active': selectedBlock.image_align === 'left' }"
+                                        class="block-editor-align-btn" title="Слева">←</button>
+                                <button @click="selectedBlock.image_align = 'center'" 
+                                        :class="{ 'active': selectedBlock.image_align === 'center' }"
+                                        class="block-editor-align-btn" title="По центру">↔</button>
+                                <button @click="selectedBlock.image_align = 'right'" 
+                                        :class="{ 'active': selectedBlock.image_align === 'right' }"
+                                        class="block-editor-align-btn" title="Справа">→</button>
+                            </div>
+                        </div>
+                        
+                        <!-- Border Radius -->
+                        <div class="block-editor-field">
+                            <label class="block-editor-label">Скругление углов</label>
+                            <select x-model="selectedBlock.image_border_radius" class="block-editor-select">
+                                <template x-for="radius in borderRadiuses" :key="radius.value">
+                                    <option :value="radius.value" x-text="radius.label"></option>
+                                </template>
+                            </select>
+                        </div>
+                        
+                        <!-- Opacity -->
+                        <div class="block-editor-field">
+                            <label class="block-editor-label">Прозрачность: <span x-text="selectedBlock.image_opacity + '%'" class="text-blue-600 font-semibold"></span></label>
+                            <input type="range" 
+                                   x-model="selectedBlock.image_opacity" 
+                                   min="10" max="100" step="5"
+                                   class="block-editor-range">
+                        </div>
+                    </div>
+                    
+                    <!-- Style Tab -->
+                    <div x-show="activeTab === 'style'">
+                        <div class="block-editor-field">
+                            <label class="block-editor-label">Размер заголовка</label>
+                            <select x-model="selectedBlock.title_font_size" class="block-editor-select">
+                                <template x-for="size in fontSizes" :key="size.value">
+                                    <option :value="size.value" x-text="size.label"></option>
+                                </template>
+                            </select>
+                        </div>
+                        
+                        <div class="block-editor-field">
+                            <label class="block-editor-label">Цвет заголовка</label>
+                            <select x-model="selectedBlock.title_color" class="block-editor-select">
+                                <template x-for="color in colors" :key="color.value">
+                                    <option :value="color.value" x-text="color.label"></option>
+                                </template>
+                            </select>
+                        </div>
+                        
+                        <div class="block-editor-field">
+                            <label class="block-editor-label">Размер текста</label>
+                            <select x-model="selectedBlock.content_font_size" class="block-editor-select">
+                                <template x-for="size in fontSizes" :key="size.value">
+                                    <option :value="size.value" x-text="size.label"></option>
+                                </template>
+                            </select>
+                        </div>
+                        
+                        <div class="block-editor-field">
+                            <label class="block-editor-label">Цвет текста</label>
+                            <select x-model="selectedBlock.content_color" class="block-editor-select">
+                                <template x-for="color in colors" :key="color.value">
+                                    <option :value="color.value" x-text="color.label"></option>
+                                </template>
+                            </select>
+                        </div>
+                        
+                        <div class="block-editor-field">
+                            <label class="block-editor-label">Фон карточки</label>
+                            <select x-model="selectedBlock.card_bg" class="block-editor-select">
+                                <template x-for="bg in bgColors" :key="bg.value">
+                                    <option :value="bg.value" x-text="bg.label"></option>
+                                </template>
+                            </select>
+                        </div>
+                        
+                        <div class="block-editor-field">
+                            <label class="block-editor-label">Выравнивание текста</label>
+                            <div class="block-editor-align-group">
+                                <button @click="selectedBlock.text_align = 'left'" 
+                                        :class="{ 'active': selectedBlock.text_align === 'left' }"
+                                        class="block-editor-align-btn" title="По левому краю">←</button>
+                                <button @click="selectedBlock.text_align = 'center'" 
+                                        :class="{ 'active': selectedBlock.text_align === 'center' }"
+                                        class="block-editor-align-btn" title="По центру">↔</button>
+                                <button @click="selectedBlock.text_align = 'right'" 
+                                        :class="{ 'active': selectedBlock.text_align === 'right' }"
+                                        class="block-editor-align-btn" title="По правому краю">→</button>
+                            </div>
+                        </div>
+                        
+                        <div class="block-editor-field" x-show="selectedBlock.block_type === 'text_image'">
+                            <label class="block-editor-label">Расположение блока</label>
+                            <select x-model="selectedBlock.layout" class="block-editor-select">
+                                <template x-for="layout in layouts" :key="layout.value">
+                                    <option :value="layout.value" x-text="layout.label"></option>
+                                </template>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Footer -->
+                <div class="block-editor-sidebar-footer">
+                    <button @click="deleteBlock()" class="block-editor-delete-btn">
+                        <svg class="w-4 h-4 inline mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                        </svg>
+                        Удалить блок
+                    </button>
+                </div>
+            </div>
+        </template>
+    </div>
+    {% endif %}
+</div>
+{% endblock content %}
+
+{% block pre_alpine_js %}
+{% if user.is_staff %}
+<script src="{% static 'js/block-editor.js' %}"></script>
+{% endif %}
+{% endblock pre_alpine_js %}

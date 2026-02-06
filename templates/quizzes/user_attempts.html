@@ -1,0 +1,91 @@
+{% extends 'base.html' %}
+
+{% block title %}Попытки: {{ student.username }}{% endblock title %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Навигация -->
+    <nav class="mb-6" data-aos="fade-right">
+        <a href="{% url 'quizzes:quiz_stats' quiz.id %}" 
+           class="inline-flex items-center text-gray-500 hover:text-brand-600 transition-colors group">
+            <svg class="w-5 h-5 mr-2 transition-transform group-hover:-translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+            Назад к общей статистике
+        </a>
+    </nav>
+
+    <!-- Заголовок -->
+    <header class="mb-8" data-aos="fade-up">
+        <div class="flex items-center gap-4">
+            <div class="flex-shrink-0 w-14 h-14 bg-gradient-to-br from-brand-500 to-purple-600 rounded-full flex items-center justify-center text-white text-xl font-bold">
+                {{ student.first_name|slice:":1" }}{{ student.last_name|slice:":1" }}
+            </div>
+            <div>
+                <h1 class="text-2xl font-bold text-gray-900">
+                    {{ student.first_name }} {{ student.last_name }}
+                </h1>
+                <p class="text-gray-600">{{ quiz.title }}</p>
+            </div>
+        </div>
+    </header>
+
+    <!-- Таблица попыток -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden" data-aos="fade-up" data-aos-delay="100">
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead>
+                    <tr class="bg-gray-50 border-b border-gray-100">
+                        <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                            Дата
+                        </th>
+                        <th class="px-6 py-4 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                            Баллы
+                        </th>
+                        <th class="px-6 py-4 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                            Время
+                        </th>
+                        <th class="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                            Действия
+                        </th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                    {% for result in results %}
+                    <tr class="hover:bg-gray-50 transition-colors">
+                        <td class="px-6 py-4">
+                            <div class="text-sm text-gray-900">{{ result.date_completed|date:"d.m.Y" }}</div>
+                            <div class="text-xs text-gray-500">{{ result.date_completed|date:"H:i" }}</div>
+                        </td>
+                        <td class="px-6 py-4 text-center">
+                            <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium 
+                                {% if result.score == result.quiz.questions.count %}bg-green-100 text-green-700
+                                {% else %}bg-amber-100 text-amber-700{% endif %}">
+                                {{ result.score }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 text-center text-sm text-gray-600">
+                            {% if result.duration %}
+                            {{ result.duration }}
+                            {% else %}
+                            <span class="text-gray-400">—</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 text-right">
+                            <a href="{% url 'quizzes:attempt_detail' result.id %}" 
+                               class="inline-flex items-center px-3 py-1.5 text-sm text-brand-600 hover:text-brand-700 hover:bg-brand-50 rounded-lg transition-colors">
+                                <svg class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                                </svg>
+                                Подробнее
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock content %}

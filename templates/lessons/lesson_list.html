@@ -1,0 +1,165 @@
+{% extends 'base.html' %}
+
+{% block title %}Уроки{% endblock title %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Заголовок страницы -->
+    <div class="text-center mb-12" data-aos="fade-down">
+        <h1 class="text-4xl font-bold text-gray-900 mb-4">Уроки</h1>
+        <p class="text-lg text-gray-600 max-w-2xl mx-auto">
+            Выберите урок из списка ниже
+        </p>
+    </div>
+
+    {% if sections %}
+        {% for section in sections %}
+        <section class="mb-12" data-aos="fade-up" data-aos-delay="{{ forloop.counter0 }}50">
+            <!-- Заголовок секции -->
+            <div class="flex items-center mb-6">
+                <div class="flex-shrink-0 w-10 h-10 bg-brand-100 rounded-lg flex items-center justify-center mr-4">
+                    <svg class="w-5 h-5 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                    </svg>
+                </div>
+                <h2 class="text-2xl font-bold text-gray-900">{{ section.title }}</h2>
+            </div>
+            
+            {% if section.lessons.all %}
+            <!-- Сетка карточек уроков -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {% for lesson in section.lessons.all %}
+                <a href="{% url 'lessons:lesson_detail' lesson.id %}" 
+                   class="group block bg-white rounded-xl shadow-sm hover:shadow-md border border-gray-100 overflow-hidden transition-all duration-300">
+                    
+                    <!-- Превью изображение (если будет) -->
+                    {% if lesson.preview_image %}
+                    <div class="aspect-video overflow-hidden">
+                        <img src="{{ lesson.preview_image.url }}" 
+                             alt="{{ lesson.title }}"
+                             class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105">
+                    </div>
+                    {% endif %}
+                    
+                    <div class="p-5">
+                        <div class="flex items-start justify-between">
+                            <h3 class="text-lg font-semibold text-gray-900 group-hover:text-brand-600 transition-colors">
+                                {{ lesson.title }}
+                            </h3>
+                            <svg class="w-5 h-5 text-gray-400 group-hover:text-brand-600 group-hover:translate-x-1 transition-all flex-shrink-0 ml-2" 
+                                 fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                            </svg>
+                        </div>
+                        
+                        {% if lesson.preview_description %}
+                        <p class="mt-2 text-sm text-gray-600 line-clamp-2">
+                            {{ lesson.preview_description }}
+                        </p>
+                        {% endif %}
+                        
+                        <!-- Индикаторы -->
+                        <div class="mt-4 flex items-center gap-3 text-xs text-gray-500">
+                            {% if lesson.file %}
+                            <span class="flex items-center gap-1">
+                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                </svg>
+                                Материалы
+                            </span>
+                            {% endif %}
+                            {% if lesson.blocks.exists %}
+                            <span class="flex items-center gap-1">
+                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                </svg>
+                                {{ lesson.blocks.count }} блок{{ lesson.blocks.count|pluralize:"ов,а,ов" }}
+                            </span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </a>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="bg-gray-50 rounded-xl p-6 text-center">
+                <p class="text-gray-500">В этом разделе пока нет уроков.</p>
+            </div>
+            {% endif %}
+        </section>
+        {% endfor %}
+    {% endif %}
+
+    {% if orphan_lessons %}
+    <section class="mb-12" data-aos="fade-up">
+        <!-- Заголовок секции -->
+        <div class="flex items-center mb-6">
+            <div class="flex-shrink-0 w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center mr-4">
+                <svg class="w-5 h-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                </svg>
+            </div>
+            <h2 class="text-2xl font-bold text-gray-900">Другие уроки</h2>
+        </div>
+        
+        <!-- Сетка карточек -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {% for lesson in orphan_lessons %}
+            <a href="{% url 'lessons:lesson_detail' lesson.id %}" 
+               class="group block bg-white rounded-xl shadow-sm hover:shadow-md border border-gray-100 overflow-hidden transition-all duration-300">
+                
+                {% if lesson.preview_image %}
+                <div class="aspect-video overflow-hidden">
+                    <img src="{{ lesson.preview_image.url }}" 
+                         alt="{{ lesson.title }}"
+                         class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105">
+                </div>
+                {% endif %}
+                
+                <div class="p-5">
+                    <div class="flex items-start justify-between">
+                        <h3 class="text-lg font-semibold text-gray-900 group-hover:text-brand-600 transition-colors">
+                            {{ lesson.title }}
+                        </h3>
+                        <svg class="w-5 h-5 text-gray-400 group-hover:text-brand-600 group-hover:translate-x-1 transition-all flex-shrink-0 ml-2" 
+                             fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                        </svg>
+                    </div>
+                    
+                    {% if lesson.preview_description %}
+                    <p class="mt-2 text-sm text-gray-600 line-clamp-2">
+                        {{ lesson.preview_description }}
+                    </p>
+                    {% endif %}
+                    
+                    <div class="mt-4 flex items-center gap-3 text-xs text-gray-500">
+                        {% if lesson.file %}
+                        <span class="flex items-center gap-1">
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                            </svg>
+                            Материалы
+                        </span>
+                        {% endif %}
+                    </div>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    {% if not sections and not orphan_lessons %}
+    <div class="text-center py-16" data-aos="fade-up">
+        <div class="text-gray-400 mb-4">
+            <svg class="w-20 h-20 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+            </svg>
+        </div>
+        <h3 class="text-xl font-semibold text-gray-700 mb-2">Уроков пока нет</h3>
+        <p class="text-gray-500">Скоро здесь появятся учебные материалы</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock content %}

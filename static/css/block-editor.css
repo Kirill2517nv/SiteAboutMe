@@ -1,0 +1,457 @@
+/**
+ * Block Editor Styles
+ */
+
+/* Sidebar panel */
+.block-editor-sidebar {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 360px;
+    height: 100vh;
+    background: white;
+    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.15);
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    transform: translateX(100%);
+    transition: transform 0.3s ease;
+}
+
+.block-editor-sidebar.open {
+    transform: translateX(0);
+}
+
+/* Sidebar header */
+.block-editor-sidebar-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #f9fafb;
+}
+
+.block-editor-sidebar-header h3 {
+    font-size: 16px;
+    font-weight: 600;
+    color: #111827;
+    margin: 0;
+}
+
+/* Sidebar tabs */
+.block-editor-tabs {
+    display: flex;
+    border-bottom: 1px solid #e5e7eb;
+    background: #f9fafb;
+}
+
+.block-editor-tab {
+    flex: 1;
+    padding: 12px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #6b7280;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-bottom: 2px solid transparent;
+}
+
+.block-editor-tab:hover {
+    color: #3b82f6;
+    background: #eff6ff;
+}
+
+.block-editor-tab.active {
+    color: #3b82f6;
+    border-bottom-color: #3b82f6;
+    background: white;
+}
+
+/* Sidebar content */
+.block-editor-sidebar-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+}
+
+/* Form groups */
+.block-editor-field {
+    margin-bottom: 20px;
+}
+
+.block-editor-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    color: #374151;
+    margin-bottom: 6px;
+}
+
+.block-editor-input,
+.block-editor-select,
+.block-editor-textarea {
+    width: 100%;
+    padding: 10px 12px;
+    font-size: 14px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.block-editor-input:focus,
+.block-editor-select:focus,
+.block-editor-textarea:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.block-editor-textarea {
+    min-height: 120px;
+    resize: vertical;
+}
+
+/* Image preview */
+.block-editor-image-preview {
+    position: relative;
+    margin-top: 10px;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #f3f4f6;
+}
+
+.block-editor-image-preview img {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+.block-editor-image-preview .remove-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 28px;
+    height: 28px;
+    background: rgba(239, 68, 68, 0.9);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    transition: background 0.2s;
+}
+
+.block-editor-image-preview .remove-btn:hover {
+    background: #dc2626;
+}
+
+/* Upload button */
+.block-editor-upload-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    font-size: 14px;
+    font-weight: 500;
+    color: #374151;
+    background: #f3f4f6;
+    border: 1px dashed #d1d5db;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    width: 100%;
+    justify-content: center;
+}
+
+.block-editor-upload-btn:hover {
+    background: #e5e7eb;
+    border-color: #9ca3af;
+}
+
+/* Alignment buttons */
+.block-editor-align-group {
+    display: flex;
+    gap: 4px;
+}
+
+.block-editor-align-btn {
+    flex: 1;
+    padding: 10px;
+    font-size: 14px;
+    background: #f3f4f6;
+    border: 1px solid #d1d5db;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.block-editor-align-btn:first-child {
+    border-radius: 8px 0 0 8px;
+}
+
+.block-editor-align-btn:last-child {
+    border-radius: 0 8px 8px 0;
+}
+
+.block-editor-align-btn:hover {
+    background: #e5e7eb;
+}
+
+.block-editor-align-btn.active {
+    background: #3b82f6;
+    border-color: #3b82f6;
+    color: white;
+}
+
+/* Range slider */
+.block-editor-range {
+    width: 100%;
+    height: 6px;
+    background: #e5e7eb;
+    border-radius: 3px;
+    appearance: none;
+    cursor: pointer;
+}
+
+.block-editor-range::-webkit-slider-thumb {
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    background: #3b82f6;
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+.block-editor-range-value {
+    font-size: 13px;
+    color: #6b7280;
+    margin-top: 6px;
+}
+
+/* Sidebar footer */
+.block-editor-sidebar-footer {
+    padding: 16px 20px;
+    border-top: 1px solid #e5e7eb;
+    background: #f9fafb;
+}
+
+.block-editor-delete-btn {
+    width: 100%;
+    padding: 10px 16px;
+    font-size: 14px;
+    font-weight: 500;
+    color: #dc2626;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.block-editor-delete-btn:hover {
+    background: #fee2e2;
+    border-color: #fca5a5;
+}
+
+/* Toolbar */
+.block-editor-toolbar {
+    position: fixed;
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 8px;
+    padding: 12px 16px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    z-index: 999;
+}
+
+.block-editor-toolbar-btn {
+    padding: 8px 16px;
+    font-size: 14px;
+    font-weight: 500;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.block-editor-toolbar-btn.primary {
+    background: #3b82f6;
+    color: white;
+    border: none;
+}
+
+.block-editor-toolbar-btn.primary:hover {
+    background: #2563eb;
+}
+
+.block-editor-toolbar-btn.secondary {
+    background: #f3f4f6;
+    color: #374151;
+    border: 1px solid #d1d5db;
+}
+
+.block-editor-toolbar-btn.secondary:hover {
+    background: #e5e7eb;
+}
+
+.block-editor-toolbar-btn.success {
+    background: #10b981;
+    color: white;
+    border: none;
+}
+
+.block-editor-toolbar-btn.success:hover {
+    background: #059669;
+}
+
+.block-editor-toolbar-btn.danger {
+    background: #ef4444;
+    color: white;
+    border: none;
+}
+
+.block-editor-toolbar-btn.danger:hover {
+    background: #dc2626;
+}
+
+.block-editor-toolbar-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Move buttons in sidebar */
+.block-editor-move-btns {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.block-editor-move-btn {
+    flex: 1;
+    padding: 8px;
+    font-size: 13px;
+    background: #f3f4f6;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.block-editor-move-btn:hover:not(:disabled) {
+    background: #e5e7eb;
+}
+
+.block-editor-move-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* Edit mode indicator on blocks */
+.block-edit-indicator {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    padding: 4px 8px;
+    font-size: 11px;
+    font-weight: 500;
+    color: #3b82f6;
+    background: rgba(59, 130, 246, 0.1);
+    border-radius: 4px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+[data-block-id]:hover .block-edit-indicator {
+    opacity: 1;
+}
+
+/* Edit mode body padding for sidebar */
+body.block-editor-active {
+    padding-right: 360px;
+    transition: padding-right 0.3s ease;
+}
+
+/* Backdrop when sidebar is open */
+.block-editor-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.3);
+    z-index: 998;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s, visibility 0.3s;
+}
+
+.block-editor-backdrop.visible {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .block-editor-sidebar {
+        width: 100%;
+    }
+    
+    body.block-editor-active {
+        padding-right: 0;
+    }
+    
+    .block-editor-toolbar {
+        left: 16px;
+        right: 16px;
+        transform: none;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+}
+
+/* Add block dropdown */
+.block-editor-dropdown {
+    position: relative;
+}
+
+.block-editor-dropdown-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: 4px;
+    min-width: 180px;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    overflow: hidden;
+    z-index: 1000;
+}
+
+.block-editor-dropdown-item {
+    display: block;
+    width: 100%;
+    padding: 10px 16px;
+    font-size: 14px;
+    color: #374151;
+    background: none;
+    border: none;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.block-editor-dropdown-item:hover {
+    background: #f3f4f6;
+}

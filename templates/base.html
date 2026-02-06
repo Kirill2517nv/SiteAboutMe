@@ -1,0 +1,196 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Мой сайт{% endblock title %}</title>
+    
+    <!-- Tailwind CSS (CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- AOS - Animate on Scroll -->
+    <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
+    
+    <!-- Swiper CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css">
+    
+    <!-- PhotoSwipe CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@5/dist/photoswipe.css">
+    
+    <!-- Стили для редактора контента -->
+    <link rel="stylesheet" href="{% static 'css/content-editor-tailwind.css' %}">
+    
+    {% block extra_css %}{% endblock extra_css %}
+    
+    <style>
+        /* Базовые стили для плавного перехода */
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+        }
+        
+        /* Скрываем элементы с x-cloak до инициализации Alpine.js */
+        [x-cloak] {
+            display: none !important;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gray-50 flex flex-col">
+    <!-- Навигация -->
+    <header class="bg-white shadow-sm sticky top-0 z-50">
+        <nav class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <!-- Левая часть - логотип и навигация -->
+                <div class="flex items-center space-x-8">
+                    <a href="{% url 'home' %}" class="text-xl font-bold text-brand-600 hover:text-brand-700 transition-colors">
+                        Учебный портал
+                    </a>
+                    <div class="hidden md:flex items-center space-x-6">
+                        <a href="{% url 'home' %}" 
+                           class="text-gray-600 hover:text-brand-600 font-medium transition-colors">
+                            Главная
+                        </a>
+                        <a href="{% url 'about' %}" 
+                           class="text-gray-600 hover:text-brand-600 font-medium transition-colors">
+                            Обо мне
+                        </a>
+                        <a href="{% url 'lessons:lesson_list' %}" 
+                           class="text-gray-600 hover:text-brand-600 font-medium transition-colors">
+                            Уроки
+                        </a>
+                        <a href="{% url 'quizzes:quiz_list' %}" 
+                           class="text-gray-600 hover:text-brand-600 font-medium transition-colors">
+                            Задачи
+                        </a>
+                    </div>
+                </div>
+                
+                <!-- Правая часть - пользователь -->
+                <div class="flex items-center space-x-4">
+                    {% if user.is_authenticated %}
+                        <a href="{% url 'accounts:profile' %}" 
+                           class="text-gray-600 hover:text-brand-600 font-medium transition-colors">
+                            Мой профиль
+                        </a>
+                        <form action="{% url 'logout' %}" method="post" class="inline">
+                            {% csrf_token %}
+                            <button type="submit" 
+                                    class="text-gray-500 hover:text-red-600 font-medium transition-colors">
+                                Выйти
+                            </button>
+                        </form>
+                    {% else %}
+                        <a href="{% url 'login' %}" 
+                           class="bg-brand-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-brand-700 transition-colors">
+                            Войти
+                        </a>
+                    {% endif %}
+                </div>
+                
+                <!-- Мобильное меню (кнопка) -->
+                <div class="md:hidden flex items-center">
+                    <button type="button" 
+                            x-data="{ open: false }"
+                            @click="open = !open"
+                            class="text-gray-600 hover:text-gray-900 p-2">
+                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </nav>
+        
+        <!-- Мобильное меню (выпадающее) -->
+        <div class="md:hidden hidden" x-data="{ open: false }" x-show="open" x-cloak>
+            <div class="px-4 pt-2 pb-3 space-y-1 bg-white border-t">
+                <a href="{% url 'home' %}" class="block px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg">Главная</a>
+                <a href="{% url 'about' %}" class="block px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg">Обо мне</a>
+                <a href="{% url 'lessons:lesson_list' %}" class="block px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg">Уроки</a>
+                <a href="{% url 'quizzes:quiz_list' %}" class="block px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg">Задачи</a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Основной контент -->
+    <main class="flex-grow">
+        {% block content %}
+        {% endblock content %}
+    </main>
+
+    <!-- Футер -->
+    <footer class="bg-white border-t mt-auto">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <p class="text-center text-gray-500 text-sm">
+                &copy; Новоселов Кирилл Васильевич. 2026
+            </p>
+        </div>
+    </footer>
+    
+    <!-- Скрипты которые должны загрузиться ДО Alpine.js -->
+    {% block pre_alpine_js %}{% endblock pre_alpine_js %}
+    
+    <!-- Alpine.js -->
+    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.3/dist/cdn.min.js"></script>
+    
+    <!-- htmx -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    
+    <!-- Swiper JS -->
+    <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
+    
+    <!-- PhotoSwipe JS -->
+    <script type="module">
+        import PhotoSwipeLightbox from 'https://cdn.jsdelivr.net/npm/photoswipe@5/dist/photoswipe-lightbox.esm.min.js';
+        import PhotoSwipe from 'https://cdn.jsdelivr.net/npm/photoswipe@5/dist/photoswipe.esm.min.js';
+        
+        // Инициализация PhotoSwipe для всех галерей
+        const lightbox = new PhotoSwipeLightbox({
+            gallery: '.pswp-gallery',
+            children: 'a',
+            pswpModule: PhotoSwipe
+        });
+        lightbox.init();
+    </script>
+    
+    <!-- AOS - Animate on Scroll -->
+    <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
+    <script>
+        AOS.init({
+            duration: 600,
+            easing: 'ease-out-cubic',
+            once: true,
+        });
+    </script>
+    
+    <!-- Старые скрипты для редактора (пока оставляем) -->
+    <script src="{% static 'js/image-crop-view.js' %}"></script>
+    {% block extra_js %}{% endblock extra_js %}
+</body>
+</html>

@@ -1,0 +1,157 @@
+{% extends 'base.html' %}
+
+{% block title %}Результат: {{ quiz.title }}{% endblock title %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Навигация -->
+    <nav class="mb-6" data-aos="fade-right">
+        <a href="{% url 'quizzes:quiz_list' %}" 
+           class="inline-flex items-center text-gray-500 hover:text-brand-600 transition-colors group">
+            <svg class="w-5 h-5 mr-2 transition-transform group-hover:-translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+            Назад к списку задач
+        </a>
+    </nav>
+
+    <!-- Заголовок -->
+    <header class="mb-8" data-aos="fade-up">
+        <h1 class="text-3xl font-bold text-gray-900 mb-2">Результаты теста</h1>
+        <p class="text-lg text-gray-600">{{ quiz.title }}</p>
+    </header>
+
+    <!-- Блок с результатом -->
+    <div class="mb-8" data-aos="fade-up" data-aos-delay="100">
+        {% if failed_answers %}
+        <div class="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-8">
+            <div class="flex items-center gap-4">
+                <div class="flex-shrink-0 w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center">
+                    <svg class="w-8 h-8 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                    </svg>
+                </div>
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-900">
+                        {{ score }} из {{ total }} баллов
+                    </h2>
+                    <p class="text-amber-700">Есть задачи, которые требуют доработки</p>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-2xl p-8">
+            <div class="flex items-center gap-4">
+                <div class="flex-shrink-0 w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
+                    <svg class="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                </div>
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-900">
+                        {{ score }} из {{ total }} баллов
+                    </h2>
+                    <p class="text-green-700">Поздравляем! Все задачи решены верно!</p>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Задачи с ошибками -->
+    {% if failed_answers %}
+    <div class="mb-8" data-aos="fade-up" data-aos-delay="200">
+        <h3 class="text-xl font-bold text-gray-900 mb-4 flex items-center">
+            <svg class="w-6 h-6 text-red-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            Задачи, которые требуют доработки
+        </h3>
+        
+        <div class="space-y-4">
+            {% for answer in failed_answers %}
+            <div class="bg-white rounded-xl shadow-sm border border-red-100 overflow-hidden">
+                <div class="bg-red-50 px-6 py-3 border-b border-red-100">
+                    <h4 class="font-semibold text-gray-900">{{ answer.question.get_title }}</h4>
+                </div>
+                
+                <div class="p-6">
+                    {% if answer.question.question_type == 'code' %}
+                    <div class="mb-4">
+                        <p class="text-sm text-gray-500 mb-2">Ваш код:</p>
+                        <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
+                            <pre class="text-gray-100 text-sm font-mono"><code>{{ answer.code_answer }}</code></pre>
+                        </div>
+                    </div>
+                    
+                    {% if answer.error_log %}
+                    <div class="bg-red-50 border-l-4 border-red-500 rounded-r-lg p-4 mb-4">
+                        <p class="text-sm font-medium text-red-800 mb-2">Ошибка выполнения / Теста:</p>
+                        <pre class="text-sm text-red-700 whitespace-pre-wrap font-mono">{{ answer.error_log }}</pre>
+                    </div>
+                    {% else %}
+                    <p class="text-sm text-red-600">Решение не прошло тесты.</p>
+                    {% endif %}
+                    
+                    <div class="bg-blue-50 border-l-4 border-blue-500 rounded-r-lg p-4">
+                        <div class="flex items-start">
+                            <svg class="w-5 h-5 text-blue-500 mr-2 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            <p class="text-sm text-blue-800">При следующем открытии теста ваш последний код будет автоматически восстановлен.</p>
+                        </div>
+                    </div>
+                    
+                    {% elif answer.question.question_type == 'text' %}
+                    <div class="mb-3">
+                        <p class="text-sm text-gray-500">Ваш ответ:</p>
+                        <p class="font-medium text-gray-900 mt-1">"{{ answer.text_answer }}"</p>
+                    </div>
+                    <p class="text-red-600 text-sm">Ответ неверен.</p>
+                    {% if answer.error_log %}
+                    <div class="mt-3 bg-red-50 border-l-4 border-red-500 rounded-r-lg p-4">
+                        <pre class="text-sm text-red-700 whitespace-pre-wrap">{{ answer.error_log }}</pre>
+                    </div>
+                    {% endif %}
+                    
+                    {% elif answer.question.question_type == 'choice' %}
+                    <div class="mb-3">
+                        <p class="text-sm text-gray-500">Выбранный ответ:</p>
+                        <p class="font-medium text-gray-900 mt-1">
+                            {% if answer.selected_choice %}
+                            {{ answer.selected_choice.text }}
+                            {% else %}
+                            <span class="text-gray-400">(Нет ответа)</span>
+                            {% endif %}
+                        </p>
+                    </div>
+                    <p class="text-red-600 text-sm">Это неверный ответ.</p>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Кнопки действий -->
+    <div class="flex flex-wrap gap-4" data-aos="fade-up" data-aos-delay="300">
+        {% if failed_answers %}
+        <a href="{% url 'quizzes:quiz_detail' quiz.id %}" 
+           class="inline-flex items-center px-6 py-3 bg-brand-600 text-white font-medium rounded-lg hover:bg-brand-700 transition-colors">
+            <svg class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+            Попробовать ещё раз
+        </a>
+        {% endif %}
+        <a href="{% url 'quizzes:quiz_list' %}" 
+           class="inline-flex items-center px-6 py-3 bg-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-300 transition-colors">
+            <svg class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
+            </svg>
+            К списку тестов
+        </a>
+    </div>
+</div>
+{% endblock content %}

@@ -1,0 +1,234 @@
+{% extends 'base.html' %}
+
+{% block title %}Задачи{% endblock title %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Заголовок страницы -->
+    <div class="text-center mb-12" data-aos="fade-down">
+        <h1 class="text-4xl font-bold text-gray-900 mb-4">Задачи</h1>
+        <p class="text-lg text-gray-600 max-w-2xl mx-auto">
+            Проверьте свои знания с помощью тестов и задач
+        </p>
+    </div>
+
+    <!-- Учебные задачи -->
+    <section class="mb-12" data-aos="fade-up">
+        <div class="flex items-center mb-6">
+            <div class="flex-shrink-0 w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center mr-4">
+                <svg class="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                </svg>
+            </div>
+            <h2 class="text-2xl font-bold text-gray-900">Учебные задачи</h2>
+        </div>
+
+        {% if educational_tasks %}
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {% for item in educational_tasks %}
+            <div class="group bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-all duration-300 {% if item.is_blocked %}opacity-60{% endif %}"
+                 data-aos="fade-up" data-aos-delay="{{ forloop.counter0 }}50">
+                <div class="p-5">
+                    <!-- Заголовок и статус -->
+                    <div class="flex items-start justify-between mb-3">
+                        <div class="flex-1">
+                            {% if item.is_blocked %}
+                            <h3 class="text-lg font-semibold text-gray-400">{{ item.quiz.title }}</h3>
+                            {% else %}
+                            <a href="{% url 'quizzes:quiz_detail' item.quiz.id %}" 
+                               class="text-lg font-semibold text-gray-900 hover:text-brand-600 transition-colors">
+                                {{ item.quiz.title }}
+                            </a>
+                            {% endif %}
+                        </div>
+                        
+                        <!-- Статус бейдж -->
+                        <span class="ml-2 flex-shrink-0 px-2.5 py-1 text-xs font-medium rounded-full
+                            {% if 'Пройдено' in item.status_text %}bg-green-100 text-green-700
+                            {% elif 'Недоступно' in item.status_text %}bg-gray-100 text-gray-500
+                            {% elif 'Доступно' in item.status_text %}bg-blue-100 text-blue-700
+                            {% else %}bg-yellow-100 text-yellow-700{% endif %}">
+                            {{ item.status_text|cut:"(" |cut:")" }}
+                        </span>
+                    </div>
+                    
+                    <!-- Информация -->
+                    <div class="space-y-2 text-sm">
+                        {% if item.status_text == "(Недоступно)" and item.start_date %}
+                        <div class="flex items-center text-gray-500">
+                            <svg class="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                            </svg>
+                            Откроется: {{ item.start_date|date:"d.m.Y H:i" }}
+                        </div>
+                        {% elif item.end_date %}
+                        <div class="flex items-center text-gray-500">
+                            <svg class="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            Дедлайн: {{ item.end_date|date:"d.m.Y H:i" }}
+                        </div>
+                        {% endif %}
+                        
+                        {% if item.best_score is not None %}
+                        <div class="flex items-center text-green-600">
+                            <svg class="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            Лучший результат: {{ item.best_score }}/{{ item.total_questions }}
+                        </div>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- Кнопки -->
+                    <div class="mt-4 flex items-center gap-2">
+                        {% if not item.is_blocked %}
+                        <a href="{% url 'quizzes:quiz_detail' item.quiz.id %}" 
+                           class="flex-1 text-center px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors">
+                            {% if item.best_score is not None %}Пройти снова{% else %}Начать{% endif %}
+                        </a>
+                        {% endif %}
+                        
+                        {% if user.is_superuser %}
+                        <a href="{% url 'quizzes:quiz_stats' item.quiz.id %}" 
+                           class="px-3 py-2 text-gray-500 hover:text-brand-600 hover:bg-gray-100 rounded-lg transition-colors"
+                           title="Статистика">
+                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                            </svg>
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="bg-gray-50 rounded-xl p-8 text-center">
+            <div class="text-gray-400 mb-2">
+                <svg class="w-12 h-12 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                </svg>
+            </div>
+            <p class="text-gray-500">Нет доступных учебных задач</p>
+        </div>
+        {% endif %}
+    </section>
+
+    <!-- Проверочные работы -->
+    <section data-aos="fade-up">
+        <div class="flex items-center mb-6">
+            <div class="flex-shrink-0 w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center mr-4">
+                <svg class="w-5 h-5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+                </svg>
+            </div>
+            <h2 class="text-2xl font-bold text-gray-900">Проверочные работы</h2>
+        </div>
+
+        {% if assessments %}
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {% for item in assessments %}
+            <div class="group bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-all duration-300 {% if item.is_blocked %}opacity-60{% endif %}"
+                 data-aos="fade-up" data-aos-delay="{{ forloop.counter0 }}50">
+                <div class="p-5">
+                    <!-- Заголовок и статус -->
+                    <div class="flex items-start justify-between mb-3">
+                        <div class="flex-1">
+                            {% if item.is_blocked %}
+                            <h3 class="text-lg font-semibold text-gray-400">{{ item.quiz.title }}</h3>
+                            {% else %}
+                            <a href="{% url 'quizzes:quiz_detail' item.quiz.id %}" 
+                               class="text-lg font-semibold text-gray-900 hover:text-purple-600 transition-colors">
+                                {{ item.quiz.title }}
+                            </a>
+                            {% endif %}
+                        </div>
+                        
+                        <!-- Статус бейдж -->
+                        <span class="ml-2 flex-shrink-0 px-2.5 py-1 text-xs font-medium rounded-full
+                            {% if 'Пройдено' in item.status_text %}bg-green-100 text-green-700
+                            {% elif 'Недоступно' in item.status_text %}bg-gray-100 text-gray-500
+                            {% elif 'Доступно' in item.status_text %}bg-purple-100 text-purple-700
+                            {% else %}bg-yellow-100 text-yellow-700{% endif %}">
+                            {{ item.status_text|cut:"(" |cut:")" }}
+                        </span>
+                    </div>
+                    
+                    <!-- Информация -->
+                    <div class="space-y-2 text-sm">
+                        {% if item.status_text == "(Недоступно)" and item.start_date %}
+                        <div class="flex items-center text-gray-500">
+                            <svg class="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                            </svg>
+                            Откроется: {{ item.start_date|date:"d.m.Y H:i" }}
+                        </div>
+                        {% elif item.end_date %}
+                        <div class="flex items-center text-gray-500">
+                            <svg class="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            Дедлайн: {{ item.end_date|date:"d.m.Y H:i" }}
+                        </div>
+                        {% endif %}
+                        
+                        {% if not item.is_blocked %}
+                        <div class="flex items-center text-gray-500">
+                            <svg class="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                            </svg>
+                            Осталось попыток: {{ item.remaining_attempts }}
+                        </div>
+                        {% endif %}
+                        
+                        {% if item.best_score is not None %}
+                        <div class="flex items-center text-green-600">
+                            <svg class="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            Лучший результат: {{ item.best_score }}/{{ item.total_questions }}
+                        </div>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- Кнопки -->
+                    <div class="mt-4 flex items-center gap-2">
+                        {% if not item.is_blocked and item.remaining_attempts > 0 %}
+                        <a href="{% url 'quizzes:quiz_detail' item.quiz.id %}" 
+                           class="flex-1 text-center px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 transition-colors">
+                            {% if item.best_score is not None %}Пройти снова{% else %}Начать{% endif %}
+                        </a>
+                        {% elif item.remaining_attempts == 0 %}
+                        <span class="flex-1 text-center px-4 py-2 bg-gray-100 text-gray-500 text-sm font-medium rounded-lg">
+                            Попытки исчерпаны
+                        </span>
+                        {% endif %}
+                        
+                        {% if user.is_superuser %}
+                        <a href="{% url 'quizzes:quiz_stats' item.quiz.id %}" 
+                           class="px-3 py-2 text-gray-500 hover:text-purple-600 hover:bg-gray-100 rounded-lg transition-colors"
+                           title="Статистика">
+                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                            </svg>
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="bg-gray-50 rounded-xl p-8 text-center">
+            <div class="text-gray-400 mb-2">
+                <svg class="w-12 h-12 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+                </svg>
+            </div>
+            <p class="text-gray-500">Нет доступных проверочных работ</p>
+        </div>
+        {% endif %}
+    </section>
+</div>
+{% endblock content %}
