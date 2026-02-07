@@ -20,3 +20,11 @@ app.conf.task_routes = {
 
 # Default queue for other tasks
 app.conf.task_default_queue = 'default'
+
+# Celery Beat schedule — periodic tasks
+app.conf.beat_schedule = {
+    'cleanup-stale-submissions': {
+        'task': 'quizzes.tasks.cleanup_stale_submissions',
+        'schedule': 1800,  # every 30 minutes
+    },
+}

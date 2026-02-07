@@ -162,7 +162,7 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_TRACK_STARTED = True
-CELERY_TASK_TIME_LIMIT = 60  # 60 seconds max per task
+CELERY_TASK_TIME_LIMIT = 300  # 5 minutes max per task
 
 # Django Channels Configuration
 CHANNEL_LAYERS = {
