@@ -3,6 +3,7 @@ from celery import shared_task
 from django.utils import timezone
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
+from datetime import timedelta
 
 
 def normalize_output(text):
@@ -107,6 +108,30 @@ def check_code_task(self, submission_id):
             'status': 'error',
             'error': str(e),
         }
+
+
+@shared_task
+def cleanup_stale_submissions():
+    """
+    Periodic task: find and clean up submissions stuck in pending/running.
+    Runs every 3 minutes via Celery Beat.
+    """
+    from .models import CodeSubmission
+
+    threshold = timezone.now() - timedelta(minutes=10)
+
+    stale = CodeSubmission.objects.filter(
+        status__in=['pending', 'running'],
+        created_at__lt=threshold
+    )
+
+    for submission in stale:
+        submission.status = "error"
+        submission.error_log = 'Превышено время ожидания'
+        submission.completed_at = timezone.now()
+        submission.save(update_fields=['status', 'error_log', 'completed_at'])
+        send_ws_notification(submission, 'error')    
+
 
 
 def send_ws_notification(submission, event_type):
