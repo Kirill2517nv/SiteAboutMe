@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.http import HttpResponseRedirect
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
-from .models import Quiz, Question, Choice, UserResult, UserAnswer, TestCase, QuizAssignment
+from .models import Quiz, Question, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, HelpRequest, HelpComment
 from .forms import BulkQuizAssignmentForm
 
 class ChoiceInline(admin.TabularInline):
@@ -14,12 +14,13 @@ class TestCaseInline(admin.StackedInline):
     extra = 1
 
 class QuestionAdmin(admin.ModelAdmin):
-    list_display = ('__str__', 'quiz', 'question_type') # Используем __str__ для обрезанного текста
+    list_display = ('title', 'quiz', 'question_type')
     list_filter = ('quiz', 'question_type')
+    search_fields = ('title', 'text')
     inlines = [ChoiceInline, TestCaseInline]
     fieldsets = (
         (None, {
-            'fields': ('quiz', 'text', 'question_type', 'data_file')
+            'fields': ('quiz', 'title', 'text', 'question_type', 'data_file')
         }),
         ('Для свободных ответов', {
             'fields': ('correct_text_answer',),
@@ -29,6 +30,7 @@ class QuestionAdmin(admin.ModelAdmin):
 
 class QuestionInline(admin.TabularInline):
     model = Question
+    fields = ('title', 'text', 'question_type', 'data_file')
     extra = 1
 
 class QuizAssignmentInline(admin.TabularInline):
@@ -126,7 +128,20 @@ class QuizAssignmentAdmin(admin.ModelAdmin):
             return full if full else obj.user.username
         return '-'
 
+class HelpCommentInline(admin.TabularInline):
+    model = HelpComment
+    readonly_fields = ('author', 'text', 'line_number', 'created_at')
+    extra = 0
+    can_delete = False
+
+class HelpRequestAdmin(admin.ModelAdmin):
+    list_display = ('student', 'question', 'quiz', 'status', 'has_unread_for_teacher', 'created_at', 'updated_at')
+    list_filter = ('status', 'has_unread_for_teacher', 'quiz')
+    search_fields = ('student__username', 'student__last_name', 'question__text')
+    inlines = [HelpCommentInline]
+
 admin.site.register(Quiz, QuizAdmin)
 admin.site.register(Question, QuestionAdmin)
 admin.site.register(UserResult, UserResultAdmin)
 admin.site.register(QuizAssignment, QuizAssignmentAdmin)
+admin.site.register(HelpRequest, HelpRequestAdmin)

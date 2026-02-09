@@ -21,6 +21,7 @@ class QuizCodeChecker {
 
         // UI callbacks
         this.onStatusChange = null;
+        this.onConnectionChange = null; // (status: 'connected'|'disconnected'|'reconnecting'|'polling') => void
 
         this.init();
     }
@@ -41,6 +42,7 @@ class QuizCodeChecker {
                 this.connected = true;
                 this.reconnectAttempts = 0;
                 this.stopPolling();
+                this._notifyConnection('connected');
             };
 
             this.socket.onmessage = (event) => {
@@ -51,6 +53,7 @@ class QuizCodeChecker {
             this.socket.onclose = (event) => {
                 console.log('WebSocket disconnected');
                 this.connected = false;
+                this._notifyConnection('disconnected');
                 this.attemptReconnect();
             };
 
@@ -69,10 +72,18 @@ class QuizCodeChecker {
             this.reconnectAttempts++;
             const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
             console.log(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
+            this._notifyConnection('reconnecting');
             setTimeout(() => this.connectWebSocket(), delay);
         } else {
             console.log('Max reconnect attempts reached, falling back to polling');
+            this._notifyConnection('polling');
             this.startPolling();
+        }
+    }
+
+    _notifyConnection(status) {
+        if (this.onConnectionChange) {
+            this.onConnectionChange(status);
         }
     }
 
@@ -81,6 +92,11 @@ class QuizCodeChecker {
             this.handleSubmissionUpdate(data);
         } else if (data.type === 'active_submissions') {
             this.handleActiveSubmissions(data.submissions);
+        } else if (data.type === 'help_comment') {
+            // Делегируем HelpRequestManager (если инициализирован)
+            if (window.helpManager) {
+                window.helpManager.handleTeacherReply(data);
+            }
         }
     }
 
@@ -113,6 +129,12 @@ class QuizCodeChecker {
             return { error: 'Код уже на проверке' };
         }
 
+        // Оптимистичная блокировка: помечаем как pending ДО запроса
+        this.pendingSubmissions.set(questionId, null);
+        if (this.onStatusChange) {
+            this.onStatusChange(questionId, 'pending', null, null);
+        }
+
         const url = `/quizzes/${this.quizId}/question/${questionId}/submit/`;
 
         try {
@@ -129,15 +151,22 @@ class QuizCodeChecker {
 
             if (response.ok) {
                 this.pendingSubmissions.set(questionId, data.submission_id);
-                if (this.onStatusChange) {
-                    this.onStatusChange(questionId, 'pending', null, null);
-                }
                 return data;
             } else {
+                // Снимаем блокировку при ошибке
+                this.pendingSubmissions.delete(questionId);
+                if (this.onStatusChange) {
+                    this.onStatusChange(questionId, null, null, null);
+                }
                 return { error: data.error || 'Ошибка отправки' };
             }
         } catch (e) {
             console.error('Submit error:', e);
+            // Снимаем блокировку при сетевой ошибке
+            this.pendingSubmissions.delete(questionId);
+            if (this.onStatusChange) {
+                this.onStatusChange(questionId, null, null, null);
+            }
             return { error: 'Ошибка сети' };
         }
     }

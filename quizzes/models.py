@@ -48,6 +48,7 @@ class Question(models.Model):
     ]
 
     quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE, related_name='questions', verbose_name="Тест")
+    title = models.CharField(max_length=200, verbose_name="Заголовок вопроса", blank=True, help_text="Используется для отображения и сортировки. Если пусто — берётся первая строка текста.")
     text = models.TextField(verbose_name="Текст вопроса")
     question_type = models.CharField(max_length=10, choices=TYPE_CHOICES, default='choice', verbose_name="Тип вопроса")
     
@@ -59,14 +60,17 @@ class Question(models.Model):
         verbose_name_plural = "Вопросы"
 
     def __str__(self):
-        return self.text[:50] + "..." if len(self.text) > 50 else self.text
+        title = self.get_title()
+        return title[:50] + "..." if len(title) > 50 else title
 
     def get_title(self):
-        """Возвращает первую строку текста (заголовок)"""
+        """Возвращает заголовок: поле title или первую строку текста"""
+        if self.title:
+            return self.title
         return self.text.strip().split('\n')[0]
 
     def get_body(self):
-        """Возвращает все остальные строки (тело вопроса)"""
+        """Возвращает тело вопроса (всё кроме первой строки текста)"""
         lines = self.text.strip().split('\n')
         if len(lines) > 1:
             return '\n'.join(lines[1:])
@@ -150,6 +154,54 @@ class CodeSubmission(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.question} ({self.status})"
+
+
+class HelpRequest(models.Model):
+    """Запрос помощи от ученика по конкретному code-вопросу (один тред на ученика × вопрос)."""
+    STATUS_CHOICES = [
+        ('open', 'Открыт'),
+        ('answered', 'Отвечен'),
+        ('resolved', 'Решён'),
+    ]
+
+    student = models.ForeignKey(User, on_delete=models.CASCADE, related_name='help_requests', verbose_name="Ученик")
+    question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name='help_requests', verbose_name="Вопрос")
+    quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE, related_name='help_requests', verbose_name="Тест")
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='open', verbose_name="Статус")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлён")
+    has_unread_for_teacher = models.BooleanField(default=True, verbose_name="Непрочитано учителем")
+    has_unread_for_student = models.BooleanField(default=False, verbose_name="Непрочитано учеником")
+
+    class Meta:
+        verbose_name = "Запрос помощи"
+        verbose_name_plural = "Запросы помощи"
+        unique_together = ['student', 'question']
+        indexes = [
+            models.Index(fields=['status', 'has_unread_for_teacher']),
+        ]
+
+    def __str__(self):
+        return f"Помощь: {self.student.username} → {self.question} ({self.get_status_display()})"
+
+
+class HelpComment(models.Model):
+    """Сообщение в треде запроса помощи."""
+    help_request = models.ForeignKey(HelpRequest, on_delete=models.CASCADE, related_name='comments', verbose_name="Запрос помощи")
+    author = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="Автор")
+    text = models.TextField(verbose_name="Текст комментария")
+    line_number = models.PositiveIntegerField(null=True, blank=True, verbose_name="Номер строки")
+    code_snapshot = models.TextField(null=True, blank=True, verbose_name="Снапшот кода")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
+
+    class Meta:
+        verbose_name = "Комментарий помощи"
+        verbose_name_plural = "Комментарии помощи"
+        ordering = ['created_at']
+
+    def __str__(self):
+        line_info = f" (строка {self.line_number})" if self.line_number else ""
+        return f"{self.author.username}{line_info}: {self.text[:50]}"
 
 
 class UserAnswer(models.Model):

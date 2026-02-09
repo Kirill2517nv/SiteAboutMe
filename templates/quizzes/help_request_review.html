@@ -1,0 +1,576 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Помощь: {{ hr.student.get_full_name|default:hr.student.username }}{% endblock title %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/theme/material-darker.min.css">
+<style>
+    .CodeMirror {
+        border: 1px solid #374151;
+        border-radius: 8px;
+        font-size: 14px;
+        height: auto;
+        max-height: none;
+    }
+    .CodeMirror-gutters {
+        border-right: 1px solid #374151;
+    }
+    .CodeMirror-linenumber {
+        cursor: pointer;
+    }
+    .CodeMirror-linenumber:hover {
+        color: #f59e0b !important;
+        font-weight: 700;
+    }
+    /* Янтарная подсветка строк с комментариями */
+    .line-has-comments {
+        background: rgba(245, 158, 11, 0.12) !important;
+    }
+    /* Тред-виджет */
+    .thread-widget {
+        background: #1e293b;
+        border: 1px solid #f59e0b;
+        border-radius: 8px;
+        margin: 4px 8px;
+        overflow: hidden;
+    }
+    .thread-widget__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 12px;
+        background: #0f172a;
+        border-bottom: 1px solid #334155;
+    }
+    .thread-widget__title {
+        color: #f59e0b;
+        font-size: 12px;
+        font-weight: 600;
+    }
+    .thread-widget__close {
+        background: none;
+        border: none;
+        color: #64748b;
+        font-size: 18px;
+        cursor: pointer;
+        line-height: 1;
+        padding: 0 4px;
+    }
+    .thread-widget__close:hover {
+        color: #e2e8f0;
+    }
+    .thread-widget__comments {
+        max-height: 250px;
+        overflow-y: auto;
+        padding: 8px 12px;
+    }
+    .thread-widget__comment {
+        margin-bottom: 8px;
+        padding-bottom: 8px;
+    }
+    .thread-widget__comment:not(:last-child) {
+        border-bottom: 1px solid #334155;
+    }
+    .thread-widget__comment-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 3px;
+    }
+    .thread-widget__author {
+        font-size: 12px;
+        font-weight: 600;
+    }
+    .thread-widget__author--teacher { color: #34d399; }
+    .thread-widget__author--student { color: #fbbf24; }
+    .thread-widget__time {
+        font-size: 11px;
+        color: #64748b;
+    }
+    .thread-widget__text {
+        font-size: 13px;
+        color: #e2e8f0;
+        white-space: pre-wrap;
+    }
+    .thread-widget__form {
+        padding: 8px 12px;
+        border-top: 1px solid #334155;
+    }
+    .thread-widget__textarea {
+        width: 100%;
+        background: #0f172a;
+        color: #e2e8f0;
+        border: 1px solid #334155;
+        border-radius: 6px;
+        padding: 8px;
+        font-size: 13px;
+        resize: vertical;
+        font-family: inherit;
+    }
+    .thread-widget__textarea:focus {
+        outline: none;
+        border-color: #f59e0b;
+    }
+    .thread-widget__btn-row {
+        display: flex;
+        gap: 8px;
+        margin-top: 6px;
+        justify-content: flex-end;
+    }
+    .thread-widget__send {
+        padding: 5px 14px;
+        background: #f59e0b;
+        color: #1e293b;
+        border: none;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    .thread-widget__send:hover {
+        background: #d97706;
+    }
+    .thread-widget__send:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+    .thread-widget__empty {
+        padding: 8px 12px;
+        color: #64748b;
+        font-size: 12px;
+        font-style: italic;
+    }
+</style>
+{% endblock extra_css %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Навигация -->
+    <nav class="mb-6" data-aos="fade-right">
+        <a href="{% url 'quizzes:help_requests_list' %}"
+           class="inline-flex items-center text-gray-500 hover:text-brand-600 transition-colors group">
+            <svg class="w-5 h-5 mr-2 transition-transform group-hover:-translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+            Назад к запросам
+        </a>
+    </nav>
+
+    <!-- Заголовок -->
+    <header class="mb-6 flex items-center justify-between flex-wrap gap-4" data-aos="fade-up">
+        <div>
+            <div class="flex items-center gap-3 mb-2">
+                <h1 class="text-2xl font-bold text-gray-900">{{ hr.question.get_title }}</h1>
+                <span class="px-2.5 py-1 rounded-full text-xs font-medium
+                    {% if hr.status == 'open' %}bg-amber-100 text-amber-700
+                    {% elif hr.status == 'answered' %}bg-blue-100 text-blue-700
+                    {% else %}bg-green-100 text-green-700{% endif %}">
+                    {{ hr.get_status_display }}
+                </span>
+            </div>
+            <p class="text-gray-500">
+                Ученик: <span class="font-medium text-gray-700">{{ hr.student.get_full_name|default:hr.student.username }}</span>
+                &middot; Квиз: <span class="font-medium text-gray-700">{{ hr.quiz.title }}</span>
+            </p>
+        </div>
+        {% if hr.status != 'resolved' %}
+        <button type="button" id="resolve-btn"
+                class="px-4 py-2 text-sm font-medium text-green-700 bg-green-50 rounded-lg hover:bg-green-100 border border-green-200 transition-colors"
+                onclick="resolveRequest()">
+            <svg class="w-4 h-4 inline mr-1 -mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            </svg>
+            Отметить как решённый
+        </button>
+        {% endif %}
+    </header>
+
+    <!-- Код ученика (full width) -->
+    <div data-aos="fade-up">
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div class="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+                <h2 class="text-sm font-semibold text-gray-700">Код ученика</h2>
+                <span class="text-xs text-gray-400">Кликните на номер строки для комментария к строке</span>
+            </div>
+            <div class="p-4">
+                <textarea id="student-code">{{ code }}</textarea>
+            </div>
+        </div>
+    </div>
+
+    <!-- Общие комментарии -->
+    <div class="mt-6" data-aos="fade-up">
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div class="px-4 py-3 bg-gray-50 border-b border-gray-100">
+                <h2 class="text-sm font-semibold text-gray-700">Общие комментарии</h2>
+            </div>
+            <div id="general-comments-container" class="p-4 space-y-3">
+                {% for comment in general_comments %}
+                <div class="p-3 rounded-lg {% if comment.author.is_superuser %}bg-blue-50 border border-blue-100{% else %}bg-amber-50 border border-amber-100{% endif %}">
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="text-xs font-semibold {% if comment.author.is_superuser %}text-blue-700{% else %}text-amber-700{% endif %}">
+                            {{ comment.author.get_full_name|default:comment.author.username }}
+                        </span>
+                        <span class="text-xs text-gray-400 ml-auto">
+                            {{ comment.created_at|date:"d M H:i" }}
+                        </span>
+                    </div>
+                    <div class="text-sm text-gray-700 whitespace-pre-wrap">{{ comment.text }}</div>
+                </div>
+                {% empty %}
+                <p id="no-general-comments" class="text-sm text-gray-400 italic">Нет общих комментариев</p>
+                {% endfor %}
+            </div>
+            <!-- Форма общего комментария -->
+            <div class="px-4 pb-4">
+                <textarea id="general-reply-text" rows="2"
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
+                          placeholder="Написать общий комментарий..."></textarea>
+                <div class="flex justify-end mt-2">
+                    <button type="button" id="send-general-btn"
+                            class="px-5 py-2 text-sm font-medium text-white bg-brand-600 rounded-lg hover:bg-brand-700 transition-colors"
+                            onclick="sendGeneralReply()">
+                        Отправить
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/python/python.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const csrfToken = '{{ csrf_token }}';
+    const helpRequestId = {{ hr.id }};
+    const lineCommentsData = JSON.parse('{{ line_comments_json|escapejs }}');
+    const openThreads = {}; // { lineNumber: CodeMirror.LineWidget }
+
+    // CodeMirror read-only
+    const cm = CodeMirror.fromTextArea(document.getElementById('student-code'), {
+        mode: 'python',
+        theme: 'material-darker',
+        lineNumbers: true,
+        readOnly: true,
+        lineWrapping: true,
+    });
+
+    // --- Маркеры строк с комментариями ---
+    function updateLineMarkers() {
+        const totalLines = cm.lineCount();
+        for (let i = 0; i < totalLines; i++) {
+            cm.removeLineClass(i, 'wrap', 'line-has-comments');
+        }
+        Object.keys(lineCommentsData).forEach(function(line) {
+            const lineIdx = parseInt(line) - 1;
+            if (lineIdx >= 0 && lineIdx < totalLines) {
+                cm.addLineClass(lineIdx, 'wrap', 'line-has-comments');
+            }
+        });
+    }
+    updateLineMarkers();
+
+    // --- TODO(human): Реализуйте createThreadWidget ---
+    // Эта функция создаёт DOM-элемент для inline треда.
+    // Параметры:
+    //   lineNumber (int) — номер строки (1-based)
+    //   comments (Array) — массив комментариев [{author, is_teacher, text, created_at}, ...]
+    //   onSend (Function) — callback(text) для отправки нового комментария
+    //   onClose (Function) — callback() для закрытия треда
+    // Возвращает: HTMLElement с классом 'thread-widget'
+    // CSS-классы для стилизации уже определены выше:
+    //   .thread-widget, .thread-widget__header, .thread-widget__title,
+    //   .thread-widget__close, .thread-widget__comments, .thread-widget__comment,
+    //   .thread-widget__comment-header, .thread-widget__author (--teacher/--student),
+    //   .thread-widget__time, .thread-widget__text, .thread-widget__form,
+    //   .thread-widget__textarea, .thread-widget__btn-row, .thread-widget__send,
+    //   .thread-widget__empty
+    function createThreadWidget(lineNumber, comments, onSend, onClose) {
+        const container = document.createElement('div');
+        container.className = 'thread-widget';
+
+        // --- Заголовок ---
+        const header = document.createElement('div');
+        header.className = 'thread-widget__header';
+
+        const title = document.createElement('span');
+        title.className = 'thread-widget__title';
+        title.textContent = `Строка ${lineNumber}`;
+
+        const closeBtn = document.createElement('button');
+        closeBtn.type = 'button';
+        closeBtn.innerHTML = '&times;';
+        closeBtn.className = 'thread-widget__close';
+        closeBtn.onclick = onClose;
+
+        header.appendChild(title);
+        header.appendChild(closeBtn);
+        container.appendChild(header);
+
+        // --- Существующие комментарии ---
+        if (comments.length > 0) {
+            const commentsDiv = document.createElement('div');
+            commentsDiv.className = 'thread-widget__comments';
+
+            comments.forEach(c => {
+                const item = document.createElement('div');
+                item.className = 'thread-widget__comment';
+
+                const itemHeader = document.createElement('div');
+                itemHeader.className = 'thread-widget__comment-header';
+
+                const author = document.createElement('span');
+                author.className = 'thread-widget__author ' +
+                    (c.is_teacher ? 'thread-widget__author--teacher' : 'thread-widget__author--student');
+                author.textContent = c.author;
+
+                const time = document.createElement('span');
+                time.className = 'thread-widget__time';
+                time.textContent = new Date(c.created_at).toLocaleString('ru-RU', {
+                    hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short'
+                });
+
+                itemHeader.appendChild(author);
+                itemHeader.appendChild(time);
+
+                const text = document.createElement('div');
+                text.className = 'thread-widget__text';
+                text.textContent = c.text;
+
+                item.appendChild(itemHeader);
+                item.appendChild(text);
+                commentsDiv.appendChild(item);
+            });
+
+            container.appendChild(commentsDiv);
+        } else {
+            const empty = document.createElement('div');
+            empty.className = 'thread-widget__empty';
+            empty.textContent = 'Нет комментариев к этой строке';
+            container.appendChild(empty);
+        }
+
+        // --- Форма нового комментария ---
+        const formDiv = document.createElement('div');
+        formDiv.className = 'thread-widget__form';
+
+        const textarea = document.createElement('textarea');
+        textarea.rows = 2;
+        textarea.className = 'thread-widget__textarea';
+        textarea.placeholder = comments.length > 0 ? 'Продолжить диалог...' : 'Написать комментарий к строке...';
+        formDiv.appendChild(textarea);
+
+        const btnRow = document.createElement('div');
+        btnRow.className = 'thread-widget__btn-row';
+
+        const sendBtn = document.createElement('button');
+        sendBtn.type = 'button';
+        sendBtn.textContent = 'Отправить';
+        sendBtn.className = 'thread-widget__send';
+        sendBtn.onclick = async () => {
+            const text = textarea.value.trim();
+            if (!text) return;
+            sendBtn.disabled = true;
+            sendBtn.textContent = 'Отправка...';
+            const success = await onSend(text);
+            if (!success) {
+                sendBtn.disabled = false;
+                sendBtn.textContent = 'Отправить';
+            }
+            // При success onSend сам переоткроет тред
+        };
+
+        textarea.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && e.ctrlKey) {
+                e.preventDefault();
+                sendBtn.click();
+            }
+            if (e.key === 'Escape') {
+                onClose();
+            }
+        });
+
+        btnRow.appendChild(sendBtn);
+        formDiv.appendChild(btnRow);
+        container.appendChild(formDiv);
+
+        // Автофокус
+        setTimeout(() => textarea.focus(), 50);
+
+        return container;
+    }
+
+    // --- Toggle тред по клику на gutter ---
+    function toggleThread(lineNumber) {
+        if (openThreads[lineNumber]) {
+            openThreads[lineNumber].clear();
+            delete openThreads[lineNumber];
+            return;
+        }
+        openThread(lineNumber);
+    }
+
+    function openThread(lineNumber) {
+        if (openThreads[lineNumber]) return;
+
+        const comments = lineCommentsData[String(lineNumber)] || [];
+
+        const onSend = async function(text) {
+            return await sendLineReply(lineNumber, text);
+        };
+
+        const onClose = function() {
+            if (openThreads[lineNumber]) {
+                openThreads[lineNumber].clear();
+                delete openThreads[lineNumber];
+            }
+        };
+
+        const widgetEl = createThreadWidget(lineNumber, comments, onSend, onClose);
+
+        const widget = cm.addLineWidget(lineNumber - 1, widgetEl, {
+            coverGutter: false,
+            noHScroll: true,
+        });
+        openThreads[lineNumber] = widget;
+    }
+
+    // Gutter click handler
+    cm.on('gutterClick', function(editor, line) {
+        toggleThread(line + 1);
+    });
+
+    // --- Auto-open треды для строк с комментариями ---
+    Object.keys(lineCommentsData).forEach(function(line) {
+        openThread(parseInt(line));
+    });
+
+    // --- AJAX: ответ к строке ---
+    async function sendLineReply(lineNumber, text) {
+        try {
+            const response = await fetch(`/quizzes/help-requests/${helpRequestId}/reply/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken,
+                },
+                body: JSON.stringify({
+                    text: text,
+                    line_number: lineNumber,
+                }),
+            });
+            const data = await response.json();
+            if (response.ok) {
+                // Обновляем lineCommentsData
+                if (!lineCommentsData[String(lineNumber)]) {
+                    lineCommentsData[String(lineNumber)] = [];
+                }
+                lineCommentsData[String(lineNumber)].push(data.comment);
+                updateLineMarkers();
+
+                // Переоткрываем тред с обновлёнными данными
+                if (openThreads[lineNumber]) {
+                    openThreads[lineNumber].clear();
+                    delete openThreads[lineNumber];
+                }
+                openThread(lineNumber);
+                return true;
+            } else {
+                alert(data.error || 'Ошибка');
+                return false;
+            }
+        } catch (e) {
+            alert('Ошибка сети');
+            return false;
+        }
+    }
+
+    // --- AJAX: общий комментарий ---
+    window.sendGeneralReply = async function() {
+        const textarea = document.getElementById('general-reply-text');
+        const text = textarea.value.trim();
+        if (!text) return;
+
+        const btn = document.getElementById('send-general-btn');
+        btn.disabled = true;
+        btn.textContent = 'Отправка...';
+
+        try {
+            const response = await fetch(`/quizzes/help-requests/${helpRequestId}/reply/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken,
+                },
+                body: JSON.stringify({ text: text, line_number: null }),
+            });
+            const data = await response.json();
+            if (response.ok) {
+                // Добавляем комментарий в DOM
+                const container = document.getElementById('general-comments-container');
+                const noComments = document.getElementById('no-general-comments');
+                if (noComments) noComments.remove();
+
+                const div = document.createElement('div');
+                div.className = 'p-3 rounded-lg bg-blue-50 border border-blue-100';
+                div.innerHTML = `
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="text-xs font-semibold text-blue-700">${escapeHtml(data.comment.author)}</span>
+                        <span class="text-xs text-gray-400 ml-auto">${formatDate(data.comment.created_at)}</span>
+                    </div>
+                    <div class="text-sm text-gray-700 whitespace-pre-wrap">${escapeHtml(data.comment.text)}</div>
+                `;
+                container.appendChild(div);
+                textarea.value = '';
+            } else {
+                alert(data.error || 'Ошибка');
+            }
+        } catch (e) {
+            alert('Ошибка сети');
+        }
+        btn.disabled = false;
+        btn.textContent = 'Отправить';
+    };
+
+    // --- Отметить как решённый ---
+    window.resolveRequest = async function() {
+        if (!confirm('Отметить запрос как решённый?')) return;
+
+        const btn = document.getElementById('resolve-btn');
+        if (btn) btn.disabled = true;
+
+        try {
+            const response = await fetch(`/quizzes/help-requests/${helpRequestId}/resolve/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken,
+                },
+            });
+            if (response.ok) {
+                window.location.reload();
+            }
+        } catch (e) {
+            alert('Ошибка сети');
+        }
+        if (btn) btn.disabled = false;
+    };
+
+    // --- Утилиты ---
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    function formatDate(isoStr) {
+        return new Date(isoStr).toLocaleString('ru-RU', {
+            hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short'
+        });
+    }
+});
+</script>
+{% endblock content %}

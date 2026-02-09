@@ -100,7 +100,7 @@ python manage.py runserver
 docker run -p 6379:6379 redis
 
 # Терминал 2: Celery worker
-celery -A config worker -l info
+celery -A config worker -l info --pool=solo -Q default,code_execution
 
 # Терминал 3: Django
 python manage.py runserver

@@ -1,0 +1,110 @@
+{% extends 'base.html' %}
+
+{% block title %}Запросы помощи{% endblock title %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <nav class="mb-6" data-aos="fade-right">
+        <a href="{% url 'quizzes:quiz_list' %}"
+           class="inline-flex items-center text-gray-500 hover:text-brand-600 transition-colors group">
+            <svg class="w-5 h-5 mr-2 transition-transform group-hover:-translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+            К списку задач
+        </a>
+    </nav>
+
+    <header class="mb-8" data-aos="fade-up">
+        <h1 class="text-3xl font-bold text-gray-900 mb-2">Запросы помощи</h1>
+        <p class="text-gray-600">Ученики просят помощь по задачам с кодом</p>
+    </header>
+
+    <!-- Фильтры -->
+    <div class="flex gap-2 mb-6" data-aos="fade-up">
+        {% with filters="open:Открытые,answered:Отвеченные,resolved:Решённые,all:Все" %}
+        {% for f in filters|make_list %}{% endfor %}
+        {% endwith %}
+        <a href="?status=open"
+           class="px-4 py-2 rounded-lg text-sm font-medium transition-colors {% if status_filter == 'open' %}bg-amber-100 text-amber-800{% else %}bg-gray-100 text-gray-600 hover:bg-gray-200{% endif %}">
+            Открытые
+        </a>
+        <a href="?status=answered"
+           class="px-4 py-2 rounded-lg text-sm font-medium transition-colors {% if status_filter == 'answered' %}bg-blue-100 text-blue-800{% else %}bg-gray-100 text-gray-600 hover:bg-gray-200{% endif %}">
+            Отвеченные
+        </a>
+        <a href="?status=resolved"
+           class="px-4 py-2 rounded-lg text-sm font-medium transition-colors {% if status_filter == 'resolved' %}bg-green-100 text-green-800{% else %}bg-gray-100 text-gray-600 hover:bg-gray-200{% endif %}">
+            Решённые
+        </a>
+        <a href="?status=all"
+           class="px-4 py-2 rounded-lg text-sm font-medium transition-colors {% if status_filter == 'all' %}bg-gray-800 text-white{% else %}bg-gray-100 text-gray-600 hover:bg-gray-200{% endif %}">
+            Все
+        </a>
+    </div>
+
+    <!-- Список запросов -->
+    <div class="space-y-3" data-aos="fade-up">
+        {% for hr in help_requests %}
+        <a href="{% url 'quizzes:help_request_review' hr.id %}"
+           class="block bg-white rounded-xl shadow-sm border {% if hr.has_unread_for_teacher %}border-amber-300{% else %}border-gray-100{% endif %} p-5 hover:shadow-md transition-all group">
+            <div class="flex items-start gap-4">
+                <!-- Статус иконка -->
+                <div class="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center
+                    {% if hr.status == 'open' %}bg-amber-100 text-amber-600
+                    {% elif hr.status == 'answered' %}bg-blue-100 text-blue-600
+                    {% else %}bg-green-100 text-green-600{% endif %}">
+                    {% if hr.status == 'open' %}
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    {% elif hr.status == 'answered' %}
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/>
+                    </svg>
+                    {% else %}
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                    </svg>
+                    {% endif %}
+                </div>
+
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="font-semibold text-gray-900">{{ hr.student.get_full_name|default:hr.student.username }}</span>
+                        <span class="text-gray-400">&middot;</span>
+                        <span class="text-sm text-gray-500">{{ hr.quiz.title }}</span>
+                        {% if hr.has_unread_for_teacher %}
+                        <span class="ml-auto flex-shrink-0 w-2.5 h-2.5 bg-amber-500 rounded-full"></span>
+                        {% endif %}
+                    </div>
+                    <p class="text-sm text-gray-600 mb-1">{{ hr.question.get_title }}</p>
+                    {% if hr.last_comment %}
+                    <p class="text-sm text-gray-400 truncate">
+                        <span class="{% if hr.last_comment.author.is_superuser %}text-green-600{% else %}text-amber-600{% endif %} font-medium">{{ hr.last_comment.author.get_full_name|default:hr.last_comment.author.username }}:</span>
+                        {{ hr.last_comment.text|truncatechars:80 }}
+                    </p>
+                    {% endif %}
+                </div>
+
+                <div class="flex-shrink-0 text-right">
+                    <div class="text-xs text-gray-400">{{ hr.updated_at|timesince }} назад</div>
+                    <div class="mt-1 px-2 py-0.5 rounded text-xs font-medium
+                        {% if hr.status == 'open' %}bg-amber-50 text-amber-700
+                        {% elif hr.status == 'answered' %}bg-blue-50 text-blue-700
+                        {% else %}bg-green-50 text-green-700{% endif %}">
+                        {{ hr.get_status_display }}
+                    </div>
+                </div>
+            </div>
+        </a>
+        {% empty %}
+        <div class="bg-gray-50 rounded-xl p-12 text-center" data-aos="fade-up">
+            <svg class="w-12 h-12 mx-auto text-gray-300 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>
+            </svg>
+            <p class="text-gray-500">Нет запросов помощи</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock content %}

@@ -66,6 +66,19 @@ class QuizConsumer(AsyncWebsocketConsumer):
             'event_type': event['event_type'],
         }))
 
+    async def help_comment_update(self, event):
+        """
+        Handle help comment messages from teacher replies.
+        Forwards to client so HelpRequestManager can display inline.
+        """
+        await self.send(text_data=json.dumps({
+            'type': 'help_comment',
+            'question_id': event['question_id'],
+            'comment': event['comment'],
+            'status': event.get('status'),
+            'resolved': event.get('resolved', False),
+        }))
+
     @database_sync_to_async
     def get_active_submissions(self):
         """
@@ -90,3 +103,78 @@ class QuizConsumer(AsyncWebsocketConsumer):
             'type': 'active_submissions',
             'submissions': submissions,
         }))
+
+
+class NotificationConsumer(AsyncWebsocketConsumer):
+    """
+    Global WebSocket consumer for navbar badge notifications.
+    Groups: notifications_{user_id} (personal) + notifications_teachers (for superusers)
+    """
+
+    async def connect(self):
+        self.user = self.scope['user']
+
+        if self.user.is_anonymous:
+            await self.close()
+            return
+
+        self.personal_group = f"notifications_{self.user.id}"
+        await self.channel_layer.group_add(
+            self.personal_group,
+            self.channel_name
+        )
+
+        # Superusers also join the teachers group
+        if self.user.is_superuser:
+            await self.channel_layer.group_add(
+                'notifications_teachers',
+                self.channel_name
+            )
+
+        await self.accept()
+
+        # Send current unread count on connect
+        count = await self.get_unread_count()
+        await self.send(text_data=json.dumps({
+            'type': 'unread_count_update',
+            'unread_count': count,
+        }))
+
+    async def disconnect(self, close_code):
+        if hasattr(self, 'personal_group'):
+            await self.channel_layer.group_discard(
+                self.personal_group,
+                self.channel_name
+            )
+        if hasattr(self, 'user') and self.user.is_superuser:
+            await self.channel_layer.group_discard(
+                'notifications_teachers',
+                self.channel_name
+            )
+
+    async def help_notification(self, event):
+        """
+        New help request or reply — update badge count.
+        """
+        count = await self.get_unread_count()
+        await self.send(text_data=json.dumps({
+            'type': 'help_notification',
+            'help_request_id': event.get('help_request_id'),
+            'question_id': event.get('question_id'),
+            'quiz_id': event.get('quiz_id'),
+            'student_name': event.get('student_name'),
+            'unread_count': count,
+        }))
+
+    @database_sync_to_async
+    def get_unread_count(self):
+        from .models import HelpRequest
+        if self.user.is_superuser:
+            return HelpRequest.objects.filter(
+                has_unread_for_teacher=True
+            ).exclude(status='resolved').count()
+        else:
+            return HelpRequest.objects.filter(
+                student=self.user,
+                has_unread_for_student=True
+            ).count()
