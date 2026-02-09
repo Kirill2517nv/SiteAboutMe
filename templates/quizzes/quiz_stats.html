@@ -53,6 +53,9 @@
                                 Ученик
                             </th>
                             <th class="px-6 py-4 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                                ЕГЭ
+                            </th>
+                            <th class="px-6 py-4 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
                                 Попытки
                             </th>
                             <th class="px-6 py-4 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
@@ -70,10 +73,17 @@
                         {% for item in group.students %}
                         <tr class="hover:bg-gray-50 transition-colors">
                             <td class="px-6 py-4">
-                                <a href="{% url 'quizzes:user_attempts' quiz.id item.user.id %}" 
+                                <a href="{% url 'quizzes:user_attempts' quiz.id item.user.id %}"
                                    class="font-medium text-gray-900 hover:text-brand-600 transition-colors">
                                     {{ item.full_name }}
                                 </a>
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                {% if item.is_ege %}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">Да</span>
+                                {% else %}
+                                <span class="text-gray-300">—</span>
+                                {% endif %}
                             </td>
                             <td class="px-6 py-4 text-center">
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
@@ -81,15 +91,12 @@
                                 </span>
                             </td>
                             <td class="px-6 py-4 text-center">
-                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
-                                    {% if item.best_score == item.total_questions %}bg-green-100 text-green-700
-                                    {% elif item.best_score >= item.total_questions|divisibleby:2 %}bg-yellow-100 text-yellow-700
-                                    {% else %}bg-red-100 text-red-700{% endif %}">
-                                    {{ item.best_score }}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {{ item.best_score_color }}">
+                                    {{ item.best_score }}/{{ item.total_questions }}
                                 </span>
                             </td>
                             <td class="px-6 py-4 text-center">
-                                <span class="text-gray-600">{{ item.last_score }}</span>
+                                <span class="text-gray-600">{{ item.last_score }}/{{ item.total_questions }}</span>
                             </td>
                             <td class="px-6 py-4 text-sm text-gray-500">
                                 {{ item.last_date|date:"d.m.Y H:i" }}
