@@ -69,20 +69,20 @@
                 <!-- Левая часть - логотип и навигация -->
                 <div class="flex items-center space-x-8">
                     <a href="{% url 'home' %}" class="text-xl font-bold text-brand-600 hover:text-brand-700 transition-colors">
-                        Учебный портал
+                        Учебный портал <span class="text-xs font-normal text-gray-400">v0.0.2</span>
                     </a>
                     <div class="hidden md:flex items-center space-x-6">
-                        <a href="{% url 'about' %}" 
+                        <a href="{% url 'lessons:lesson_list' %}"
                            class="text-gray-600 hover:text-brand-600 font-medium transition-colors">
-                            Обо мне
+                            База знаний
                         </a>
-                        <a href="{% url 'lessons:lesson_list' %}" 
-                           class="text-gray-600 hover:text-brand-600 font-medium transition-colors">
-                            Уроки
-                        </a>
-                        <a href="{% url 'quizzes:quiz_list' %}" 
+                        <a href="{% url 'quizzes:quiz_list' %}"
                            class="text-gray-600 hover:text-brand-600 font-medium transition-colors">
                             Задачи
+                        </a>
+                        <a href="{% url 'about' %}"
+                           class="text-gray-600 hover:text-brand-600 font-medium transition-colors">
+                            Об авторе
                         </a>
                     </div>
                 </div>
@@ -167,9 +167,9 @@
              x-transition:leave-end="opacity-0 -translate-y-1"
              @click.outside="mobileMenu = false">
             <div class="px-4 pt-2 pb-3 space-y-1 bg-white border-t">
-                <a href="{% url 'about' %}" class="block px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg">Обо мне</a>
-                <a href="{% url 'lessons:lesson_list' %}" class="block px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg">Уроки</a>
+                <a href="{% url 'lessons:lesson_list' %}" class="block px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg">База знаний</a>
                 <a href="{% url 'quizzes:quiz_list' %}" class="block px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg">Задачи</a>
+                <a href="{% url 'about' %}" class="block px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg">Об авторе</a>
             </div>
         </div>
     </header>

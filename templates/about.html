@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% load static %}
 
-{% block title %}Обо мне{% endblock title %}
+{% block title %}Об авторе{% endblock title %}
 
 {% block extra_css %}
 {% if user.is_staff %}
@@ -23,7 +23,7 @@
     
     <!-- Заголовок страницы -->
     <div class="text-center mb-12" data-aos="fade-down">
-        <h1 class="text-4xl font-bold text-gray-900 mb-4">Обо мне</h1>
+        <h1 class="text-4xl font-bold text-gray-900 mb-4">Об авторе</h1>
     </div>
     
     {% if user.is_staff %}

@@ -18,6 +18,7 @@ python manage.py collectstatic           # Collect static files for production
 gunicorn config.wsgi:application         # Production server (HTTP)
 daphne config.asgi:application           # ASGI server (WebSocket)
 celery -A config worker -l info          # Celery worker for async tasks
+celery -A config beat -l info            # Celery Beat periodic scheduler
 ```
 
 ### Local Development with Async Features
@@ -81,6 +82,7 @@ Four apps, each with standard Django structure (models, views, urls, admin, form
 - **Gunicorn:** `site.service` (socket: `/run/gunicorn/site.sock`) — HTTP requests
 - **Daphne:** `daphne.service` (socket: `/run/daphne/site.sock`) — WebSocket requests
 - **Celery:** `celery.service` — async task worker for code execution
+- **Celery Beat:** `celerybeat.service` — periodic task scheduler (stale task cleanup, etc.)
 - **Redis:** `redis-server.service` — message broker for Celery and Channels
 - **PostgreSQL:** local database
 - **SSL:** Certbot (Let's Encrypt)
@@ -94,22 +96,23 @@ source venv/bin/activate
 pip install -r requirements.txt
 python manage.py migrate
 python manage.py collectstatic --noinput
-sudo systemctl restart site celery daphne
+sudo systemctl restart site celery celerybeat daphne
 ```
 
 ### Useful Commands (on server)
 ```bash
 # Status of all services
-sudo systemctl status redis-server celery daphne site nginx
+sudo systemctl status redis-server celery celerybeat daphne site nginx
 
 # Restart services
-sudo systemctl restart site celery daphne  # App services
+sudo systemctl restart site celery celerybeat daphne  # App services
 sudo systemctl restart nginx               # Web server
 
 # Logs
 sudo journalctl -u site -f                 # Gunicorn (HTTP)
 sudo journalctl -u daphne -f               # Daphne (WebSocket)
 sudo journalctl -u celery -f               # Celery (async tasks)
+sudo journalctl -u celerybeat -f           # Celery Beat (periodic scheduler)
 sudo tail -f /var/log/nginx/error.log      # Nginx errors
 
 # Redis
