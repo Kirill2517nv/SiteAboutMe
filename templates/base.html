@@ -63,7 +63,7 @@
 </head>
 <body class="min-h-screen bg-gray-50 flex flex-col">
     <!-- Навигация -->
-    <header class="bg-white shadow-sm sticky top-0 z-50">
+    <header class="bg-white shadow-sm sticky top-0 z-50" x-data="{ mobileMenu: false }">
         <nav class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between h-16">
                 <!-- Левая часть - логотип и навигация -->
@@ -72,10 +72,6 @@
                         Учебный портал
                     </a>
                     <div class="hidden md:flex items-center space-x-6">
-                        <a href="{% url 'home' %}" 
-                           class="text-gray-600 hover:text-brand-600 font-medium transition-colors">
-                            Главная
-                        </a>
                         <a href="{% url 'about' %}" 
                            class="text-gray-600 hover:text-brand-600 font-medium transition-colors">
                             Обо мне
@@ -94,13 +90,41 @@
                 <!-- Правая часть - пользователь -->
                 <div class="flex items-center space-x-4">
                     {% if user.is_authenticated %}
-                        <a href="{% url 'accounts:profile' %}" 
+                        {% if user.is_superuser %}
+                        <a href="{% url 'quizzes:help_requests_list' %}"
+                           class="relative text-gray-500 hover:text-amber-600 transition-colors"
+                           title="Запросы помощи">
+                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            <span id="help-badge-global" class="hidden absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 bg-amber-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center"></span>
+                        </a>
+                        {% else %}
+                        <div class="relative" x-data="{ notifOpen: false }" @click.outside="notifOpen = false">
+                            <button type="button" @click="notifOpen = !notifOpen; if(notifOpen && window.notificationManager) window.notificationManager.loadDropdown()"
+                                    class="relative text-gray-600 hover:text-amber-600 font-medium transition-colors flex items-center gap-1">
+                                Уведомления
+                                <span id="help-badge-global" class="hidden min-w-[18px] h-[18px] px-1 bg-amber-500 text-white text-[10px] font-bold rounded-full inline-flex items-center justify-center"></span>
+                            </button>
+                            <!-- Dropdown -->
+                            <div x-show="notifOpen" x-cloak x-transition
+                                 class="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-lg border border-gray-200 z-50 overflow-hidden">
+                                <div class="px-4 py-3 bg-gray-50 border-b border-gray-100">
+                                    <span class="text-sm font-semibold text-gray-700">Ответы учителя</span>
+                                </div>
+                                <div id="notif-dropdown-list" class="max-h-80 overflow-y-auto">
+                                    <div class="px-4 py-6 text-center text-sm text-gray-400">Загрузка...</div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                        <a href="{% url 'accounts:profile' %}"
                            class="text-gray-600 hover:text-brand-600 font-medium transition-colors">
                             Мой профиль
                         </a>
                         <form action="{% url 'logout' %}" method="post" class="inline">
                             {% csrf_token %}
-                            <button type="submit" 
+                            <button type="submit"
                                     class="text-gray-500 hover:text-red-600 font-medium transition-colors">
                                 Выйти
                             </button>
@@ -115,12 +139,16 @@
                 
                 <!-- Мобильное меню (кнопка) -->
                 <div class="md:hidden flex items-center">
-                    <button type="button" 
-                            x-data="{ open: false }"
-                            @click="open = !open"
-                            class="text-gray-600 hover:text-gray-900 p-2">
-                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <button type="button"
+                            @click="mobileMenu = !mobileMenu"
+                            class="text-gray-600 hover:text-gray-900 p-2"
+                            :aria-expanded="mobileMenu">
+                        <!-- Иконка: гамбургер / крестик -->
+                        <svg x-show="!mobileMenu" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                        </svg>
+                        <svg x-show="mobileMenu" x-cloak class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                         </svg>
                     </button>
                 </div>
@@ -128,9 +156,17 @@
         </nav>
         
         <!-- Мобильное меню (выпадающее) -->
-        <div class="md:hidden hidden" x-data="{ open: false }" x-show="open" x-cloak>
+        <div class="md:hidden"
+             x-show="mobileMenu"
+             x-cloak
+             x-transition:enter="transition ease-out duration-200"
+             x-transition:enter-start="opacity-0 -translate-y-1"
+             x-transition:enter-end="opacity-100 translate-y-0"
+             x-transition:leave="transition ease-in duration-150"
+             x-transition:leave-start="opacity-100 translate-y-0"
+             x-transition:leave-end="opacity-0 -translate-y-1"
+             @click.outside="mobileMenu = false">
             <div class="px-4 pt-2 pb-3 space-y-1 bg-white border-t">
-                <a href="{% url 'home' %}" class="block px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg">Главная</a>
                 <a href="{% url 'about' %}" class="block px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg">Обо мне</a>
                 <a href="{% url 'lessons:lesson_list' %}" class="block px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg">Уроки</a>
                 <a href="{% url 'quizzes:quiz_list' %}" class="block px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg">Задачи</a>
@@ -189,6 +225,11 @@
         });
     </script>
     
+    <!-- Notifications (help request badges) -->
+    {% if user.is_authenticated %}
+    <script src="{% static 'js/notifications.js' %}"></script>
+    {% endif %}
+
     <!-- Старые скрипты для редактора (пока оставляем) -->
     <script src="{% static 'js/image-crop-view.js' %}"></script>
     {% block extra_js %}{% endblock extra_js %}

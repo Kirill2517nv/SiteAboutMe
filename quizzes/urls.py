@@ -9,6 +9,13 @@ from .views import (
     submit_code_view,
     submission_status_view,
     finish_quiz_view,
+    help_request_view,
+    help_requests_list_view,
+    help_request_review_view,
+    help_request_reply_view,
+    help_request_resolve_view,
+    help_unread_count_view,
+    help_my_notifications_view,
 )
 
 app_name = 'quizzes'
@@ -27,4 +34,13 @@ urlpatterns = [
     path('<int:quiz_id>/stats/', quiz_stats_view, name='quiz_stats'),
     path('<int:quiz_id>/stats/<int:user_id>/', user_attempts_view, name='user_attempts'),
     path('attempt/<int:result_id>/', attempt_detail_view, name='attempt_detail'),
+
+    # Help Request System
+    path('<int:quiz_id>/question/<int:question_id>/help/', help_request_view, name='help_request'),
+    path('help-requests/', help_requests_list_view, name='help_requests_list'),
+    path('help-requests/unread-count/', help_unread_count_view, name='help_unread_count'),
+    path('help-requests/my-notifications/', help_my_notifications_view, name='help_my_notifications'),
+    path('help-requests/<int:help_request_id>/', help_request_review_view, name='help_request_review'),
+    path('help-requests/<int:help_request_id>/reply/', help_request_reply_view, name='help_request_reply'),
+    path('help-requests/<int:help_request_id>/resolve/', help_request_resolve_view, name='help_request_resolve'),
 ]
