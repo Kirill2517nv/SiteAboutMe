@@ -32,18 +32,23 @@ To test async code execution locally, run these in separate terminals:
 
 Four apps, each with standard Django structure (models, views, urls, admin, forms):
 
-- **accounts** — User auth, `Profile` (extends User with group assignment), `StudentGroup` for organizing students into classes
+- **accounts** — User auth, `Profile` (extends User with group assignment, `is_ege` flag), `StudentGroup` for organizing students into classes
 - **pages** — Home/about pages built from `ContentBlock` models with rich styling (fonts, colors, image crop/positioning)
 - **lessons** — `Section` → `Lesson` → `LessonBlock` hierarchy. Supports file uploads, video URLs, and flexible content layouts. File downloads use Nginx X-Accel-Redirect in production.
-- **quizzes** — `Quiz` with time-based access windows, `Question` (multiple choice, free text, Python code execution with `TestCase` validation), `QuizAssignment` (to groups or individuals), `UserResult`/`UserAnswer` for tracking. Attempt limiting with override support. `CodeSubmission` for async code execution results.
+- **quizzes** — `Quiz` with time-based access windows, `Question` (multiple choice, free text, Python code execution with `TestCase` validation, `title` field), `QuizAssignment` (to groups or individuals), `UserResult`/`UserAnswer` for tracking. Attempt limiting with override support. `CodeSubmission` for async code execution results. `HelpRequest`/`HelpComment` for teacher-student dialogue with inline line comments.
 
 **Content block pattern**: Both `pages` and `lessons` use a reusable block model for flexible page composition with database-driven styling (fonts, colors, alignment, sizing).
 
 **Async Code Execution System** (`quizzes` app):
-- `consumers.py` — WebSocket consumer for real-time code submission updates
+- `consumers.py` — WebSocket consumers: `QuizConsumer` for code submissions, `NotificationConsumer` for help notifications
 - `tasks.py` — Celery tasks for sandboxed Python code execution
-- `routing.py` — WebSocket URL routing (`/ws/quiz/<quiz_id>/`)
-- Frontend: `static/js/quiz-async.js` — WebSocket client, UI updates without page reload
+- `routing.py` — WebSocket URL routing (`/ws/quiz/<quiz_id>/`, `/ws/notifications/`)
+- Frontend: `static/js/quiz-async.js` — WebSocket client with connection status tracking, UI updates without page reload
+
+**Help Request System** (`quizzes` app):
+- `views.py` — help_request_view (GET with `mark_read` param, POST), help_request_list, help_request_review
+- Frontend: `static/js/help-requests.js` — HelpRequestManager with inline line threads, gutter click handling, line markers
+- Frontend: `static/js/notifications.js` — NotificationManager with WebSocket + polling fallback, dropdown UI
 
 ## Key Configuration
 
@@ -54,7 +59,7 @@ Four apps, each with standard Django structure (models, views, urls, admin, form
 - Channels: configured in `config/asgi.py`, routing in `quizzes/routing.py`
 - Timezone: Asia/Novosibirsk
 - Media files: `media/` (content, lessons_files, question_files)
-- Static assets: `static/css/` and `static/js/` (block-editor, content-editor-tailwind, quiz-async)
+- Static assets: `static/css/` and `static/js/` (block-editor, content-editor-tailwind, quiz-async, help-requests, notifications)
 - Templates: `templates/` directory with subdirectories per app
 
 ## Infrastructure
