@@ -5,6 +5,22 @@ import io
 import time
 import os
 
+# Лимиты для Docker-контейнера
+CONTAINER_TIMEOUT = 150       # секунд на выполнение
+CONTAINER_MEM_LIMIT = "128m" # RAM контейнера
+CONTAINER_CPU_QUOTA = 50000  # 50% одного ядра (из 100000)
+OUTPUT_MAX_BYTES = 65536     # 64 KB макс. вывода
+
+
+def truncate_output(raw_bytes, max_bytes=OUTPUT_MAX_BYTES):
+    if len(raw_bytes) < max_bytes:
+        return raw_bytes.decode(errors='replace').strip()
+    truncated = raw_bytes[:max_bytes].decode(errors='replace').strip()
+    dropped = len(raw_bytes) - max_bytes
+    return truncated + f"\n\n... Вывод обрезан (отброшено {dropped:,} байт). Ваш код выводит слишком много данных."
+
+
+
 def create_tar_from_files(files_dict):
     """
     Создает архив tar с несколькими файлами.
@@ -51,12 +67,13 @@ def run_code_in_docker(code, input_data, extra_files=None):
             else:
                 return None, f"Ошибка подключения к Docker: {error_msg}"
         
-        # 1. Создаем контейнер
+        # 1. Создаем контейнер с ограничениями CPU и памяти
         container = client.containers.run(
             "python:3.11-slim",
-            command="sleep 30", 
+            command=f"sleep {CONTAINER_TIMEOUT}",
             detach=True,
-            mem_limit="128m",
+            mem_limit=CONTAINER_MEM_LIMIT,
+            cpu_quota=CONTAINER_CPU_QUOTA,
             network_disabled=True,
             working_dir="/app"
         )
@@ -76,13 +93,15 @@ def run_code_in_docker(code, input_data, extra_files=None):
         command = f'sh -c "printf \\"{safe_input}\\" | python solution.py"'
         
         exec_result = container.exec_run(command)
-        
-        output = exec_result.output.decode('utf-8', errors='replace').strip()
+
+        output = truncate_output(exec_result.output)
         exit_code = exec_result.exit_code
-        
+
         if exit_code != 0:
+            if exit_code == 137:
+                return None, "Превышен лимит времени или памяти."
             return output, f"Ошибка выполнения (Exit code {exit_code}):\n{output}"
-            
+
         return output, None
 
     except (DockerException, APIError) as e:

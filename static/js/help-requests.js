@@ -302,6 +302,10 @@ class HelpRequestManager {
         sendBtn.onclick = async () => {
             const text = textarea.value.trim();
             if (!text) return;
+            if (text.length > 10000) {
+                alert(`Комментарий слишком длинный (${text.length} символов). Максимум 10000 символов.`);
+                return;
+            }
             sendBtn.disabled = true;
             sendBtn.textContent = 'Отправка...';
             const result = await this.sendComment(questionId, text, lineNumber, codeSnapshot);
@@ -446,6 +450,10 @@ class HelpRequestManager {
 
         const text = textarea.value.trim();
         if (!text) return;
+        if (text.length > 10000) {
+            alert(`Комментарий слишком длинный (${text.length} символов). Максимум 10000 символов.`);
+            return;
+        }
 
         const sendBtn = panel.querySelector('.help-send-btn');
         if (sendBtn) {

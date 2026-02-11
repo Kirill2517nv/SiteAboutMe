@@ -691,9 +691,19 @@ def submit_code_view(request, quiz_id, question_id):
     )
 
     # Queue Celery task
-    task = check_code_task.delay(submission.id)
-    submission.celery_task_id = task.id
-    submission.save(update_fields=['celery_task_id'])
+    try:
+        task = check_code_task.delay(submission.id)
+        submission.celery_task_id = task.id
+        submission.save(update_fields=['celery_task_id'])
+    except Exception:
+        submission.status = 'error'
+        submission.error_log = 'Сервер проверки временно недоступен. Попробуйте через минуту.'
+        submission.save(update_fields=['status', 'error_log'])
+        return JsonResponse({
+            'submission_id': submission.id,
+            'status': 'error',
+            'error': submission.error_log
+        }, status=503)
 
     return JsonResponse({
         'submission_id': submission.id,
@@ -951,6 +961,8 @@ def help_request_view(request, quiz_id, question_id):
         text = data.get('text', '').strip()
         if not text:
             return JsonResponse({'error': 'Текст комментария не может быть пустым'}, status=400)
+        if len(text) > 10000:
+            return JsonResponse({'error': 'Комментарий не может превышать 10000 символов'}, status=400)
 
         line_number = data.get('line_number')
         code_snapshot = data.get('code_snapshot')
@@ -1080,6 +1092,8 @@ def help_request_reply_view(request, help_request_id):
     text = data.get('text', '').strip()
     if not text:
         return JsonResponse({'error': 'Текст не может быть пустым'}, status=400)
+    if len(text) > 10000:
+        return JsonResponse({'error': 'Комментарий не может превышать 10000 символов'}, status=400)
 
     line_number = data.get('line_number')
 

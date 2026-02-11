@@ -1,6 +1,7 @@
 from django.db import models
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.core.validators import MaxLengthValidator
 from accounts.models import StudentGroup
 
 User = get_user_model()
@@ -70,7 +71,16 @@ class Question(models.Model):
         return self.text.strip().split('\n')[0]
 
     def get_body(self):
-        """Возвращает тело вопроса (всё кроме первой строки текста)"""
+        """
+        Возвращает тело вопроса:
+        - Если title заполнен → весь text (первая строка - это условие, не заголовок)
+        - Если title пустой → text без первой строки (первая строка используется как заголовок)
+        """
+        if self.title:
+            # Заголовок есть отдельно, возвращаем весь текст
+            return self.text.strip()
+
+        # Заголовок не задан, используем первую строку как заголовок
         lines = self.text.strip().split('\n')
         if len(lines) > 1:
             return '\n'.join(lines[1:])
@@ -189,7 +199,10 @@ class HelpComment(models.Model):
     """Сообщение в треде запроса помощи."""
     help_request = models.ForeignKey(HelpRequest, on_delete=models.CASCADE, related_name='comments', verbose_name="Запрос помощи")
     author = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="Автор")
-    text = models.TextField(verbose_name="Текст комментария")
+    text = models.TextField(
+        verbose_name="Текст комментария",
+        validators=[MaxLengthValidator(10000, message="Комментарий не может превышать 10000 символов")]
+    )
     line_number = models.PositiveIntegerField(null=True, blank=True, verbose_name="Номер строки")
     code_snapshot = models.TextField(null=True, blank=True, verbose_name="Снапшот кода")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
