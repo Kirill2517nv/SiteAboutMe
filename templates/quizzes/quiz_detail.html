@@ -999,15 +999,25 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Finish quiz button handler
+    let forceFinish = false;
     if (finishBtn) {
         finishBtn.addEventListener('click', async function() {
-            // Check for pending submissions
-            if (codeChecker.hasPendingSubmissions()) {
+            const isForced = forceFinish;
+            forceFinish = false;
+            // Check for pending submissions (skip if forced by timer)
+            if (!isForced && codeChecker.hasPendingSubmissions()) {
                 alert('Дождитесь завершения проверки всех решений');
                 return;
             }
 
-            // Collect answers for non-code questions
+            // Sync CodeMirror editors BEFORE collecting answers
+            Object.keys(editors).forEach(function(qId) {
+                editors[qId].save();
+                var storageKey = 'quiz_' + quizId + '_question_' + qId;
+                sessionStorage.removeItem(storageKey);
+            });
+
+            // Collect all answers including code
             const answers = {};
             document.querySelectorAll('[data-question-type]').forEach(function(card) {
                 const qType = card.getAttribute('data-question-type');
@@ -1019,22 +1029,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 } else if (qType === 'text') {
                     const input = card.querySelector('input[type="text"]');
                     if (input) answers[qId] = input.value;
+                } else if (qType === 'code') {
+                    const textarea = card.querySelector('textarea');
+                    if (textarea && textarea.value.trim()) answers[qId] = textarea.value;
                 }
-                // Code answers are handled via CodeSubmission
-            });
-
-            // Sync CodeMirror editors
-            Object.keys(editors).forEach(function(qId) {
-                editors[qId].save();
-                var storageKey = 'quiz_' + quizId + '_question_' + qId;
-                sessionStorage.removeItem(storageKey);
             });
 
             // Disable button during submission
             finishBtn.disabled = true;
             finishBtn.textContent = 'Отправка...';
 
-            const result = await codeChecker.finishQuiz(answers);
+            const result = await codeChecker.finishQuiz(answers, isForced);
 
             if (result.error) {
                 alert(result.error);
@@ -1044,7 +1049,10 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             if (result.success) {
-                // Redirect to quiz result or reload
+                if (result.pending_checks > 0) {
+                    alert('Результат сохранён. ' + result.pending_checks +
+                        ' задач(а) ещё проверяются — баллы обновятся автоматически.');
+                }
                 window.location.href = '/quizzes/' + quizId + '/';
             }
         });
@@ -1100,6 +1108,7 @@ document.addEventListener('DOMContentLoaded', function() {
             timerDisplay.innerHTML = "00:00:00";
             // Auto-finish quiz when time runs out
             if (finishBtn && !finishBtn.disabled) {
+                forceFinish = true;
                 finishBtn.click();
             }
             return;

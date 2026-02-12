@@ -183,9 +183,9 @@ class QuizCodeChecker {
         }
     }
 
-    async finishQuiz(answers) {
-        // Check for pending submissions
-        if (this.pendingSubmissions.size > 0) {
+    async finishQuiz(answers, force = false) {
+        // Check for pending submissions (skip if forced by timer)
+        if (!force && this.pendingSubmissions.size > 0) {
             return {
                 error: 'Дождитесь завершения проверки всех решений',
                 pending_questions: Array.from(this.pendingSubmissions.keys())
@@ -201,7 +201,7 @@ class QuizCodeChecker {
                     'Content-Type': 'application/json',
                     'X-CSRFToken': this.csrfToken,
                 },
-                body: JSON.stringify({ answers }),
+                body: JSON.stringify({ answers, force }),
             });
 
             return await response.json();

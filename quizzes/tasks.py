@@ -83,6 +83,9 @@ def check_code_task(self, submission_id):
         submission.completed_at = timezone.now()
         submission.save(update_fields=['is_correct', 'status', 'error_log', 'completed_at'])
 
+        # Update linked UserAnswer if quiz was already finished
+        update_user_answer_from_submission(submission)
+
         # Send WebSocket notification - completed
         send_ws_notification(submission, 'completed')
 
@@ -130,8 +133,42 @@ def cleanup_stale_submissions():
         submission.error_log = 'Превышено время ожидания'
         submission.completed_at = timezone.now()
         submission.save(update_fields=['status', 'error_log', 'completed_at'])
+        update_user_answer_from_submission(submission)
         send_ws_notification(submission, 'error')    
 
+
+
+def update_user_answer_from_submission(submission):
+    """
+    After Celery checks a submission, update linked UserAnswer and recalculate score.
+    Called when quiz was already finished while submission was still pending.
+    Uses select_for_update to prevent race conditions between parallel workers.
+    """
+    from django.db import transaction
+    from .models import UserAnswer, UserResult
+
+    user_answer = UserAnswer.objects.filter(submission=submission).first()
+    if not user_answer:
+        return
+
+    user_answer.is_correct = submission.is_correct or False
+    user_answer.error_log = submission.error_log
+    user_answer.code_answer = submission.code
+    user_answer.save(update_fields=['is_correct', 'error_log', 'code_answer'])
+
+    # Recalculate UserResult score with row-level lock to prevent race conditions
+    with transaction.atomic():
+        user_result = UserResult.objects.select_for_update().get(
+            id=user_answer.user_result_id
+        )
+        total_correct = UserAnswer.objects.filter(
+            user_result__user=user_result.user,
+            user_result__quiz=user_result.quiz,
+            is_correct=True
+        ).values('question_id').distinct().count()
+
+        user_result.score = total_correct
+        user_result.save(update_fields=['score'])
 
 
 def send_ws_notification(submission, event_type):

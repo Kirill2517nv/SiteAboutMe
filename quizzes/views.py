@@ -250,7 +250,7 @@ def quiz_detail_view(request, quiz_id):
     eff_settings = get_effective_quiz_settings(request.user, quiz)
     if not eff_settings:
         # Not assigned to this user
-        return redirect('quiz_list')
+        return redirect('quizzes:quiz_list')
 
     start_date = eff_settings['start_date']
     end_date = eff_settings['end_date']
@@ -260,17 +260,17 @@ def quiz_detail_view(request, quiz_id):
 
     # Access checks
     read_only = False
-    if start_date and now < start_date: return redirect('quiz_list')
+    if start_date and now < start_date: return redirect('quizzes:quiz_list')
 
     if end_date and now > end_date:
         if request.method == 'POST':
-            return redirect('quiz_list')
+            return redirect('quizzes:quiz_list')
         # GET on expired quiz → read-only mode
         read_only = True
 
     if not read_only and max_attempts > 0:
         attempts_count = UserResult.objects.filter(user=request.user, quiz=quiz).count()
-        if attempts_count >= max_attempts: return redirect('quiz_list')
+        if attempts_count >= max_attempts: return redirect('quizzes:quiz_list')
 
     # Read-only mode: show all questions with student's best answers
     if read_only:
@@ -756,18 +756,28 @@ def finish_quiz_view(request, quiz_id):
         if attempts_count >= max_attempts:
             return JsonResponse({'error': 'Попытки исчерпаны'}, status=403)
 
+    # Parse request body early (needed for force flag)
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        data = {}
+
+    force = data.get('force', False)
+
     # Check for pending/running submissions
     pending_submissions = CodeSubmission.objects.filter(
         user=request.user,
         quiz=quiz,
         status__in=['pending', 'running']
-    ).values_list('question_id', flat=True)
+    )
 
-    if pending_submissions:
+    if pending_submissions.exists() and not force:
         return JsonResponse({
             'error': 'Есть незавершённые проверки',
-            'pending_questions': list(pending_submissions)
+            'pending_questions': list(pending_submissions.values_list('question_id', flat=True))
         }, status=409)
+    # If force=true: proceed with pending submissions — they were submitted
+    # in time. Celery will update UserAnswer and recalculate score when done.
 
     # Get already correctly answered questions
     correctly_answered_question_ids = set(UserAnswer.objects.filter(
@@ -801,12 +811,6 @@ def finish_quiz_view(request, quiz_id):
 
     current_attempt_score = 0
     user_answers_to_create = []
-
-    # Get form data for choice/text questions
-    try:
-        data = json.loads(request.body)
-    except json.JSONDecodeError:
-        data = {}
 
     answers_data = data.get('answers', {})
 
@@ -854,6 +858,39 @@ def finish_quiz_view(request, quiz_id):
                 submission = latest_submission
                 if is_correct:
                     current_attempt_score += 1
+            else:
+                # Check for pending/running submission (submitted but still checking)
+                pending_sub = CodeSubmission.objects.filter(
+                    user=request.user,
+                    quiz=quiz,
+                    question=question,
+                    status__in=['pending', 'running']
+                ).order_by('-created_at').first()
+
+                if pending_sub:
+                    # Link pending submission — Celery will update score when done
+                    code_answer = pending_sub.code
+                    submission = pending_sub
+                elif user_input:
+                    # Never clicked "Проверить" — auto-create submission and queue check
+                    new_sub = CodeSubmission.objects.create(
+                        user=request.user,
+                        quiz=quiz,
+                        question=question,
+                        code=user_input,
+                        status='pending'
+                    )
+                    try:
+                        task = check_code_task.delay(new_sub.id)
+                        new_sub.celery_task_id = task.id
+                        new_sub.save(update_fields=['celery_task_id'])
+                    except Exception:
+                        new_sub.status = 'error'
+                        new_sub.error_log = 'Сервер проверки временно недоступен'
+                        new_sub.completed_at = timezone.now()
+                        new_sub.save(update_fields=['status', 'error_log', 'completed_at'])
+                    code_answer = user_input
+                    submission = new_sub
 
         user_answers_to_create.append(
             UserAnswer(
@@ -888,13 +925,20 @@ def finish_quiz_view(request, quiz_id):
         for ua in user_answers_to_create if not ua.is_correct
     ]
 
+    # Count pending code checks (submitted but still being checked by Celery)
+    pending_checks = sum(
+        1 for ua in user_answers_to_create
+        if ua.submission and ua.submission.status in ('pending', 'running')
+    )
+
     return JsonResponse({
         'success': True,
         'result_id': user_result.id,
         'score': total_score,
         'total': total_questions,
         'failed_questions': failed_questions,
-        'redirect_url': f'/quizzes/{quiz_id}/'  # Will be handled by frontend
+        'pending_checks': pending_checks,
+        'redirect_url': f'/quizzes/{quiz_id}/'
     })
 
 
