@@ -15,6 +15,7 @@ python manage.py makemigrations          # Create migrations after model changes
 python manage.py migrate                 # Apply migrations
 python manage.py createsuperuser         # Create admin user
 python manage.py collectstatic           # Collect static files for production
+python manage.py load_quiz <file.json>   # Import quiz from JSON fixture
 gunicorn config.wsgi:application         # Production server (HTTP)
 daphne config.asgi:application           # ASGI server (WebSocket)
 celery -A config worker -l info          # Celery worker for async tasks
@@ -146,6 +147,19 @@ redis-cli ping                             # Should return PONG
 - 🔍 **reviewer** — безопасность, GitHub, код-ревью
 - 📚 **content** — Quiz генерация, идеи развития
 - 🔧 **devops** — диагностика (**READ-ONLY!**)
+
+### Quiz Import (`load_quiz`)
+
+Management command for importing quizzes from JSON files. Uses a custom format (not Django fixtures) — no `pk` required, Django assigns IDs automatically. All objects are created in a single transaction.
+
+```bash
+python manage.py load_quiz fixtures/my_quiz.json
+```
+
+- JSON format template: `fixtures/quiz_template.json`
+- Supports all 3 question types: `choice` (with choices), `text` (with correct_text_answer), `code` (with test_cases)
+- Code questions can optionally include `data_file` path for attached files
+- Command: `quizzes/management/commands/load_quiz.py`
 
 ### Примечание о парсинге
 

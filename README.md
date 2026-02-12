@@ -113,6 +113,52 @@ celery -A config worker -l info --pool=solo -Q default,code_execution
 python manage.py runserver
 ```
 
+## Импорт тестов из JSON
+
+Тесты можно загружать из JSON-файлов через management command. Формат поддерживает все три типа вопросов.
+
+```bash
+python manage.py load_quiz fixtures/my_quiz.json
+```
+
+Шаблон формата: `fixtures/quiz_template.json`
+
+Пример структуры:
+```json
+{
+  "quiz": {
+    "title": "Название теста",
+    "description": "Описание",
+    "max_attempts": 3
+  },
+  "questions": [
+    {
+      "title": "Выбор ответа",
+      "text": "Сколько будет 2+2?",
+      "question_type": "choice",
+      "choices": [
+        {"text": "3", "is_correct": false},
+        {"text": "4", "is_correct": true}
+      ]
+    },
+    {
+      "title": "Текстовый ответ",
+      "text": "Столица Франции?",
+      "question_type": "text",
+      "correct_text_answer": "Париж"
+    },
+    {
+      "title": "Задача на код",
+      "text": "Выведите сумму двух чисел",
+      "question_type": "code",
+      "test_cases": [
+        {"input_data": "2\n3", "output_data": "5"}
+      ]
+    }
+  ]
+}
+```
+
 ## Структура проекта
 
 ```
@@ -121,6 +167,7 @@ python manage.py runserver
 ├── pages/              # Главная страница и "Обо мне" (блочный конструктор)
 ├── lessons/            # Разделы, уроки, блоки контента
 ├── quizzes/            # Тесты, вопросы, проверка кода, WebSocket
+├── fixtures/           # JSON-шаблоны и данные для импорта тестов
 ├── templates/          # HTML-шаблоны
 ├── static/             # CSS и JavaScript
 ├── requirements.txt    # Python-зависимости
