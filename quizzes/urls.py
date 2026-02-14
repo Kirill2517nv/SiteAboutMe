@@ -5,7 +5,7 @@ from .views import (
     quiz_stats_view,
     user_attempts_view,
     attempt_detail_view,
-    question_data_file_download_view,
+    question_file_download_view,
     submit_code_view,
     submission_status_view,
     finish_quiz_view,
@@ -23,7 +23,7 @@ app_name = 'quizzes'
 urlpatterns = [
     path('', quiz_list_view, name='quiz_list'),
     path('<int:quiz_id>/', quiz_detail_view, name='quiz_detail'),
-    path('question/<int:question_id>/data-file/', question_data_file_download_view, name='question_data_file_download'),
+    path('question-file/<int:file_id>/download/', question_file_download_view, name='question_file_download'),
 
     # Async code submission API
     path('<int:quiz_id>/question/<int:question_id>/submit/', submit_code_view, name='submit_code'),

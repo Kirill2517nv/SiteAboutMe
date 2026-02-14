@@ -49,17 +49,16 @@ def check_code_task(self, submission_id):
             all_tests_passed = False
             error_log = "Нет тестовых примеров для проверки."
         else:
-            # Prepare extra files if question has data file
+            # Prepare extra files from QuestionFile attachments
             extra_files = {}
-            if question.data_file:
+            for qf in question.files.all():
                 try:
-                    with question.data_file.open('rb') as f:
-                        content = f.read()
-                        filename = os.path.basename(question.data_file.name)
-                        extra_files[filename] = content
+                    with qf.file.open('rb') as f:
+                        extra_files[os.path.basename(qf.file.name)] = f.read()
                 except Exception as e:
                     error_log = f"Ошибка чтения файла задания: {e}"
                     all_tests_passed = False
+                    break
 
             # Run tests
             if all_tests_passed:

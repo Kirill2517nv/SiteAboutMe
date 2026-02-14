@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.http import HttpResponseRedirect
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
-from .models import Quiz, Question, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, HelpRequest, HelpComment
+from .models import Quiz, Question, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, HelpRequest, HelpComment, QuestionImage, QuestionFile
 from .forms import BulkQuizAssignmentForm
 
 class ChoiceInline(admin.TabularInline):
@@ -13,14 +13,22 @@ class TestCaseInline(admin.StackedInline):
     model = TestCase
     extra = 1
 
+class QuestionImageInline(admin.TabularInline):
+    model = QuestionImage
+    extra = 1
+
+class QuestionFileInline(admin.TabularInline):
+    model = QuestionFile
+    extra = 1
+
 class QuestionAdmin(admin.ModelAdmin):
     list_display = ('title', 'quiz', 'question_type')
     list_filter = ('quiz', 'question_type')
     search_fields = ('title', 'text')
-    inlines = [ChoiceInline, TestCaseInline]
+    inlines = [ChoiceInline, TestCaseInline, QuestionImageInline, QuestionFileInline]
     fieldsets = (
         (None, {
-            'fields': ('quiz', 'title', 'text', 'question_type', 'data_file')
+            'fields': ('quiz', 'title', 'text', 'question_type')
         }),
         ('Для свободных ответов', {
             'fields': ('correct_text_answer',),
@@ -30,7 +38,7 @@ class QuestionAdmin(admin.ModelAdmin):
 
 class QuestionInline(admin.TabularInline):
     model = Question
-    fields = ('title', 'text', 'question_type', 'data_file')
+    fields = ('title', 'text', 'question_type')
     extra = 1
 
 class QuizAssignmentInline(admin.TabularInline):

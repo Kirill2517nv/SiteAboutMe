@@ -7,7 +7,7 @@ from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.conf import settings
 from django.views.decorators.http import require_POST, require_GET
 from django.views.decorators.csrf import csrf_protect
-from .models import Quiz, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, Question, CodeSubmission, HelpRequest, HelpComment
+from .models import Quiz, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, Question, CodeSubmission, HelpRequest, HelpComment, QuestionFile
 from accounts.models import StudentGroup
 import datetime
 import os
@@ -71,20 +71,17 @@ def get_effective_quiz_settings(user, quiz):
     return None
 
 @login_required
-def question_data_file_download_view(request, question_id):
+def question_file_download_view(request, file_id):
     """
-    Download Question.data_file with a stable filename across browsers/OS.
+    Download a QuestionFile attachment with a stable filename across browsers/OS.
     """
-    question = get_object_or_404(Question, id=question_id)
-    if not question.data_file:
-        raise Http404("Файл не найден")
+    qf = get_object_or_404(QuestionFile, id=file_id)
 
-    filename = os.path.basename(question.data_file.name)
+    filename = qf.get_filename()
     content_type, _ = mimetypes.guess_type(filename)
 
-    # Simple FileResponse is safer unless you have a very large traffic
     response = FileResponse(
-        question.data_file.open("rb"),
+        qf.file.open("rb"),
         as_attachment=True,
         content_type=content_type or "application/octet-stream",
     )
@@ -241,7 +238,9 @@ def quiz_detail_view(request, quiz_id):
     quiz = get_object_or_404(
         Quiz.objects.prefetch_related(
             'questions__choices',
-            'questions__test_cases'
+            'questions__test_cases',
+            'questions__images',
+            'questions__files'
         ),
         id=quiz_id
     )
@@ -402,15 +401,14 @@ def quiz_detail_view(request, quiz_id):
                         error_log = "Нет тестовых примеров для проверки."
 
                     extra_files = {}
-                    if question.data_file:
+                    for qf in question.files.all():
                         try:
-                            with question.data_file.open('rb') as f:
-                                content = f.read()
-                                filename = os.path.basename(question.data_file.name)
-                                extra_files[filename] = content
+                            with qf.file.open('rb') as f:
+                                extra_files[os.path.basename(qf.file.name)] = f.read()
                         except Exception as e:
                             error_log = f"Ошибка чтения файла задания: {e}"
                             all_tests_passed = False
+                            break
 
                     if all_tests_passed:
                         for test_case in test_cases:
@@ -604,7 +602,9 @@ def user_attempts_view(request, quiz_id, user_id):
 @user_passes_test(lambda u: u.is_superuser)
 def attempt_detail_view(request, result_id):
     result = get_object_or_404(UserResult, id=result_id)
-    answers = result.answers.all()
+    answers = result.answers.select_related('question', 'selected_choice').prefetch_related(
+        'question__images', 'question__files'
+    )
 
     full_name = f"{result.user.last_name} {result.user.first_name}".strip() or result.user.username
 

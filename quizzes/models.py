@@ -53,7 +53,6 @@ class Question(models.Model):
     text = models.TextField(verbose_name="Текст вопроса")
     question_type = models.CharField(max_length=10, choices=TYPE_CHOICES, default='choice', verbose_name="Тип вопроса")
     
-    data_file = models.FileField(upload_to='question_files/', blank=True, null=True, verbose_name="Файл с данными (для скачивания)")
     correct_text_answer = models.CharField(max_length=200, blank=True, null=True, verbose_name="Правильный ответ (текст)")
     
     class Meta:
@@ -85,6 +84,42 @@ class Question(models.Model):
         if len(lines) > 1:
             return '\n'.join(lines[1:])
         return ""
+
+class QuestionImage(models.Model):
+    """Изображение, отображаемое inline под текстом вопроса."""
+    question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name='images', verbose_name="Вопрос")
+    image = models.ImageField(upload_to='question_images/', verbose_name="Изображение")
+    alt_text = models.CharField(max_length=200, blank=True, verbose_name="Альтернативный текст")
+    order = models.PositiveIntegerField(default=0, verbose_name="Порядок")
+
+    class Meta:
+        verbose_name = "Изображение вопроса"
+        verbose_name_plural = "Изображения вопросов"
+        ordering = ['order', 'id']
+
+    def __str__(self):
+        return f"Изображение для {self.question} (#{self.order})"
+
+
+class QuestionFile(models.Model):
+    """Файл для скачивания, прикреплённый к вопросу."""
+    question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name='files', verbose_name="Вопрос")
+    file = models.FileField(upload_to='question_files/', verbose_name="Файл")
+    description = models.CharField(max_length=200, blank=True, verbose_name="Описание файла")
+    order = models.PositiveIntegerField(default=0, verbose_name="Порядок")
+
+    class Meta:
+        verbose_name = "Файл вопроса"
+        verbose_name_plural = "Файлы вопросов"
+        ordering = ['order', 'id']
+
+    def __str__(self):
+        return f"Файл для {self.question}: {self.get_filename()}"
+
+    def get_filename(self):
+        import os
+        return os.path.basename(self.file.name)
+
 
 class TestCase(models.Model):
     question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name='test_cases', verbose_name="Вопрос")
