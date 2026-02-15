@@ -80,6 +80,10 @@
                            class="text-gray-600 hover:text-brand-600 font-medium transition-colors">
                             Задачи
                         </a>
+                        <a href="{% url 'ege:ege_list' %}"
+                           class="text-gray-600 hover:text-brand-600 font-medium transition-colors">
+                            Тренажёр ЕГЭ
+                        </a>
                         <a href="{% url 'about' %}"
                            class="text-gray-600 hover:text-brand-600 font-medium transition-colors">
                             Об авторе
@@ -169,6 +173,7 @@
             <div class="px-4 pt-2 pb-3 space-y-1 bg-white border-t">
                 <a href="{% url 'lessons:lesson_list' %}" class="block px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg">База знаний</a>
                 <a href="{% url 'quizzes:quiz_list' %}" class="block px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg">Задачи</a>
+                <a href="{% url 'ege:ege_list' %}" class="block px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg">Тренажёр ЕГЭ</a>
                 <a href="{% url 'about' %}" class="block px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg">Об авторе</a>
             </div>
         </div>

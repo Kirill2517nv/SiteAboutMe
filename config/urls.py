@@ -26,6 +26,7 @@ urlpatterns = [
     path('accounts/', include('django.contrib.auth.urls')),
     path('accounts/', include('accounts.urls')),
     path('quizzes/', include('quizzes.urls')),
+    path('ege/', include('quizzes.urls_ege')),
     path('pages/', include('pages.urls')),
     path('lessons/', include('lessons.urls')),
     path('', home_page_view, name='home'),

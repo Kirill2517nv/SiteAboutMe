@@ -2,7 +2,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.utils import timezone
 from django.contrib.auth.models import User
-from django.db.models import Max, Count, Q
+from django.db.models import Max, Count, Q, Sum
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.conf import settings
 from django.views.decorators.http import require_POST, require_GET
@@ -231,6 +231,51 @@ def quiz_list_view(request):
         'archived': archived,
     }
     return render(request, 'quizzes/quiz_list.html', context)
+
+def get_user_ege_stats(user, quiz_ids):
+    """Агрегация результатов пользователя по вариантам ЕГЭ (один запрос)."""
+    stats = UserResult.objects.filter(user=user, quiz_id__in=quiz_ids).values('quiz_id').annotate(
+            count=Count('id'),
+            best_score=Max('score')
+        )
+    return {
+        item['quiz_id']: {'attempts': item['count'], 'best_score': item['best_score']}
+        for item in stats
+    }
+
+
+def ege_list_view(request):
+    quizzes = Quiz.objects.filter(
+        quiz_type='exam', is_public=True,
+    ).annotate(
+        num_questions=Count('questions'),
+        total_points=Sum('questions__points'),
+    ).order_by('title')
+
+    user_stats = {}
+    if request.user.is_authenticated:
+        quiz_ids = [q.id for q in quizzes]
+        user_stats = get_user_ege_stats(request.user, quiz_ids) or {}
+
+    variants = []
+    for quiz in quizzes:
+        stats = user_stats.get(quiz.id, {})
+        attempts = stats.get('attempts', 0)
+        best_score = stats.get('best_score')
+
+        variants.append({
+            'quiz': quiz,
+            'num_questions': quiz.num_questions,
+            'total_points': quiz.total_points or 0,
+            'exam_mode': quiz.exam_mode,
+            'attempts': attempts,
+            'best_score': best_score,
+        })
+
+    return render(request, 'quizzes/ege_list.html', {
+        'variants': variants,
+    })
+
 
 @login_required
 def quiz_detail_view(request, quiz_id):
