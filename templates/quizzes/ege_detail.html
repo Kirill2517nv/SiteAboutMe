@@ -1,0 +1,596 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ quiz.title }}{% endblock title %}
+
+{% block extra_css %}
+<!-- CodeMirror -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/theme/material-darker.min.css">
+<style>
+    .CodeMirror {
+        border: 1px solid #374151;
+        border-radius: 8px;
+        font-size: 14px;
+        height: 400px;
+    }
+    .CodeMirror-gutters { border-right: 1px solid #374151; }
+    .CodeMirror-scroll { overflow-x: hidden !important; }
+
+    /* Sidebar */
+    .ege-sidebar {
+        position: sticky;
+        top: 80px;
+        max-height: calc(100vh - 100px);
+        overflow-y: auto;
+    }
+    .ege-sidebar::-webkit-scrollbar { width: 4px; }
+    .ege-sidebar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+
+    .task-btn {
+        width: 40px; height: 40px;
+        border-radius: 8px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 14px; font-weight: 600;
+        cursor: pointer; transition: all 0.15s;
+        border: 2px solid transparent;
+    }
+    .task-btn.default { background: #f1f5f9; color: #64748b; }
+    .task-btn.answered { background: #dbeafe; color: #2563eb; }
+    .task-btn.solved { background: #dcfce7; color: #16a34a; }
+    .task-btn.wrong { background: #fee2e2; color: #ef4444; }
+    .task-btn.active { border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37,99,235,0.2); }
+
+    /* Timer */
+    #ege-timer {
+        position: fixed; bottom: 20px; left: 20px;
+        background: white; border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        z-index: 1000; padding: 12px 16px;
+        text-align: center; min-width: 120px;
+        transition: background 0.3s, box-shadow 0.3s;
+    }
+    #ege-timer.critical {
+        background: linear-gradient(135deg, #fef2f2, #fee2e2);
+        box-shadow: 0 4px 20px rgba(239, 68, 68, 0.25);
+    }
+    #ege-timer.critical .timer-value { color: #dc2626; }
+
+    .timer-label { font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
+    .timer-value { font-size: 24px; font-weight: 700; color: #1e293b; font-variant-numeric: tabular-nums; }
+
+    /* Code status */
+    .code-status { padding: 8px 12px; border-radius: 8px; font-size: 14px; margin-top: 8px; display: flex; align-items: center; gap: 8px; }
+    .code-status.pending, .code-status.running { background: #fef3c7; color: #92400e; }
+    .code-status.success { background: #dcfce7; color: #166534; }
+    .code-status.failed, .code-status.error { background: #fee2e2; color: #991b1b; }
+
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .animate-spin { animation: spin 1s linear infinite; }
+</style>
+{% endblock extra_css %}
+
+{% block content %}
+<div x-data="egeApp()" x-init="init()" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <div class="flex items-center gap-3">
+                <a href="{% url 'ege:ege_list' %}" class="text-gray-400 hover:text-gray-600 transition-colors">
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                </a>
+                <h1 class="text-2xl font-bold text-gray-900">{{ quiz.title }}</h1>
+                {% if quiz.exam_mode == 'exam' %}
+                <span class="px-2.5 py-1 text-xs font-medium rounded-full bg-orange-100 text-orange-700">Экзамен</span>
+                {% else %}
+                <span class="px-2.5 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-700">Тренировка</span>
+                {% endif %}
+            </div>
+            <p class="text-sm text-gray-500 mt-1">
+                <span x-text="solvedCount"></span> / {{ questions|length }} задач решено
+                · <span x-text="currentScore"></span> / {{ total_points }} баллов
+            </p>
+        </div>
+    </div>
+
+    <div class="flex gap-6">
+        <!-- Sidebar -->
+        <div class="hidden md:block w-64 flex-shrink-0">
+            <div class="ege-sidebar bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                <p class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Задачи</p>
+                <div class="grid grid-cols-5 gap-2">
+                    <template x-for="(task, i) in tasks" :key="task.id">
+                        <button @click="goToTask(i)" class="task-btn"
+                                :class="taskBtnClass(i)"
+                                x-text="task.ege_number || (i+1)">
+                        </button>
+                    </template>
+                </div>
+                <div class="mt-4 pt-4 border-t border-gray-100 space-y-1 text-xs text-gray-400">
+                    <div class="flex items-center gap-2"><span class="w-3 h-3 rounded bg-gray-100 border"></span> Не начата</div>
+                    <div class="flex items-center gap-2"><span class="w-3 h-3 rounded bg-blue-100"></span> Есть ответ</div>
+                    <div class="flex items-center gap-2"><span class="w-3 h-3 rounded bg-green-100"></span> Решена</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Task area -->
+        <div class="flex-1 min-w-0">
+            {% for question in questions %}
+            <div x-show="tasks[currentTask] && tasks[currentTask].id === {{ question.id }}" x-cloak
+                 class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-4">
+                <!-- Task header -->
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <span class="text-sm font-medium text-gray-400" x-text="'Задача ' + (tasks[currentTask]?.ege_number || (currentTask+1))"></span>
+                        <span x-show="tasks[currentTask]?.topic" class="ml-2 text-sm text-gray-500" x-text="'· ' + tasks[currentTask]?.topic"></span>
+                        <span class="ml-2 text-xs px-2 py-0.5 rounded-full"
+                              :class="tasks[currentTask]?.points > 1 ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'"
+                              x-text="(tasks[currentTask]?.points || 0) + ' б.'"></span>
+                    </div>
+                    <div x-show="tasks[currentTask]?.is_solved" class="flex items-center gap-1 text-green-600 text-sm font-medium">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                        Решена
+                    </div>
+                </div>
+
+                <!-- Question text -->
+                <div class="prose max-w-none mb-4 text-gray-700 whitespace-pre-line">{{ question.get_body|linebreaksbr }}</div>
+
+                <!-- Images -->
+                {% for img in question.images.all %}
+                <div class="mb-4">
+                    <img src="{{ img.image.url }}" alt="{{ img.alt_text }}" class="max-w-full rounded-lg border">
+                </div>
+                {% endfor %}
+
+                <!-- Files -->
+                {% for file in question.files.all %}
+                <a href="{% url 'quizzes:question_file_download' file.id %}"
+                   class="inline-flex items-center gap-2 px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-lg text-sm text-gray-700 mb-4 transition-colors">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                    {{ file.get_filename }}
+                </a>
+                {% endfor %}
+
+                <!-- Answer input -->
+                {% if question.question_type == 'text' %}
+                <div class="mt-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Ответ:</label>
+                    <input type="text"
+                           x-model="answers[{{ question.id }}]"
+                           @input="onAnswerChange({{ question.id }})"
+                           class="w-full max-w-md px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors"
+                           placeholder="Введите ответ..."
+                           :disabled="isExam && tasks.find(t => t.id === {{ question.id }})?.is_solved">
+                    {% if quiz.exam_mode == 'practice' %}
+                    <button @click="checkAnswer({{ question.id }})"
+                            :disabled="!answers[{{ question.id }}] || checkingAnswer === {{ question.id }}"
+                            class="mt-3 px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                        <span x-show="checkingAnswer !== {{ question.id }}">Проверить</span>
+                        <span x-show="checkingAnswer === {{ question.id }}">Проверяю...</span>
+                    </button>
+                    {% endif %}
+                    <!-- Check result -->
+                    <div x-show="checkResults[{{ question.id }}] !== undefined" x-cloak class="mt-3">
+                        <div x-show="checkResults[{{ question.id }}] === true" class="code-status success">
+                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                            Верно!
+                        </div>
+                        <div x-show="checkResults[{{ question.id }}] === false" class="code-status failed">
+                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                            Неверно. Попробуйте ещё раз.
+                        </div>
+                    </div>
+                </div>
+                {% elif question.question_type == 'code' %}
+                <div class="mt-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Код (Python):</label>
+                    <div id="codemirror-wrap-{{ question.id }}"></div>
+
+                    {% if quiz.exam_mode == 'practice' %}
+                    <button @click="submitCode({{ question.id }})"
+                            :disabled="codeStatuses[{{ question.id }}] === 'pending' || codeStatuses[{{ question.id }}] === 'running'"
+                            class="mt-3 px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                        <span x-show="codeStatuses[{{ question.id }}] !== 'pending' && codeStatuses[{{ question.id }}] !== 'running'">Проверить решение</span>
+                        <span x-show="codeStatuses[{{ question.id }}] === 'pending' || codeStatuses[{{ question.id }}] === 'running'" class="flex items-center gap-2">
+                            <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                            Проверяю...
+                        </span>
+                    </button>
+                    {% endif %}
+
+                    <!-- Code status -->
+                    <div x-show="codeStatuses[{{ question.id }}]" x-cloak class="mt-3">
+                        <div x-show="codeStatuses[{{ question.id }}] === 'pending' || codeStatuses[{{ question.id }}] === 'running'" class="code-status pending">
+                            <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                            Код проверяется...
+                        </div>
+                        <div x-show="codeStatuses[{{ question.id }}] === 'success'" class="code-status success">
+                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                            Все тесты пройдены!
+                        </div>
+                        <div x-show="codeStatuses[{{ question.id }}] === 'failed'" class="code-status failed">
+                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                            <span x-text="codeErrors[{{ question.id }}] || 'Тесты не пройдены'"></span>
+                        </div>
+                        <div x-show="codeStatuses[{{ question.id }}] === 'error'" class="code-status error">
+                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                            <span x-text="codeErrors[{{ question.id }}] || 'Системная ошибка'"></span>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Navigation -->
+                <div class="flex items-center justify-between mt-6 pt-4 border-t border-gray-100">
+                    <button @click="prevTask()" :disabled="currentTask === 0"
+                            class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                        &larr; Назад
+                    </button>
+                    <span class="text-sm text-gray-400" x-text="(currentTask + 1) + ' / ' + tasks.length"></span>
+                    <button @click="nextTask()" :disabled="currentTask === tasks.length - 1"
+                            class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                        Далее &rarr;
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+
+            <!-- Finish button -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 text-center">
+                <button @click="confirmFinish()"
+                        :disabled="finishing"
+                        class="px-6 py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                    <span x-show="!finishing">Завершить вариант</span>
+                    <span x-show="finishing" class="flex items-center gap-2">
+                        <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                        Завершаю...
+                    </span>
+                </button>
+                <p class="text-xs text-gray-400 mt-2" x-show="unansweredCount > 0" x-cloak>
+                    Без ответа: <span x-text="unansweredCount" class="font-medium text-orange-500"></span> задач
+                </p>
+            </div>
+        </div>
+    </div>
+
+<!-- Timer (exam mode only) -->
+{% if quiz.exam_mode == 'exam' %}
+<div id="ege-timer" :class="{ critical: timerCritical }">
+    <div class="timer-label">Осталось</div>
+    <div class="timer-value" x-text="timerDisplay"></div>
+</div>
+{% endif %}
+
+<!-- Mobile sidebar toggle -->
+<div class="md:hidden fixed bottom-20 right-4 z-50">
+    <button @click="showMobileSidebar = !showMobileSidebar"
+            class="w-12 h-12 bg-brand-600 text-white rounded-full shadow-lg flex items-center justify-content-center text-sm font-bold">
+        <span x-text="(currentTask + 1)" class="mx-auto"></span>
+    </button>
+</div>
+<!-- Mobile sidebar overlay -->
+<div x-show="showMobileSidebar" x-cloak @click="showMobileSidebar = false"
+     class="md:hidden fixed inset-0 bg-black/30 z-40">
+    <div @click.stop class="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl p-6 pb-8 shadow-2xl max-h-[60vh] overflow-y-auto">
+        <p class="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">Задачи</p>
+        <div class="grid grid-cols-7 gap-2">
+            <template x-for="(task, i) in tasks" :key="'mob-'+task.id">
+                <button @click="goToTask(i); showMobileSidebar = false" class="task-btn"
+                        :class="taskBtnClass(i)"
+                        x-text="task.ege_number || (i+1)">
+                </button>
+            </template>
+        </div>
+    </div>
+</div>
+
+<!-- Confirm dialog -->
+<div x-show="showFinishConfirm" x-cloak class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+    <div @click.stop class="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl">
+        <h3 class="text-lg font-bold text-gray-900 mb-2">Завершить вариант?</h3>
+        <p class="text-sm text-gray-500 mb-1">
+            Отвечено: <span x-text="answeredCount" class="font-medium"></span> / <span x-text="tasks.length"></span>
+        </p>
+        <p x-show="unansweredCount > 0" class="text-sm text-orange-500 mb-4">
+            <span x-text="unansweredCount"></span> задач без ответа!
+        </p>
+        <div class="flex gap-3 mt-4">
+            <button @click="showFinishConfirm = false"
+                    class="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
+                Отмена
+            </button>
+            <button @click="finishExam()"
+                    class="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+                Завершить
+            </button>
+        </div>
+    </div>
+</div>
+</div> <!-- close x-data="egeApp()" -->
+{% endblock content %}
+
+{% block pre_alpine_js %}
+<!-- CodeMirror -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/python/python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/edit/matchbrackets.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/edit/closebrackets.min.js"></script>
+<!-- Quiz async (WebSocket + code submission) -->
+<script src="{% static 'js/quiz-async.js' %}"></script>
+<!-- EGE timer + localStorage -->
+<script src="{% static 'js/ege-timer.js' %}"></script>
+
+<script>
+function egeApp() {
+    return {
+        // State
+        tasks: {{ tasks_json|safe }},
+        currentTask: 0,
+        answers: {},
+        checkResults: {},       // questionId -> true/false (text check results)
+        checkingAnswer: null,   // questionId being checked
+        codeStatuses: {},       // questionId -> status string
+        codeErrors: {},         // questionId -> error message
+        finishing: false,
+        showFinishConfirm: false,
+        showMobileSidebar: false,
+        isExam: '{{ quiz.exam_mode }}' === 'exam',
+        quizId: {{ quiz.id }},
+        csrfToken: '{{ csrf_token }}',
+
+        // Timer
+        timerDisplay: '--:--',
+        timerCritical: false,
+
+        // Modules
+        codeChecker: null,
+        answerStore: null,
+        timeTracker: null,
+        egeTimer: null,
+        codeMirrors: {},
+
+        init() {
+            const lastSubs = {{ last_submissions_json|safe }};
+
+            // Restore code submission statuses
+            for (const [qid, sub] of Object.entries(lastSubs)) {
+                if (sub.status === 'success' && sub.is_correct) {
+                    this.codeStatuses[qid] = 'success';
+                } else if (sub.status === 'failed') {
+                    this.codeStatuses[qid] = 'failed';
+                } else if (sub.status === 'pending' || sub.status === 'running') {
+                    this.codeStatuses[qid] = sub.status;
+                }
+            }
+
+            // Initialize answer store (localStorage)
+            this.answerStore = new EgeAnswerStore(this.quizId);
+            this.answers = this.answerStore.load();
+
+            // Restore code answers from submissions
+            for (const [qid, sub] of Object.entries(lastSubs)) {
+                if (sub.code && !this.answers[qid]) {
+                    this.answers[qid] = sub.code;
+                }
+            }
+
+            // Mark solved tasks from check results
+            for (const task of this.tasks) {
+                if (task.is_solved) {
+                    this.checkResults[task.id] = true;
+                }
+            }
+
+            // Code checker (WebSocket)
+            this.codeChecker = new QuizCodeChecker(this.quizId, this.csrfToken);
+            this.codeChecker.onStatusChange = (questionId, status, isCorrect, errorLog) => {
+                this.handleCodeStatus(questionId, status, isCorrect, errorLog);
+            };
+
+            // Time tracker
+            this.timeTracker = new TaskTimeTracker(this.quizId, this.csrfToken);
+
+            // Exam timer
+            {% if quiz.exam_mode == 'exam' %}
+            this.egeTimer = new EgeTimer(this.quizId, 235, (display, critical) => {
+                this.timerDisplay = display;
+                this.timerCritical = critical;
+            }, () => {
+                // Auto-finish on timeout
+                this.finishExam(true);
+            });
+            this.egeTimer.start();
+            {% endif %}
+
+            // Ленивая инициализация CodeMirror — при первом показе задачи
+            this.$nextTick(() => this.ensureCodeMirror());
+            this.timeTracker.startTask(this.tasks[0]?.id);
+        },
+
+        ensureCodeMirror() {
+            // Инициализирует CodeMirror для текущей задачи (если code и ещё не создан)
+            const task = this.tasks[this.currentTask];
+            if (!task || task.type !== 'code') return;
+            if (this.codeMirrors[task.id]) {
+                // Уже создан — просто обновить размеры
+                setTimeout(() => this.codeMirrors[task.id].refresh(), 50);
+                return;
+            }
+
+            // setTimeout даёт Alpine время обновить x-show (display) перед созданием CodeMirror
+            setTimeout(() => {
+                const wrap = document.getElementById(`codemirror-wrap-${task.id}`);
+                if (!wrap || wrap.offsetParent === null) return; // ещё скрыт
+
+                const cm = CodeMirror(wrap, {
+                    value: this.answers[task.id] || '',
+                    mode: 'python',
+                    theme: 'material-darker',
+                    lineNumbers: true,
+                    matchBrackets: true,
+                    autoCloseBrackets: true,
+                    indentUnit: 4,
+                    tabSize: 4,
+                    indentWithTabs: false,
+                    extraKeys: { Tab: (cm) => cm.replaceSelection('    ', 'end') },
+                });
+                cm.on('change', () => {
+                    this.answers[task.id] = cm.getValue();
+                    this.answerStore.save(this.answers);
+                });
+                this.codeMirrors[task.id] = cm;
+            }, 80);
+        },
+
+        onAnswerChange(questionId) {
+            this.answerStore.save(this.answers);
+        },
+
+        goToTask(index) {
+            const prevTask = this.tasks[this.currentTask];
+            this.currentTask = index;
+            const newTask = this.tasks[index];
+
+            // Track time
+            if (prevTask) this.timeTracker.stopTask(prevTask.id);
+            if (newTask) this.timeTracker.startTask(newTask.id);
+
+            this.ensureCodeMirror();
+        },
+
+        prevTask() { if (this.currentTask > 0) this.goToTask(this.currentTask - 1); },
+        nextTask() { if (this.currentTask < this.tasks.length - 1) this.goToTask(this.currentTask + 1); },
+
+        taskBtnClass(i) {
+            const task = this.tasks[i];
+            let cls = '';
+            if (i === this.currentTask) cls += ' active';
+            if (task.is_solved || this.checkResults[task.id] === true ||
+                (this.codeStatuses[task.id] === 'success')) {
+                cls += ' solved';
+            } else if (this.checkResults[task.id] === false || this.codeStatuses[task.id] === 'failed') {
+                cls += ' wrong';
+            } else if (this.answers[task.id]) {
+                cls += ' answered';
+            } else {
+                cls += ' default';
+            }
+            return cls;
+        },
+
+        get solvedCount() {
+            return this.tasks.filter(t =>
+                t.is_solved || this.checkResults[t.id] === true || this.codeStatuses[t.id] === 'success'
+            ).length;
+        },
+
+        get currentScore() {
+            return this.tasks.reduce((sum, t) => {
+                if (t.is_solved || this.checkResults[t.id] === true || this.codeStatuses[t.id] === 'success') {
+                    return sum + t.points;
+                }
+                return sum;
+            }, 0);
+        },
+
+        get answeredCount() {
+            return this.tasks.filter(t => this.answers[t.id]).length;
+        },
+
+        get unansweredCount() {
+            return this.tasks.length - this.answeredCount;
+        },
+
+        // Text answer check (practice only)
+        async checkAnswer(questionId) {
+            this.checkingAnswer = questionId;
+            try {
+                const resp = await fetch(`/ege/${this.quizId}/check/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.csrfToken },
+                    body: JSON.stringify({ question_id: questionId, answer: this.answers[questionId] }),
+                });
+                const data = await resp.json();
+                if (resp.ok) {
+                    this.checkResults[questionId] = data.is_correct;
+                    if (data.is_solved) {
+                        const task = this.tasks.find(t => t.id === questionId);
+                        if (task) { task.is_solved = true; task.attempts = data.attempts; }
+                    }
+                }
+            } catch (e) {
+                console.error('Check error:', e);
+            }
+            this.checkingAnswer = null;
+        },
+
+        // Code submission (practice only)
+        async submitCode(questionId) {
+            const code = this.codeMirrors[questionId]?.getValue() || '';
+            if (!code.trim()) return;
+            this.answers[questionId] = code;
+            this.answerStore.save(this.answers);
+            const result = await this.codeChecker.submitCode(questionId, code);
+            if (result.error && !result.submission_id) {
+                alert(result.error);
+            }
+        },
+
+        handleCodeStatus(questionId, status, isCorrect, errorLog) {
+            this.codeStatuses[questionId] = status;
+            if (errorLog) this.codeErrors[questionId] = errorLog;
+
+            if (status === 'success' && isCorrect) {
+                const task = this.tasks.find(t => t.id === questionId);
+                if (task) task.is_solved = true;
+            }
+        },
+
+        // Finish
+        confirmFinish() {
+            this.showFinishConfirm = true;
+        },
+
+        async finishExam(force = false) {
+            this.showFinishConfirm = false;
+            this.finishing = true;
+
+            // Stop time tracking
+            const prevTask = this.tasks[this.currentTask];
+            if (prevTask) this.timeTracker.stopTask(prevTask.id);
+
+            try {
+                const resp = await fetch(`/ege/${this.quizId}/finish/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.csrfToken },
+                    body: JSON.stringify({ answers: this.answers, force }),
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    this.answerStore.clear();
+                    if (this.egeTimer) this.egeTimer.stop();
+                    if (this.codeChecker) this.codeChecker.destroy();
+                    window.location.href = data.redirect_url;
+                } else {
+                    alert(data.error || 'Ошибка при завершении');
+                    this.finishing = false;
+                }
+            } catch (e) {
+                console.error('Finish error:', e);
+                alert('Ошибка сети');
+                this.finishing = false;
+            }
+        },
+
+        // Cleanup
+        destroy() {
+            if (this.codeChecker) this.codeChecker.destroy();
+            if (this.timeTracker) this.timeTracker.destroy();
+            if (this.egeTimer) this.egeTimer.stop();
+        },
+    };
+}
+</script>
+{% endblock pre_alpine_js %}

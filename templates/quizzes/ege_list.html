@@ -21,7 +21,7 @@
                 <!-- Заголовок и бейдж режима -->
                 <div class="flex items-start justify-between mb-3">
                     <div class="flex-1">
-                        <a href="{% url 'quizzes:quiz_detail' item.quiz.id %}"
+                        <a href="{% url 'ege:ege_detail' item.quiz.id %}"
                            class="text-lg font-semibold text-gray-900 hover:text-brand-600 transition-colors">
                             {{ item.quiz.title }}
                         </a>
@@ -77,7 +77,7 @@
                 <!-- Кнопка -->
                 <div class="mt-4">
                     {% if user.is_authenticated %}
-                    <a href="{% url 'quizzes:quiz_detail' item.quiz.id %}"
+                    <a href="{% url 'ege:ege_detail' item.quiz.id %}"
                        class="block text-center px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors">
                         {% if item.best_score is not None %}Пройти снова{% else %}Начать{% endif %}
                     </a>

@@ -283,6 +283,26 @@ class HelpComment(models.Model):
         return f"{self.author.username}{line_info}: {self.text[:50]}"
 
 
+class ExamTaskProgress(models.Model):
+    """Прогресс пользователя по конкретной задаче ЕГЭ (время, попытки, статус)."""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='exam_progress', verbose_name="Пользователь")
+    quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE, related_name='task_progress', verbose_name="Вариант")
+    question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name='exam_progress', verbose_name="Задача")
+    time_spent_seconds = models.PositiveIntegerField(default=0, verbose_name="Время (секунды)")
+    attempts_to_solve = models.PositiveIntegerField(default=0, verbose_name="Количество попыток")
+    is_solved = models.BooleanField(default=False, verbose_name="Решена")
+    first_solved_at = models.DateTimeField(null=True, blank=True, verbose_name="Время первого решения")
+
+    class Meta:
+        verbose_name = "Прогресс задачи ЕГЭ"
+        verbose_name_plural = "Прогресс задач ЕГЭ"
+        unique_together = ['user', 'quiz', 'question']
+
+    def __str__(self):
+        status = "решена" if self.is_solved else f"{self.attempts_to_solve} попыток"
+        return f"{self.user.username} — задача {self.question_id} ({status})"
+
+
 class UserAnswer(models.Model):
     user_result = models.ForeignKey(UserResult, on_delete=models.CASCADE, related_name='answers', verbose_name="Результат попытки")
     question = models.ForeignKey(Question, on_delete=models.CASCADE, verbose_name="Вопрос")

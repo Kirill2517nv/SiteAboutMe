@@ -1,0 +1,166 @@
+{% extends 'base.html' %}
+
+{% block title %}Результат — {{ quiz.title }}{% endblock title %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8" x-data="egeResult()" x-init="init()">
+
+    <!-- Score card -->
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center mb-8" data-aos="fade-down">
+        <h1 class="text-2xl font-bold text-gray-900 mb-2">{{ quiz.title }}</h1>
+        <p class="text-sm text-gray-500 mb-6">
+            {% if quiz.exam_mode == 'exam' %}Режим экзамена{% else %}Тренировка{% endif %}
+            {% if duration_display %}
+            · Время: {{ duration_display }}
+            {% endif %}
+        </p>
+
+        <div class="inline-flex items-baseline gap-1 mb-2">
+            <span class="text-5xl font-bold" id="score-value"
+                  :class="pendingCount > 0 ? 'text-yellow-500' : scoreColor">
+                {{ user_result.score }}
+            </span>
+            <span class="text-2xl text-gray-400">/ {{ total_points }}</span>
+        </div>
+        <p class="text-sm text-gray-500">первичных баллов</p>
+
+        <!-- Pending banner -->
+        {% if pending_count > 0 %}
+        <div x-show="pendingCount > 0" class="mt-4 px-4 py-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-700 inline-flex items-center gap-2">
+            <svg class="w-4 h-4 animate-spin flex-shrink-0" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+            </svg>
+            <span x-text="pendingCount + ' задач на проверке — результат обновится автоматически'"></span>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Results table -->
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden" data-aos="fade-up">
+        <div class="px-6 py-4 border-b border-gray-100">
+            <h2 class="text-lg font-semibold text-gray-900">Результаты по задачам</h2>
+        </div>
+        <div class="divide-y divide-gray-50">
+            {% for answer in answers %}
+            <div class="px-6 py-4 flex items-center gap-4 hover:bg-gray-50 transition-colors" id="answer-row-{{ answer.question.id }}">
+                <!-- Number -->
+                <div class="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold
+                    {% if answer.submission and answer.submission.status in 'pending,running' %}
+                        bg-yellow-100 text-yellow-700
+                    {% elif answer.is_correct %}
+                        bg-green-100 text-green-700
+                    {% elif answer.text_answer or answer.code_answer %}
+                        bg-red-100 text-red-700
+                    {% else %}
+                        bg-gray-100 text-gray-400
+                    {% endif %}">
+                    {{ answer.question.ege_number|default:forloop.counter }}
+                </div>
+
+                <!-- Topic -->
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-gray-900 truncate">
+                        {% if answer.question.topic %}{{ answer.question.topic }}{% else %}Задача {{ answer.question.ege_number|default:forloop.counter }}{% endif %}
+                    </p>
+                    <p class="text-xs text-gray-400">
+                        {% if answer.text_answer %}Ответ: {{ answer.text_answer }}{% endif %}
+                        {% if answer.code_answer %}Код отправлен{% endif %}
+                        {% if not answer.text_answer and not answer.code_answer %}Нет ответа{% endif %}
+                    </p>
+                </div>
+
+                <!-- Points -->
+                <div class="flex-shrink-0 text-right">
+                    {% if answer.submission and answer.submission.status in 'pending,running' %}
+                    <span class="inline-flex items-center gap-1 text-sm text-yellow-600">
+                        <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                        </svg>
+                        Проверка
+                    </span>
+                    {% elif answer.is_correct %}
+                    <span class="text-sm font-medium text-green-600">+{{ answer.question.points }} б.</span>
+                    {% elif answer.text_answer or answer.code_answer %}
+                    <span class="text-sm text-red-500">0 б.</span>
+                    {% else %}
+                    <span class="text-sm text-gray-300">—</span>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="mt-6 flex flex-col sm:flex-row gap-3 justify-center" data-aos="fade-up" data-aos-delay="100">
+        <a href="{% url 'ege:ege_list' %}"
+           class="px-6 py-3 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors text-center">
+            К списку вариантов
+        </a>
+        {% if quiz.exam_mode == 'practice' %}
+        <a href="{% url 'ege:ege_detail' quiz.id %}"
+           class="px-6 py-3 bg-brand-600 text-white font-medium rounded-lg hover:bg-brand-700 transition-colors text-center">
+            Пройти снова
+        </a>
+        {% endif %}
+    </div>
+</div>
+{% endblock content %}
+
+{% block pre_alpine_js %}
+<script>
+function egeResult() {
+    return {
+        pendingCount: {{ pending_count }},
+        pollInterval: null,
+        scoreColor: {{ user_result.score }} >= {{ total_points }} ? 'text-green-600' : 'text-gray-900',
+
+        init() {
+            if (this.pendingCount > 0) {
+                this.pollInterval = setInterval(() => this.checkPending(), 3000);
+            }
+        },
+
+        async checkPending() {
+            try {
+                const resp = await fetch(window.location.href, {
+                    headers: { 'Accept': 'text/html' }
+                });
+                if (!resp.ok) return;
+                const html = await resp.text();
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+
+                // Update score
+                const scoreEl = doc.getElementById('score-value');
+                if (scoreEl) {
+                    const localScoreEl = document.getElementById('score-value');
+                    if (localScoreEl) localScoreEl.textContent = scoreEl.textContent.trim();
+                }
+
+                // Update rows
+                const rows = doc.querySelectorAll('[id^="answer-row-"]');
+                rows.forEach(newRow => {
+                    const oldRow = document.getElementById(newRow.id);
+                    if (oldRow) oldRow.innerHTML = newRow.innerHTML;
+                });
+
+                // Check if still pending
+                const stillPending = doc.querySelectorAll('.animate-spin');
+                // Count spins in results table only
+                const tableSpins = doc.querySelectorAll('[id^="answer-row-"] .animate-spin');
+                this.pendingCount = tableSpins.length;
+                if (this.pendingCount === 0 && this.pollInterval) {
+                    clearInterval(this.pollInterval);
+                    this.pollInterval = null;
+                }
+            } catch (e) {
+                console.error('Poll error:', e);
+            }
+        }
+    };
+}
+</script>
+{% endblock pre_alpine_js %}

@@ -144,7 +144,8 @@ def update_user_answer_from_submission(submission):
     Uses select_for_update to prevent race conditions between parallel workers.
     """
     from django.db import transaction
-    from .models import UserAnswer, UserResult
+    from django.db.models import Sum
+    from .models import UserAnswer, UserResult, ExamTaskProgress
 
     user_answer = UserAnswer.objects.filter(submission=submission).first()
     if not user_answer:
@@ -160,14 +161,39 @@ def update_user_answer_from_submission(submission):
         user_result = UserResult.objects.select_for_update().get(
             id=user_answer.user_result_id
         )
-        total_correct = UserAnswer.objects.filter(
-            user_result__user=user_result.user,
-            user_result__quiz=user_result.quiz,
-            is_correct=True
-        ).values('question_id').distinct().count()
+        quiz = user_result.quiz
 
-        user_result.score = total_correct
+        if quiz.quiz_type == 'exam':
+            # ЕГЭ: считаем сумму баллов (points) за правильные ответы
+            correct_answers = UserAnswer.objects.filter(
+                user_result=user_result,
+                is_correct=True
+            )
+            total_score = correct_answers.aggregate(
+                total=Sum('question__points')
+            )['total'] or 0
+        else:
+            # Стандартный тест: считаем количество правильных ответов
+            total_score = UserAnswer.objects.filter(
+                user_result__user=user_result.user,
+                user_result__quiz=quiz,
+                is_correct=True
+            ).values('question_id').distinct().count()
+
+        user_result.score = total_score
         user_result.save(update_fields=['score'])
+
+    # Обновляем ExamTaskProgress для code-задач ЕГЭ
+    if submission.quiz.quiz_type == 'exam' and submission.is_correct:
+        progress, _ = ExamTaskProgress.objects.get_or_create(
+            user=submission.user,
+            quiz=submission.quiz,
+            question=submission.question,
+        )
+        if not progress.is_solved:
+            progress.is_solved = True
+            progress.first_solved_at = timezone.now()
+            progress.save(update_fields=['is_solved', 'first_solved_at'])
 
 
 def send_ws_notification(submission, event_type):

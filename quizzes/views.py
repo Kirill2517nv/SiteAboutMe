@@ -7,7 +7,7 @@ from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.conf import settings
 from django.views.decorators.http import require_POST, require_GET
 from django.views.decorators.csrf import csrf_protect
-from .models import Quiz, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, Question, CodeSubmission, HelpRequest, HelpComment, QuestionFile
+from .models import Quiz, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, Question, CodeSubmission, HelpRequest, HelpComment, QuestionFile, ExamTaskProgress
 from accounts.models import StudentGroup
 import datetime
 import os
@@ -116,11 +116,12 @@ def quiz_list_view(request):
                 temp_assignments[qid] = a
     
     if user.is_superuser:
-        quizzes = Quiz.objects.all()
+        quizzes = Quiz.objects.exclude(quiz_type='exam')
     else:
         quizzes = []
         for qid, a in temp_assignments.items():
-            quizzes.append(a.quiz)
+            if a.quiz.quiz_type != 'exam':
+                quizzes.append(a.quiz)
 
     # Process effective settings
     for quiz in quizzes:
@@ -275,6 +276,316 @@ def ege_list_view(request):
     return render(request, 'quizzes/ege_list.html', {
         'variants': variants,
     })
+
+
+# --- EGE DETAIL / CHECK / FINISH / RESULT / SAVE-TIME ---
+
+@login_required
+def ege_detail_view(request, quiz_id):
+    """Страница прохождения варианта ЕГЭ."""
+    quiz = get_object_or_404(
+        Quiz.objects.prefetch_related(
+            'questions__images',
+            'questions__files',
+            'questions__test_cases',
+        ),
+        id=quiz_id,
+        quiz_type='exam',
+        is_public=True,
+    )
+
+    # Режим экзамена + уже есть результат → redirect на результат
+    if quiz.exam_mode == 'exam':
+        existing_result = UserResult.objects.filter(user=request.user, quiz=quiz).order_by('-date_completed').first()
+        if existing_result:
+            return redirect('ege:ege_result', quiz_id=quiz.id)
+
+    questions = list(quiz.questions.all().order_by('ege_number', 'id'))
+
+    # Загрузка прогресса
+    progress_qs = ExamTaskProgress.objects.filter(user=request.user, quiz=quiz)
+    progress_map = {p.question_id: p for p in progress_qs}
+
+    # Последние CodeSubmission для code-задач (для тренировки — показать статус)
+    code_questions = [q for q in questions if q.question_type == 'code']
+    last_submissions = {}
+    if code_questions:
+        for q in code_questions:
+            sub = CodeSubmission.objects.filter(
+                user=request.user, quiz=quiz, question=q
+            ).order_by('-created_at').first()
+            if sub:
+                last_submissions[q.id] = {
+                    'id': sub.id,
+                    'status': sub.status,
+                    'is_correct': sub.is_correct,
+                    'code': sub.code,
+                }
+
+    # Данные для Alpine.js
+    tasks_data = []
+    for q in questions:
+        prog = progress_map.get(q.id)
+        tasks_data.append({
+            'id': q.id,
+            'ege_number': q.ege_number,
+            'topic': q.topic,
+            'type': q.question_type,
+            'points': q.points,
+            'is_solved': prog.is_solved if prog else False,
+            'attempts': prog.attempts_to_solve if prog else 0,
+            'time_spent': prog.time_spent_seconds if prog else 0,
+        })
+
+    # Сохраняем время начала в session
+    session_key = f'ege_{quiz_id}_start'
+    if session_key not in request.session:
+        request.session[session_key] = timezone.now().isoformat()
+
+    context = {
+        'quiz': quiz,
+        'questions': questions,
+        'tasks_json': json.dumps(tasks_data),
+        'last_submissions_json': json.dumps(last_submissions),
+        'total_points': sum(q.points for q in questions),
+    }
+    return render(request, 'quizzes/ege_detail.html', context)
+
+
+@login_required
+@require_POST
+def ege_check_answer_view(request, quiz_id):
+    """AJAX: проверка одного text-ответа (только тренировка)."""
+    quiz = get_object_or_404(Quiz, id=quiz_id, quiz_type='exam', is_public=True)
+
+    if quiz.exam_mode != 'practice':
+        return JsonResponse({'error': 'Проверка по одному доступна только в тренировке'}, status=403)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Невалидный JSON'}, status=400)
+
+    question_id = data.get('question_id')
+    answer = data.get('answer', '').strip()
+    if not question_id or not answer:
+        return JsonResponse({'error': 'Укажите question_id и answer'}, status=400)
+
+    question = get_object_or_404(Question, id=question_id, quiz=quiz)
+
+    if question.question_type not in ('text', 'choice'):
+        return JsonResponse({'error': 'Тип задачи не поддерживает синхронную проверку'}, status=400)
+
+    is_correct = question.check_text_answer(answer)
+
+    # Обновляем ExamTaskProgress
+    progress, _ = ExamTaskProgress.objects.get_or_create(
+        user=request.user, quiz=quiz, question=question,
+    )
+    progress.attempts_to_solve += 1
+    fields_to_update = ['attempts_to_solve']
+
+    if is_correct and not progress.is_solved:
+        progress.is_solved = True
+        progress.first_solved_at = timezone.now()
+        fields_to_update += ['is_solved', 'first_solved_at']
+
+    progress.save(update_fields=fields_to_update)
+
+    return JsonResponse({
+        'is_correct': is_correct,
+        'attempts': progress.attempts_to_solve,
+        'is_solved': progress.is_solved,
+    })
+
+
+@login_required
+@require_POST
+def ege_finish_view(request, quiz_id):
+    """Завершение варианта ЕГЭ: создание UserResult + UserAnswer."""
+    quiz = get_object_or_404(Quiz, id=quiz_id, quiz_type='exam', is_public=True)
+
+    # Экзамен — не более 1 попытки
+    if quiz.exam_mode == 'exam':
+        if UserResult.objects.filter(user=request.user, quiz=quiz).exists():
+            return JsonResponse({'error': 'Вариант уже завершён'}, status=403)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        data = {}
+
+    answers_data = data.get('answers', {})  # {question_id: answer_text}
+    force = data.get('force', False)
+
+    questions = list(quiz.questions.all().order_by('ege_number', 'id'))
+
+    # Длительность
+    duration = None
+    session_key = f'ege_{quiz_id}_start'
+    start_time_str = request.session.get(session_key)
+    if start_time_str:
+        start_time = datetime.datetime.fromisoformat(start_time_str)
+        duration = timezone.now() - start_time
+        if session_key in request.session:
+            del request.session[session_key]
+
+    user_result = UserResult.objects.create(
+        user=request.user, quiz=quiz, score=0, duration=duration,
+    )
+
+    total_score = 0
+    user_answers_to_create = []
+
+    for question in questions:
+        user_input = answers_data.get(str(question.id), '')
+        is_correct = False
+        text_answer = None
+        code_answer = None
+        error_log = None
+        submission = None
+
+        if question.question_type == 'text':
+            text_answer = user_input
+            if user_input:
+                is_correct = question.check_text_answer(user_input)
+                if is_correct:
+                    total_score += question.points
+
+        elif question.question_type == 'code':
+            # Берём последний completed CodeSubmission
+            latest_sub = CodeSubmission.objects.filter(
+                user=request.user, quiz=quiz, question=question,
+            ).order_by('-created_at').first()
+
+            if latest_sub:
+                code_answer = latest_sub.code
+                submission = latest_sub
+                if latest_sub.status in ('success', 'failed'):
+                    is_correct = latest_sub.is_correct or False
+                    error_log = latest_sub.error_log
+                    if is_correct:
+                        total_score += question.points
+                elif latest_sub.status in ('pending', 'running'):
+                    # Ещё проверяется — Celery обновит позже
+                    code_answer = latest_sub.code
+            elif user_input:
+                # Код написан, но "Проверить" не нажималась — создаём submission
+                new_sub = CodeSubmission.objects.create(
+                    user=request.user, quiz=quiz, question=question,
+                    code=user_input, status='pending',
+                )
+                try:
+                    task = check_code_task.delay(new_sub.id)
+                    new_sub.celery_task_id = task.id
+                    new_sub.save(update_fields=['celery_task_id'])
+                except Exception:
+                    new_sub.status = 'error'
+                    new_sub.error_log = 'Сервер проверки временно недоступен'
+                    new_sub.completed_at = timezone.now()
+                    new_sub.save(update_fields=['status', 'error_log', 'completed_at'])
+                code_answer = user_input
+                submission = new_sub
+
+        user_answers_to_create.append(UserAnswer(
+            user_result=user_result,
+            question=question,
+            text_answer=text_answer,
+            code_answer=code_answer,
+            error_log=error_log,
+            is_correct=is_correct,
+            submission=submission,
+        ))
+
+    UserAnswer.objects.bulk_create(user_answers_to_create)
+
+    user_result.score = total_score
+    user_result.save(update_fields=['score'])
+
+    # Pending code submissions count
+    pending_checks = sum(
+        1 for ua in user_answers_to_create
+        if ua.submission and ua.submission.status in ('pending', 'running')
+    )
+
+    return JsonResponse({
+        'success': True,
+        'result_id': user_result.id,
+        'score': total_score,
+        'total_points': sum(q.points for q in questions),
+        'pending_checks': pending_checks,
+        'redirect_url': f'/ege/{quiz_id}/result/',
+    })
+
+
+@login_required
+def ege_result_view(request, quiz_id):
+    """Страница результата прохождения ЕГЭ."""
+    quiz = get_object_or_404(Quiz, id=quiz_id, quiz_type='exam', is_public=True)
+
+    user_result = UserResult.objects.filter(
+        user=request.user, quiz=quiz,
+    ).order_by('-date_completed').first()
+
+    if not user_result:
+        return redirect('ege:ege_detail', quiz_id=quiz.id)
+
+    answers = user_result.answers.select_related(
+        'question', 'submission',
+    ).prefetch_related('question__images').order_by('question__ege_number', 'question__id')
+
+    total_points = quiz.questions.aggregate(total=Sum('points'))['total'] or 0
+
+    # Pending code checks
+    pending_count = answers.filter(
+        submission__isnull=False,
+        submission__status__in=['pending', 'running'],
+    ).count()
+
+    # Format duration as H:MM:SS
+    duration_display = None
+    if user_result.duration:
+        total_secs = int(user_result.duration.total_seconds())
+        hours, remainder = divmod(total_secs, 3600)
+        minutes, secs = divmod(remainder, 60)
+        duration_display = f'{hours}:{minutes:02d}:{secs:02d}'
+
+    return render(request, 'quizzes/ege_result.html', {
+        'quiz': quiz,
+        'user_result': user_result,
+        'answers': answers,
+        'total_points': total_points,
+        'pending_count': pending_count,
+        'duration_display': duration_display,
+    })
+
+
+@login_required
+@require_POST
+def ege_save_time_view(request, quiz_id):
+    """AJAX: сохранение времени по задаче."""
+    quiz = get_object_or_404(Quiz, id=quiz_id, quiz_type='exam', is_public=True)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Невалидный JSON'}, status=400)
+
+    question_id = data.get('question_id')
+    seconds = data.get('seconds', 0)
+
+    if not question_id or seconds <= 0:
+        return JsonResponse({'error': 'Невалидные данные'}, status=400)
+
+    question = get_object_or_404(Question, id=question_id, quiz=quiz)
+
+    progress, _ = ExamTaskProgress.objects.get_or_create(
+        user=request.user, quiz=quiz, question=question,
+    )
+    progress.time_spent_seconds += seconds
+    progress.save(update_fields=['time_spent_seconds'])
+
+    return JsonResponse({'ok': True, 'total_seconds': progress.time_spent_seconds})
 
 
 @login_required
@@ -674,32 +985,34 @@ def submit_code_view(request, quiz_id, question_id):
     quiz = get_object_or_404(Quiz, id=quiz_id)
     question = get_object_or_404(Question, id=question_id, quiz=quiz)
 
-    # Check assignment/availability
-    eff_settings = get_effective_quiz_settings(request.user, quiz)
-    if not eff_settings:
-        return JsonResponse({'error': 'Тест не назначен'}, status=403)
+    # Публичные ЕГЭ — пропускаем проверку назначения
+    if not quiz.is_public:
+        eff_settings = get_effective_quiz_settings(request.user, quiz)
+        if not eff_settings:
+            return JsonResponse({'error': 'Тест не назначен'}, status=403)
 
-    # Check time limits
-    now = timezone.now()
-    if eff_settings['start_date'] and now < eff_settings['start_date']:
-        return JsonResponse({'error': 'Тест ещё не начался'}, status=403)
-    if eff_settings['end_date'] and now > eff_settings['end_date']:
-        return JsonResponse({'error': 'Время теста истекло'}, status=403)
+        # Check time limits
+        now = timezone.now()
+        if eff_settings['start_date'] and now < eff_settings['start_date']:
+            return JsonResponse({'error': 'Тест ещё не начался'}, status=403)
+        if eff_settings['end_date'] and now > eff_settings['end_date']:
+            return JsonResponse({'error': 'Время теста истекло'}, status=403)
 
     # Check if question type is code
     if question.question_type != 'code':
         return JsonResponse({'error': 'Вопрос не является задачей на код'}, status=400)
 
-    # Check if already solved
-    already_solved = UserAnswer.objects.filter(
-        user_result__user=request.user,
-        user_result__quiz=quiz,
-        question=question,
-        is_correct=True
-    ).exists()
+    # Check if already solved (в тренировке разрешаем переотправку)
+    if quiz.exam_mode != 'practice':
+        already_solved = UserAnswer.objects.filter(
+            user_result__user=request.user,
+            user_result__quiz=quiz,
+            question=question,
+            is_correct=True
+        ).exists()
 
-    if already_solved:
-        return JsonResponse({'error': 'Задача уже решена'}, status=400)
+        if already_solved:
+            return JsonResponse({'error': 'Задача уже решена'}, status=400)
 
     # Get code from request
     try:
