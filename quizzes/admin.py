@@ -31,8 +31,13 @@ class QuestionAdmin(admin.ModelAdmin):
             'fields': ('quiz', 'title', 'text', 'question_type')
         }),
         ('Для свободных ответов', {
-            'fields': ('correct_text_answer',),
+            'fields': ('correct_text_answer', 'alternative_answers'),
             'description': 'Заполнять только если выбран тип вопроса "Свободный ответ"'
+        }),
+        ('ЕГЭ', {
+            'fields': ('ege_number', 'topic', 'points'),
+            'classes': ('collapse',),
+            'description': 'Поля для задач ЕГЭ'
         }),
     )
 
@@ -57,8 +62,19 @@ class QuizAssignmentInline(admin.TabularInline):
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 class QuizAdmin(admin.ModelAdmin):
+    list_display = ('title', 'quiz_type', 'is_public')
+    list_filter = ('quiz_type', 'is_public')
     inlines = [QuestionInline, QuizAssignmentInline]
     search_fields = ['title']
+    fieldsets = (
+        (None, {
+            'fields': ('title', 'description', 'max_attempts', 'start_date', 'end_date')
+        }),
+        ('ЕГЭ', {
+            'fields': ('quiz_type', 'exam_mode', 'is_public'),
+            'classes': ('collapse',),
+        }),
+    )
     change_form_template = 'admin/quizzes/quiz/change_form.html'
 
     def get_urls(self):

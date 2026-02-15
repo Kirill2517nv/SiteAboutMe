@@ -6,11 +6,28 @@ from accounts.models import StudentGroup
 
 User = get_user_model()
 
+
+def normalize_text_answer(answer: str) -> str:
+    """Нормализация текстового ответа: strip, lowercase, удаление ведущих нулей."""
+    answer = answer.lower().strip()
+    while answer.startswith("0") and len(answer) > 1:
+        answer = answer[1:]
+
+    return answer
+
+
 class Quiz(models.Model):
+    QUIZ_TYPE_CHOICES = [('standard', 'Стандартный'), ('exam', 'ЕГЭ')]
+    EXAM_MODE_CHOICES = [('exam', 'Экзамен'), ('practice', 'Тренировка')]
+
     title = models.CharField(max_length=200, verbose_name="Название теста")
     description = models.TextField(verbose_name="Описание", blank=True)
     max_attempts = models.PositiveIntegerField(default=3, verbose_name="Максимум попыток", help_text="Сколько раз ученик может пройти тест. 0 - безлимитно.")
-    
+
+    quiz_type = models.CharField(max_length=10, choices=QUIZ_TYPE_CHOICES, default='standard', verbose_name="Тип теста")
+    exam_mode = models.CharField(max_length=10, choices=EXAM_MODE_CHOICES, default='practice', blank=True, verbose_name="Режим ЕГЭ")
+    is_public = models.BooleanField(default=False, verbose_name="Публичный доступ", help_text="Доступен всем без назначения")
+
     start_date = models.DateTimeField(null=True, blank=True, verbose_name="Начало доступа", help_text="Дата и время, с которого тест становится доступным")
     end_date = models.DateTimeField(null=True, blank=True, verbose_name="Конец доступа", help_text="Дата и время, после которого тест закрывается")
 
@@ -54,7 +71,12 @@ class Question(models.Model):
     question_type = models.CharField(max_length=10, choices=TYPE_CHOICES, default='choice', verbose_name="Тип вопроса")
     
     correct_text_answer = models.CharField(max_length=200, blank=True, null=True, verbose_name="Правильный ответ (текст)")
-    
+
+    ege_number = models.PositiveIntegerField(null=True, blank=True, verbose_name="Номер задачи ЕГЭ")
+    topic = models.CharField(max_length=200, blank=True, default='', verbose_name="Тема")
+    points = models.PositiveIntegerField(default=1, verbose_name="Баллы")
+    alternative_answers = models.JSONField(null=True, blank=True, verbose_name="Альтернативные ответы", help_text='Список строк, например: ["42", "42.0"]')
+
     class Meta:
         verbose_name = "Вопрос"
         verbose_name_plural = "Вопросы"
@@ -68,6 +90,15 @@ class Question(models.Model):
         if self.title:
             return self.title
         return self.text.strip().split('\n')[0]
+
+    def check_text_answer(self, user_answer: str) -> bool:
+        """Проверяет текстовый ответ с учётом нормализации и альтернативных ответов."""
+        normalized = normalize_text_answer(user_answer)
+        if normalize_text_answer(self.correct_text_answer or '') == normalized:
+            return True
+        if self.alternative_answers:
+            return any(normalize_text_answer(alt) == normalized for alt in self.alternative_answers)
+        return False
 
     def get_body(self):
         """
