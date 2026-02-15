@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.http import HttpResponseRedirect
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
-from .models import Quiz, Question, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, HelpRequest, HelpComment, QuestionImage, QuestionFile
+from .models import Quiz, Question, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, HelpRequest, HelpComment, QuestionImage, QuestionFile, ExamTaskProgress
 from .forms import BulkQuizAssignmentForm
 
 class ChoiceInline(admin.TabularInline):
@@ -164,8 +164,16 @@ class HelpRequestAdmin(admin.ModelAdmin):
     search_fields = ('student__username', 'student__last_name', 'question__text')
     inlines = [HelpCommentInline]
 
+class ExamTaskProgressAdmin(admin.ModelAdmin):
+    list_display = ('user', 'quiz', 'question', 'is_solved', 'attempts_to_solve', 'time_spent_seconds')
+    list_filter = ('is_solved', 'quiz')
+    search_fields = ('user__last_name', 'user__first_name', 'user__username')
+    list_select_related = ('user', 'quiz', 'question')
+    readonly_fields = ('is_solved', 'first_solved_at')
+
 admin.site.register(Quiz, QuizAdmin)
 admin.site.register(Question, QuestionAdmin)
 admin.site.register(UserResult, UserResultAdmin)
 admin.site.register(QuizAssignment, QuizAssignmentAdmin)
 admin.site.register(HelpRequest, HelpRequestAdmin)
+admin.site.register(ExamTaskProgress, ExamTaskProgressAdmin)

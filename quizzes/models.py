@@ -297,6 +297,10 @@ class ExamTaskProgress(models.Model):
         verbose_name = "Прогресс задачи ЕГЭ"
         verbose_name_plural = "Прогресс задач ЕГЭ"
         unique_together = ['user', 'quiz', 'question']
+        indexes = [
+            models.Index(fields=['user', 'quiz']),
+            models.Index(fields=['is_solved']),
+        ]
 
     def __str__(self):
         status = "решена" if self.is_solved else f"{self.attempts_to_solve} попыток"

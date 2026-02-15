@@ -74,16 +74,23 @@
                     {% endif %}
                 </div>
 
-                <!-- Кнопка -->
-                <div class="mt-4">
+                <!-- Кнопки -->
+                <div class="mt-4 flex gap-2">
                     {% if user.is_authenticated %}
                     <a href="{% url 'ege:ege_detail' item.quiz.id %}"
-                       class="block text-center px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors">
+                       class="flex-1 text-center px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors">
                         {% if item.best_score is not None %}Пройти снова{% else %}Начать{% endif %}
+                    </a>
+                    <a href="{% url 'ege:ege_results' item.quiz.id %}"
+                       class="flex-shrink-0 px-3 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors"
+                       title="Результаты">
+                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                        </svg>
                     </a>
                     {% else %}
                     <a href="{% url 'login' %}?next={% url 'ege:ege_list' %}"
-                       class="block text-center px-4 py-2 bg-gray-100 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors">
+                       class="flex-1 text-center px-4 py-2 bg-gray-100 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors">
                         Войти для прохождения
                     </a>
                     {% endif %}

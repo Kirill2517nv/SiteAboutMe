@@ -99,6 +99,10 @@
            class="px-6 py-3 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors text-center">
             К списку вариантов
         </a>
+        <a href="{% url 'ege:ege_results' quiz.id %}"
+           class="px-6 py-3 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors text-center">
+            Все результаты
+        </a>
         {% if quiz.exam_mode == 'practice' %}
         <a href="{% url 'ege:ege_detail' quiz.id %}"
            class="px-6 py-3 bg-brand-600 text-white font-medium rounded-lg hover:bg-brand-700 transition-colors text-center">

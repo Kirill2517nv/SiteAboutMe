@@ -9,5 +9,6 @@ urlpatterns = [
     path('<int:quiz_id>/check/', views.ege_check_answer_view, name='ege_check'),
     path('<int:quiz_id>/finish/', views.ege_finish_view, name='ege_finish'),
     path('<int:quiz_id>/result/', views.ege_result_view, name='ege_result'),
+    path('<int:quiz_id>/results/', views.ege_results_view, name='ege_results'),
     path('<int:quiz_id>/save-time/', views.ege_save_time_view, name='ege_save_time'),
 ]

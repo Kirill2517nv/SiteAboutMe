@@ -2,7 +2,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.utils import timezone
 from django.contrib.auth.models import User
-from django.db.models import Max, Count, Q, Sum
+from django.db.models import Max, Count, Q, Sum, Prefetch
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.conf import settings
 from django.views.decorators.http import require_POST, require_GET
@@ -243,6 +243,40 @@ def get_user_ege_stats(user, quiz_ids):
         item['quiz_id']: {'attempts': item['count'], 'best_score': item['best_score']}
         for item in stats
     }
+
+
+def build_ege_results_matrix(quiz):
+    """Матрица: пользователи x задачи для таблицы результатов."""
+    questions = list(quiz.questions.filter(
+        ege_number__isnull=False
+    ).order_by('ege_number'))
+
+    results = UserResult.objects.filter(quiz=quiz).select_related('user').prefetch_related(
+        Prefetch('answers', queryset=UserAnswer.objects.select_related('question'))
+    ).order_by('-score', 'user__last_name', 'user__first_name')
+
+    matrix = []
+    for result in results:
+        answer_map = {a.question_id: a.is_correct for a in result.answers.all()}
+
+        task_results = [answer_map.get(q.id) for q in questions]
+        correct_count = sum(1 for r in task_results if r is True)
+
+
+        full_name = f"{result.user.last_name} {result.user.first_name}".strip()
+        if not full_name:
+            full_name = result.user.username
+
+        matrix.append({
+            'user': result.user,
+            'full_name': full_name,
+            'task_results': task_results,
+            'correct_count': correct_count,
+            'score': result.score,
+            'date': result.date_completed,
+        })
+
+    return matrix, questions
 
 
 def ege_list_view(request):
@@ -557,6 +591,20 @@ def ege_result_view(request, quiz_id):
         'total_points': total_points,
         'pending_count': pending_count,
         'duration_display': duration_display,
+    })
+
+
+@login_required
+def ege_results_view(request, quiz_id):
+    """Сводная таблица результатов варианта ЕГЭ."""
+    quiz = get_object_or_404(Quiz, id=quiz_id, quiz_type='exam', is_public=True)
+    results_matrix, questions = build_ege_results_matrix(quiz)
+    total_points = sum(q.points for q in questions)
+    return render(request, 'quizzes/ege_results.html', {
+        'quiz': quiz,
+        'results_matrix': results_matrix,
+        'questions': questions,
+        'total_points': total_points,
     })
 
 
