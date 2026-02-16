@@ -308,6 +308,30 @@
         </div>
     </div>
 </div>
+<!-- Save prompt dialog -->
+<div x-show="showSavePrompt" x-cloak class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+    <div @click.stop class="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl">
+        <div class="flex items-center gap-3 mb-3">
+            <div class="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
+                <svg class="w-5 h-5 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+            </div>
+            <h3 class="text-lg font-bold text-gray-900">Результаты не сохранены</h3>
+        </div>
+        <p class="text-sm text-gray-500 mb-4">
+            Ваши результаты не были сохранены. Хотите сохранить перед уходом?
+        </p>
+        <div class="flex gap-3">
+            <button @click="leaveWithoutSaving()"
+                    class="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium">
+                Уйти без сохранения
+            </button>
+            <button @click="saveAndLeave()"
+                    class="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium">
+                Сохранить
+            </button>
+        </div>
+    </div>
+</div>
 </div> <!-- close x-data="egeApp()" -->
 {% endblock content %}
 
@@ -335,6 +359,8 @@ function egeApp() {
         codeErrors: {},         // questionId -> error message
         finishing: false,
         showFinishConfirm: false,
+        showSavePrompt: false,
+        pendingNavigationUrl: null,
         showMobileSidebar: false,
         isExam: '{{ quiz.exam_mode }}' === 'exam',
         quizId: {{ quiz.id }},
@@ -376,10 +402,14 @@ function egeApp() {
                 }
             }
 
-            // Mark solved tasks from check results
+            // Mark solved tasks + подгрузить сохранённые ответы из БД
             for (const task of this.tasks) {
                 if (task.is_solved) {
                     this.checkResults[task.id] = true;
+                    // Для решённых текстовых задач — заполнить ответ из БД (если нет в localStorage)
+                    if (task.saved_answer && !this.answers[task.id]) {
+                        this.answers[task.id] = task.saved_answer;
+                    }
                 }
             }
 
@@ -403,6 +433,34 @@ function egeApp() {
             });
             this.egeTimer.start();
             {% endif %}
+
+            // Перехват кликов по ссылкам — кастомный модал вместо beforeunload
+            this._linkInterceptor = (e) => {
+                const link = e.target.closest('a[href]');
+                if (!link) return;
+                const href = link.getAttribute('href');
+                // Не перехватываем: якоря, javascript:, скачивания, новые вкладки
+                if (!href || href.startsWith('#') || href.startsWith('javascript:') ||
+                    link.hasAttribute('download') || link.target === '_blank') return;
+                // Не перехватываем ссылки внутри задач (скачивание файлов и т.д.)
+                if (link.closest('.flex-1.min-w-0')) return;
+                if (this.answeredCount > 0 && !this.finishing) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.pendingNavigationUrl = link.href;
+                    this.showSavePrompt = true;
+                }
+            };
+            document.addEventListener('click', this._linkInterceptor, true);
+
+            // Fallback для закрытия вкладки (кастомный UI невозможен)
+            this._beforeUnload = (e) => {
+                if (this.answeredCount > 0 && !this.finishing) {
+                    e.preventDefault();
+                    e.returnValue = '';
+                }
+            };
+            window.addEventListener('beforeunload', this._beforeUnload);
 
             // Ленивая инициализация CodeMirror — при первом показе задачи
             this.$nextTick(() => this.ensureCodeMirror());
@@ -496,7 +554,11 @@ function egeApp() {
         },
 
         get answeredCount() {
-            return this.tasks.filter(t => this.answers[t.id]).length;
+            return this.tasks.filter(t =>
+                (this.answers[t.id] && String(this.answers[t.id]).trim()) ||
+                t.is_solved || this.checkResults[t.id] === true ||
+                this.codeStatuses[t.id] === 'success'
+            ).length;
         },
 
         get unansweredCount() {
@@ -569,6 +631,8 @@ function egeApp() {
                 });
                 const data = await resp.json();
                 if (data.success) {
+                    // Убираем перехватчики перед redirect
+                    this._removeInterceptors();
                     this.answerStore.clear();
                     if (this.egeTimer) this.egeTimer.stop();
                     if (this.codeChecker) this.codeChecker.destroy();
@@ -584,8 +648,25 @@ function egeApp() {
             }
         },
 
+        // Модал «сохранить результаты»
+        leaveWithoutSaving() {
+            this._removeInterceptors();
+            window.location.href = this.pendingNavigationUrl;
+        },
+
+        async saveAndLeave() {
+            this.showSavePrompt = false;
+            await this.finishExam();
+        },
+
+        _removeInterceptors() {
+            if (this._beforeUnload) window.removeEventListener('beforeunload', this._beforeUnload);
+            if (this._linkInterceptor) document.removeEventListener('click', this._linkInterceptor, true);
+        },
+
         // Cleanup
         destroy() {
+            this._removeInterceptors();
             if (this.codeChecker) this.codeChecker.destroy();
             if (this.timeTracker) this.timeTracker.destroy();
             if (this.egeTimer) this.egeTimer.stop();

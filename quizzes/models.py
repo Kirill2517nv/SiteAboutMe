@@ -307,6 +307,29 @@ class ExamTaskProgress(models.Model):
         return f"{self.user.username} — задача {self.question_id} ({status})"
 
 
+class SolutionAttachment(models.Model):
+    """Дополнительные материалы к решению задачи (файл, комментарий, изображение)."""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='solution_attachments', verbose_name="Пользователь")
+    quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE, related_name='solution_attachments', verbose_name="Вариант")
+    question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name='solution_attachments', verbose_name="Задача")
+    file = models.FileField(upload_to='solutions/', blank=True, null=True, verbose_name="Файл")
+    comment = models.TextField(blank=True, default='', verbose_name="Комментарий")
+    image = models.ImageField(upload_to='solutions/images/', blank=True, null=True, verbose_name="Изображение")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
+
+    class Meta:
+        verbose_name = "Доп. материал к решению"
+        verbose_name_plural = "Доп. материалы к решениям"
+        unique_together = ['user', 'quiz', 'question']
+
+    def __str__(self):
+        return f"Материал: {self.user.username} — задача {self.question_id}"
+
+    def get_filename(self):
+        import os
+        return os.path.basename(self.file.name) if self.file else ''
+
+
 class UserAnswer(models.Model):
     user_result = models.ForeignKey(UserResult, on_delete=models.CASCADE, related_name='answers', verbose_name="Результат попытки")
     question = models.ForeignKey(Question, on_delete=models.CASCADE, verbose_name="Вопрос")

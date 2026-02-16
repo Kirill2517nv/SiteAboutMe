@@ -1,0 +1,159 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Задача {{ ege_number }} — Решения{% endblock title %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+    <!-- Breadcrumbs -->
+    <div class="mb-6" data-aos="fade-right">
+        <nav class="flex items-center text-sm text-gray-500 space-x-2">
+            <a href="{% url 'ege:ege_list' %}" class="hover:text-brand-600 transition-colors">Тренажёр</a>
+            <span>/</span>
+            <a href="{% url 'ege:ege_detail' quiz_id=quiz.id %}" class="hover:text-brand-600 transition-colors">{{ quiz.title }}</a>
+            <span>/</span>
+            <a href="{% url 'ege:ege_results' quiz_id=quiz.id %}" class="hover:text-brand-600 transition-colors">Результаты</a>
+            <span>/</span>
+            <span class="text-gray-900 font-medium">Задача {{ ege_number }}</span>
+        </nav>
+    </div>
+
+    <!-- Header -->
+    <div class="mb-8" data-aos="fade-down">
+        <h1 class="text-2xl font-bold text-gray-900 mb-2">Задача {{ ege_number }} — Решения</h1>
+        <p class="text-sm text-gray-500">
+            {{ solutions|length }} {% with count=solutions|length %}{% if count == 1 %}решение{% elif count < 5 %}решения{% else %}решений{% endif %}{% endwith %}
+        </p>
+    </div>
+
+    <!-- Question text -->
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-8" data-aos="fade-up">
+        <h2 class="text-lg font-semibold text-gray-900 mb-3">{{ question.get_title }}</h2>
+        {% if question.get_body %}
+        <div class="text-gray-700 whitespace-pre-wrap leading-relaxed">{{ question.get_body }}</div>
+        {% endif %}
+
+        {% for img in question.images.all %}
+        <div class="mt-4">
+            <img src="{{ img.image.url }}" alt="{{ img.alt_text }}" class="max-w-full rounded-lg border border-gray-200">
+        </div>
+        {% endfor %}
+
+        {% for f in question.files.all %}
+        <div class="mt-3">
+            <a href="{% url 'quizzes:question_file_download' file_id=f.id %}" class="inline-flex items-center text-sm text-brand-600 hover:text-brand-700">
+                <svg class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                {{ f.get_filename }}
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Solutions list -->
+    {% for sol in solutions %}
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6" data-aos="fade-up" data-aos-delay="{{ forloop.counter0|add:'1' }}00">
+        <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-sm font-semibold">
+                    {{ sol.full_name|make_list|first }}
+                </div>
+                <span class="font-medium text-gray-900">{{ sol.full_name }}</span>
+            </div>
+        </div>
+
+        {% if sol.answer %}
+            {% if question.question_type == 'code' and sol.answer.code_answer %}
+            <!-- Code solution -->
+            <div class="relative group">
+                <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 text-sm overflow-x-auto font-mono leading-relaxed"><code>{{ sol.answer.code_answer }}</code></pre>
+                <button onclick="navigator.clipboard.writeText(this.closest('.relative').querySelector('code').textContent).then(() => { this.textContent='Скопировано!'; setTimeout(() => this.textContent='Копировать', 1500) })"
+                        class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity px-2 py-1 text-xs bg-gray-700 text-gray-300 rounded hover:bg-gray-600">
+                    Копировать
+                </button>
+            </div>
+            {% elif sol.answer.text_answer %}
+            <!-- Text solution -->
+            <div class="inline-flex items-center px-3 py-1.5 bg-green-50 border border-green-200 rounded-lg text-green-800 font-mono text-sm">
+                {{ sol.answer.text_answer }}
+            </div>
+            {% else %}
+            <p class="text-sm text-gray-500 italic">Задача решена (ответ не сохранён)</p>
+            {% endif %}
+        {% else %}
+        <p class="text-sm text-gray-500 italic">Задача решена (ответ не сохранён)</p>
+        {% endif %}
+
+        {% if sol.attachment %}
+        <div class="mt-4 pt-4 border-t border-gray-100">
+            <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Дополнительные материалы</p>
+
+            {% if sol.attachment.comment %}
+            <p class="text-sm text-gray-700 mb-3">{{ sol.attachment.comment }}</p>
+            {% endif %}
+
+            {% if sol.attachment.file %}
+            <a href="{{ sol.attachment.file.url }}" class="inline-flex items-center text-sm text-brand-600 hover:text-brand-700 mb-3" download>
+                <svg class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                {{ sol.attachment.get_filename }}
+            </a>
+            {% endif %}
+
+            {% if sol.attachment.image %}
+            <div class="mt-2">
+                <a href="{{ sol.attachment.image.url }}" target="_blank" class="inline-block">
+                    <img src="{{ sol.attachment.image.url }}" alt="Иллюстрация к решению" class="max-w-md rounded-lg border border-gray-200 hover:shadow-md transition-shadow cursor-zoom-in">
+                </a>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+    {% empty %}
+    <div class="bg-gray-50 rounded-xl p-8 text-center" data-aos="fade-up">
+        <p class="text-gray-500">Пока нет решений для этой задачи</p>
+    </div>
+    {% endfor %}
+
+    <!-- Upload attachment form (only if user solved the task) -->
+    {% if has_solved %}
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mt-8" data-aos="fade-up">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">
+            {% if my_attachment %}Обновить материалы{% else %}Добавить материалы к решению{% endif %}
+        </h3>
+        <form method="post" action="{% url 'ege:ege_upload_attachment' quiz_id=quiz.id ege_number=ege_number %}" enctype="multipart/form-data" class="space-y-4">
+            {% csrf_token %}
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Комментарий</label>
+                <textarea name="comment" rows="3" class="w-full rounded-lg border-gray-300 shadow-sm focus:ring-brand-500 focus:border-brand-500 text-sm" placeholder="Объяснение решения, ход мыслей...">{% if my_attachment %}{{ my_attachment.comment }}{% endif %}</textarea>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Файл</label>
+                    <input type="file" name="file" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100">
+                    {% if my_attachment.file %}
+                    <p class="text-xs text-gray-500 mt-1">Текущий: {{ my_attachment.get_filename }}</p>
+                    {% endif %}
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Изображение</label>
+                    <input type="file" name="image" accept="image/*" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100">
+                </div>
+            </div>
+
+            <div class="flex justify-end">
+                <button type="submit" class="px-5 py-2.5 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 transition-colors shadow-sm">
+                    {% if my_attachment %}Обновить{% else %}Загрузить{% endif %}
+                </button>
+            </div>
+        </form>
+    </div>
+    {% endif %}
+</div>
+{% endblock content %}

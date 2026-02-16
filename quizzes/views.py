@@ -7,7 +7,7 @@ from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.conf import settings
 from django.views.decorators.http import require_POST, require_GET
 from django.views.decorators.csrf import csrf_protect
-from .models import Quiz, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, Question, CodeSubmission, HelpRequest, HelpComment, QuestionFile, ExamTaskProgress
+from .models import Quiz, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, Question, CodeSubmission, HelpRequest, HelpComment, QuestionFile, ExamTaskProgress, SolutionAttachment
 from accounts.models import StudentGroup
 import datetime
 import os
@@ -17,6 +17,15 @@ import re
 from urllib.parse import quote
 from .utils import run_code_in_docker
 from .tasks import check_code_task
+
+# Рекомендуемое время на задачу ЕГЭ по информатике (минуты)
+EGE_RECOMMENDED_TIME = {
+    1: 3, 2: 3, 3: 3, 4: 2, 5: 4, 6: 4, 7: 5, 8: 4,
+    9: 6, 10: 3, 11: 3, 12: 6, 13: 3, 14: 3, 15: 3, 16: 5,
+    17: 14, 18: 8, 19: 6, 20: 8, 21: 11, 22: 7, 23: 8,
+    24: 18, 25: 20, 26: 35, 27: 40,
+}
+
 
 def _natural_sort_key(text):
     """Ключ для натуральной сортировки: 'Задача 2' перед 'Задача 10'."""
@@ -246,35 +255,59 @@ def get_user_ege_stats(user, quiz_ids):
 
 
 def build_ege_results_matrix(quiz):
-    """Матрица: пользователи x задачи для таблицы результатов."""
+    """Матрица: пользователи x задачи для таблицы результатов.
+
+    Одна строка на пользователя — лучший результат по каждой задаче
+    из ВСЕХ попыток (если задача решена хотя бы в одной попытке — ✓).
+    """
+    from collections import defaultdict
+
     questions = list(quiz.questions.filter(
         ege_number__isnull=False
     ).order_by('ege_number'))
 
-    results = UserResult.objects.filter(quiz=quiz).select_related('user').prefetch_related(
-        Prefetch('answers', queryset=UserAnswer.objects.select_related('question'))
-    ).order_by('-score', 'user__last_name', 'user__first_name')
+    # Все ответы по варианту, группируем по user
+    all_answers = UserAnswer.objects.filter(
+        user_result__quiz=quiz
+    ).select_related('question', 'user_result__user')
 
+    # {user_id: {question_id: True}} — True если хоть раз верно
+    user_best = defaultdict(dict)
+    users_map = {}  # user_id -> User object
+
+    for ans in all_answers:
+        uid = ans.user_result.user_id
+        qid = ans.question_id
+        users_map[uid] = ans.user_result.user
+        # Берём лучший результат: True перезаписывает False, но не наоборот
+        if user_best[uid].get(qid) is not True:
+            user_best[uid][qid] = ans.is_correct
+
+    # Собираем матрицу
     matrix = []
-    for result in results:
-        answer_map = {a.question_id: a.is_correct for a in result.answers.all()}
+    for uid, best_map in user_best.items():
+        user = users_map[uid]
+        task_results = [
+            {'correct': best_map.get(q.id), 'ege_number': q.ege_number}
+            for q in questions
+        ]
+        correct_count = sum(1 for r in task_results if r['correct'] is True)
+        score = sum(q.points for q, r in zip(questions, task_results) if r['correct'] is True)
 
-        task_results = [answer_map.get(q.id) for q in questions]
-        correct_count = sum(1 for r in task_results if r is True)
-
-
-        full_name = f"{result.user.last_name} {result.user.first_name}".strip()
+        full_name = f"{user.last_name} {user.first_name}".strip()
         if not full_name:
-            full_name = result.user.username
+            full_name = user.username
 
         matrix.append({
-            'user': result.user,
+            'user': user,
             'full_name': full_name,
             'task_results': task_results,
             'correct_count': correct_count,
-            'score': result.score,
-            'date': result.date_completed,
+            'score': score,
         })
+
+    # Сортировка: по баллам desc, затем по фамилии
+    matrix.sort(key=lambda r: (-r['score'], r['full_name']))
 
     return matrix, questions
 
@@ -360,6 +393,10 @@ def ege_detail_view(request, quiz_id):
     tasks_data = []
     for q in questions:
         prog = progress_map.get(q.id)
+        # Для решённых текстовых задач — передаём правильный ответ из БД
+        saved_answer = ''
+        if prog and prog.is_solved and q.question_type == 'text':
+            saved_answer = q.correct_text_answer or ''
         tasks_data.append({
             'id': q.id,
             'ege_number': q.ege_number,
@@ -369,6 +406,7 @@ def ege_detail_view(request, quiz_id):
             'is_solved': prog.is_solved if prog else False,
             'attempts': prog.attempts_to_solve if prog else 0,
             'time_spent': prog.time_spent_seconds if prog else 0,
+            'saved_answer': saved_answer,
         })
 
     # Сохраняем время начала в session
@@ -600,11 +638,51 @@ def ege_results_view(request, quiz_id):
     quiz = get_object_or_404(Quiz, id=quiz_id, quiz_type='exam', is_public=True)
     results_matrix, questions = build_ege_results_matrix(quiz)
     total_points = sum(q.points for q in questions)
+
+    # Личная статистика из ExamTaskProgress
+    personal_stats = None
+    if request.user.is_authenticated:
+        progress_qs = ExamTaskProgress.objects.filter(
+            user=request.user, quiz=quiz,
+        ).select_related('question')
+        progress_map = {p.question_id: p for p in progress_qs}
+
+        if progress_map:
+            personal_stats = []
+            for q in questions:
+                p = progress_map.get(q.id)
+                ege_num = q.ege_number or 0
+                rec_min = EGE_RECOMMENDED_TIME.get(ege_num, 5)
+
+                if p and p.time_spent_seconds > 0:
+                    mins = p.time_spent_seconds // 60
+                    secs = p.time_spent_seconds % 60
+                    time_mm_ss = f"{mins}:{secs:02d}"
+                    # Цветовая индикация
+                    if mins <= rec_min:
+                        color = 'green'
+                    elif mins <= rec_min * 1.5:
+                        color = 'yellow'
+                    else:
+                        color = 'red'
+                else:
+                    time_mm_ss = ''
+                    color = ''
+
+                personal_stats.append({
+                    'ege_number': ege_num,
+                    'time_mm_ss': time_mm_ss,
+                    'attempts': p.attempts_to_solve if p else 0,
+                    'is_solved': p.is_solved if p else False,
+                    'color': color,
+                })
+
     return render(request, 'quizzes/ege_results.html', {
         'quiz': quiz,
         'results_matrix': results_matrix,
         'questions': questions,
         'total_points': total_points,
+        'personal_stats': personal_stats,
     })
 
 
@@ -630,10 +708,155 @@ def ege_save_time_view(request, quiz_id):
     progress, _ = ExamTaskProgress.objects.get_or_create(
         user=request.user, quiz=quiz, question=question,
     )
+
+    # Не считаем время после первого верного решения
+    if progress.is_solved:
+        return JsonResponse({'ok': True, 'total_seconds': progress.time_spent_seconds, 'frozen': True})
+
     progress.time_spent_seconds += seconds
     progress.save(update_fields=['time_spent_seconds'])
 
     return JsonResponse({'ok': True, 'total_seconds': progress.time_spent_seconds})
+
+
+@login_required
+def ege_solutions_view(request, quiz_id, ege_number):
+    """Просмотр решений других пользователей по задаче ЕГЭ."""
+    from django.contrib import messages
+    from collections import defaultdict
+
+    quiz = get_object_or_404(Quiz, id=quiz_id, quiz_type='exam', is_public=True)
+    question = get_object_or_404(Question, quiz=quiz, ege_number=ege_number)
+
+    # Проверка доступа: решил задачу или superuser
+    has_access = request.user.is_superuser or ExamTaskProgress.objects.filter(
+        user=request.user, quiz=quiz, question=question, is_solved=True,
+    ).exists()
+
+    if not has_access:
+        messages.warning(request, 'Решите задачу, чтобы увидеть решения других.')
+        return redirect('ege:ege_results', quiz_id=quiz.id)
+
+    # Решившие задачу — из ExamTaskProgress (надёжный источник для тренировки)
+    solved_progress = ExamTaskProgress.objects.filter(
+        quiz=quiz, question=question, is_solved=True,
+    ).select_related('user')
+    solver_users = {p.user_id: p.user for p in solved_progress}
+
+    # Все ответы по задаче, группировка по пользователю (предпочитаем correct, потом последний)
+    all_answers = UserAnswer.objects.filter(
+        user_result__quiz=quiz,
+        question=question,
+    ).select_related('user_result__user').order_by('-user_result__date_completed')
+
+    best_answer_by_user = {}
+    for ans in all_answers:
+        uid = ans.user_result.user_id
+        if uid not in best_answer_by_user:
+            best_answer_by_user[uid] = ans
+        elif ans.is_correct and not best_answer_by_user[uid].is_correct:
+            best_answer_by_user[uid] = ans
+
+    # Собираем решения: все solver_users + пользователи с correct UserAnswer
+    solutions_by_user = {}
+    for uid, user in solver_users.items():
+        full_name = f"{user.last_name} {user.first_name}".strip() or user.username
+        solutions_by_user[uid] = {
+            'user': user,
+            'full_name': full_name,
+            'answer': best_answer_by_user.get(uid),
+        }
+
+    # Также добавляем пользователей с correct UserAnswer, которых нет в ExamTaskProgress
+    for uid, ans in best_answer_by_user.items():
+        if ans.is_correct and uid not in solutions_by_user:
+            user = ans.user_result.user
+            full_name = f"{user.last_name} {user.first_name}".strip() or user.username
+            solutions_by_user[uid] = {
+                'user': user,
+                'full_name': full_name,
+                'answer': ans,
+            }
+
+    # SolutionAttachment для всех пользователей
+    attachments = SolutionAttachment.objects.filter(
+        quiz=quiz, question=question,
+    ).select_related('user')
+    attach_map = {a.user_id: a for a in attachments}
+
+    # Собираем итоговый список решений
+    solutions = []
+    for uid, sol in solutions_by_user.items():
+        sol['attachment'] = attach_map.get(uid)
+        solutions.append(sol)
+
+    # Текущее вложение пользователя (для формы)
+    my_attachment = attach_map.get(request.user.id)
+
+    return render(request, 'quizzes/ege_solutions.html', {
+        'quiz': quiz,
+        'question': question,
+        'ege_number': ege_number,
+        'solutions': solutions,
+        'my_attachment': my_attachment,
+        'has_solved': ExamTaskProgress.objects.filter(
+            user=request.user, quiz=quiz, question=question, is_solved=True,
+        ).exists(),
+    })
+
+
+@login_required
+@require_POST
+def ege_upload_attachment_view(request, quiz_id, ege_number):
+    """Загрузка/обновление SolutionAttachment."""
+    quiz = get_object_or_404(Quiz, id=quiz_id, quiz_type='exam', is_public=True)
+    question = get_object_or_404(Question, quiz=quiz, ege_number=ege_number)
+
+    # Проверка: решил задачу
+    if not ExamTaskProgress.objects.filter(
+        user=request.user, quiz=quiz, question=question, is_solved=True,
+    ).exists():
+        return redirect('ege:ege_solutions', quiz_id=quiz.id, ege_number=ege_number)
+
+    attachment, _ = SolutionAttachment.objects.get_or_create(
+        user=request.user, quiz=quiz, question=question,
+    )
+
+    ALLOWED_FILE_EXT = {"txt", "csv", "ods", "odt", "xlsx", "doc", "docx", "pdf"}
+    ALLOWED_IMAGE_EXT = {"jpg", "jpeg", "png", "gif", "webp"}
+    has_changes = False
+
+    if request.FILES.get('file'):
+        if request.FILES['file'].size > 20 * 1024 * 1024:
+            messages.error(request, 'Нельзя загрузить документ более 20 МБ')
+            return redirect('ege:ege_solutions', quiz_id=quiz.id, ege_number=ege_number)
+        ext = os.path.splitext(request.FILES['file'].name)[1].lower().lstrip('.')
+        if ext not in ALLOWED_FILE_EXT:
+            messages.error(request, f'Допустимые расширения: {", ".join(sorted(ALLOWED_FILE_EXT))}')
+            return redirect('ege:ege_solutions', quiz_id=quiz.id, ege_number=ege_number)
+        attachment.file = request.FILES['file']
+        has_changes = True
+
+    if request.FILES.get('image'):
+        if request.FILES['image'].size > 5 * 1024 * 1024:
+            messages.error(request, 'Нельзя загрузить изображение более 5 МБ')
+            return redirect('ege:ege_solutions', quiz_id=quiz.id, ege_number=ege_number)
+        ext = os.path.splitext(request.FILES['image'].name)[1].lower().lstrip('.')
+        if ext not in ALLOWED_IMAGE_EXT:
+            messages.error(request, f'Допустимые расширения: {", ".join(sorted(ALLOWED_IMAGE_EXT))}')
+            return redirect('ege:ege_solutions', quiz_id=quiz.id, ege_number=ege_number)
+        attachment.image = request.FILES['image']
+        has_changes = True
+
+    comment = request.POST.get('comment', '').strip()
+    if comment:
+        attachment.comment = comment
+        has_changes = True
+
+    if has_changes:
+        attachment.save()
+
+    return redirect('ege:ege_solutions', quiz_id=quiz.id, ege_number=ege_number)
 
 
 @login_required

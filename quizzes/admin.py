@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.http import HttpResponseRedirect
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
-from .models import Quiz, Question, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, HelpRequest, HelpComment, QuestionImage, QuestionFile, ExamTaskProgress
+from .models import Quiz, Question, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, HelpRequest, HelpComment, QuestionImage, QuestionFile, ExamTaskProgress, SolutionAttachment
 from .forms import BulkQuizAssignmentForm
 
 class ChoiceInline(admin.TabularInline):
@@ -176,4 +176,20 @@ admin.site.register(Question, QuestionAdmin)
 admin.site.register(UserResult, UserResultAdmin)
 admin.site.register(QuizAssignment, QuizAssignmentAdmin)
 admin.site.register(HelpRequest, HelpRequestAdmin)
+class SolutionAttachmentAdmin(admin.ModelAdmin):
+    list_display = ('user', 'quiz', 'question', 'has_file', 'has_image', 'created_at')
+    list_filter = ('quiz',)
+    search_fields = ('user__last_name', 'user__first_name', 'user__username')
+    list_select_related = ('user', 'quiz', 'question')
+    readonly_fields = ('created_at',)
+
+    @admin.display(boolean=True, description='Файл')
+    def has_file(self, obj):
+        return bool(obj.file)
+
+    @admin.display(boolean=True, description='Картинка')
+    def has_image(self, obj):
+        return bool(obj.image)
+
 admin.site.register(ExamTaskProgress, ExamTaskProgressAdmin)
+admin.site.register(SolutionAttachment, SolutionAttachmentAdmin)
