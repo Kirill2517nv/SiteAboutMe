@@ -7,7 +7,7 @@ from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.conf import settings
 from django.views.decorators.http import require_POST, require_GET
 from django.views.decorators.csrf import csrf_protect
-from .models import Quiz, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, Question, CodeSubmission, HelpRequest, HelpComment, QuestionFile, ExamTaskProgress, SolutionAttachment
+from .models import Quiz, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, Question, CodeSubmission, HelpRequest, HelpComment, QuestionFile, ExamTaskProgress, SolutionAttachment, SolutionLike
 from accounts.models import StudentGroup
 import datetime
 import os
@@ -274,21 +274,29 @@ def build_ege_results_matrix(quiz):
     # {user_id: {question_id: True}} — True если хоть раз верно
     user_best = defaultdict(dict)
     users_map = {}  # user_id -> User object
+    # {(user_id, question_id): answer_id} — лучший ответ (correct > latest)
+    best_answer_map = {}
 
     for ans in all_answers:
         uid = ans.user_result.user_id
         qid = ans.question_id
         users_map[uid] = ans.user_result.user
         # Берём лучший результат: True перезаписывает False, но не наоборот
-        if user_best[uid].get(qid) is not True:
+        prev_solved = user_best[uid].get(qid) is True
+        if not prev_solved:
             user_best[uid][qid] = ans.is_correct
+        key = (uid, qid)
+        if key not in best_answer_map:
+            best_answer_map[key] = ans.id
+        elif ans.is_correct and not prev_solved:
+            best_answer_map[key] = ans.id
 
     # Собираем матрицу
     matrix = []
     for uid, best_map in user_best.items():
         user = users_map[uid]
         task_results = [
-            {'correct': best_map.get(q.id), 'ege_number': q.ege_number}
+            {'correct': best_map.get(q.id), 'ege_number': q.ege_number, 'user_id': uid}
             for q in questions
         ]
         correct_count = sum(1 for r in task_results if r['correct'] is True)
@@ -300,6 +308,7 @@ def build_ege_results_matrix(quiz):
 
         matrix.append({
             'user': user,
+            'user_id': uid,
             'full_name': full_name,
             'task_results': task_results,
             'correct_count': correct_count,
@@ -309,7 +318,7 @@ def build_ege_results_matrix(quiz):
     # Сортировка: по баллам desc, затем по фамилии
     matrix.sort(key=lambda r: (-r['score'], r['full_name']))
 
-    return matrix, questions
+    return matrix, questions, best_answer_map
 
 
 def ege_list_view(request):
@@ -574,6 +583,17 @@ def ege_finish_view(request, quiz_id):
     user_result.score = total_score
     user_result.save(update_fields=['score'])
 
+    # Обновляем ExamTaskProgress для всех верно решённых задач
+    for ua in user_answers_to_create:
+        if ua.is_correct:
+            progress, _ = ExamTaskProgress.objects.get_or_create(
+                user=request.user, quiz=quiz, question=ua.question,
+            )
+            if not progress.is_solved:
+                progress.is_solved = True
+                progress.first_solved_at = timezone.now()
+                progress.save(update_fields=['is_solved', 'first_solved_at'])
+
     # Pending code submissions count
     pending_checks = sum(
         1 for ua in user_answers_to_create
@@ -636,8 +656,60 @@ def ege_result_view(request, quiz_id):
 def ege_results_view(request, quiz_id):
     """Сводная таблица результатов варианта ЕГЭ."""
     quiz = get_object_or_404(Quiz, id=quiz_id, quiz_type='exam', is_public=True)
-    results_matrix, questions = build_ege_results_matrix(quiz)
+    results_matrix, questions, best_answer_map = build_ege_results_matrix(quiz)
     total_points = sum(q.points for q in questions)
+
+    # --- Sort data для клиентской сортировки ---
+    question_types = {q.ege_number: q.question_type for q in questions}
+    question_id_map = {q.id: q.ege_number for q in questions}
+
+    # Лайки по best_answer_id
+    all_answer_ids = list(best_answer_map.values())
+    like_counts = {}
+    if all_answer_ids:
+        like_qs = SolutionLike.objects.filter(
+            answer_id__in=all_answer_ids,
+        ).values('answer_id').annotate(cnt=Count('id'))
+        like_counts = {row['answer_id']: row['cnt'] for row in like_qs}
+
+    # CPU/memory из CodeSubmission
+    code_answer_ids = [
+        aid for (uid, qid), aid in best_answer_map.items()
+        if question_id_map.get(qid) and question_types.get(question_id_map[qid]) == 'code'
+    ]
+    cpu_mem_map = {}  # answer_id -> {cpu, mem}
+    if code_answer_ids:
+        sub_qs = UserAnswer.objects.filter(
+            id__in=code_answer_ids, submission__isnull=False,
+        ).values_list('id', 'submission__cpu_time_ms', 'submission__memory_kb')
+        for aid, cpu, mem in sub_qs:
+            cpu_mem_map[aid] = {'cpu': cpu, 'mem': mem}
+
+    # Время из ExamTaskProgress
+    user_ids = [row['user_id'] for row in results_matrix]
+    time_map = {}  # (user_id, question_id) -> seconds
+    if user_ids:
+        progress_qs = ExamTaskProgress.objects.filter(
+            quiz=quiz, user_id__in=user_ids,
+        ).values_list('user_id', 'question_id', 'time_spent_seconds')
+        for uid, qid, secs in progress_qs:
+            time_map[(uid, qid)] = secs
+
+    # Собираем sort_data: {user_id: {ege_number: {likes, cpu, memory, time}}}
+    sort_data = {}
+    for (uid, qid), aid in best_answer_map.items():
+        ege_num = question_id_map.get(qid)
+        if ege_num is None:
+            continue
+        sort_data.setdefault(uid, {})[ege_num] = {
+            'likes': like_counts.get(aid, 0),
+            'cpu': (cpu_mem_map.get(aid) or {}).get('cpu'),
+            'memory': (cpu_mem_map.get(aid) or {}).get('mem'),
+            'time': time_map.get((uid, qid)),
+        }
+
+    question_types_json = json.dumps(question_types)
+    sort_data_json = json.dumps(sort_data)
 
     # Личная статистика из ExamTaskProgress
     personal_stats = None
@@ -646,6 +718,20 @@ def ege_results_view(request, quiz_id):
             user=request.user, quiz=quiz,
         ).select_related('question')
         progress_map = {p.question_id: p for p in progress_qs}
+
+        # Метрики из CodeSubmission (последний успешный) для code-задач
+        code_question_ids = [q.id for q in questions if q.question_type == 'code']
+        metrics_map = {}
+        if code_question_ids:
+            for sub in CodeSubmission.objects.filter(
+                user=request.user, quiz=quiz, question_id__in=code_question_ids,
+                is_correct=True,
+            ).order_by('-created_at'):
+                if sub.question_id not in metrics_map:
+                    metrics_map[sub.question_id] = {
+                        'cpu_time_ms': sub.cpu_time_ms,
+                        'memory_kb': sub.memory_kb,
+                    }
 
         if progress_map:
             personal_stats = []
@@ -658,7 +744,6 @@ def ege_results_view(request, quiz_id):
                     mins = p.time_spent_seconds // 60
                     secs = p.time_spent_seconds % 60
                     time_mm_ss = f"{mins}:{secs:02d}"
-                    # Цветовая индикация
                     if mins <= rec_min:
                         color = 'green'
                     elif mins <= rec_min * 1.5:
@@ -669,12 +754,16 @@ def ege_results_view(request, quiz_id):
                     time_mm_ss = ''
                     color = ''
 
+                m = metrics_map.get(q.id, {})
                 personal_stats.append({
                     'ege_number': ege_num,
                     'time_mm_ss': time_mm_ss,
                     'attempts': p.attempts_to_solve if p else 0,
                     'is_solved': p.is_solved if p else False,
                     'color': color,
+                    'is_code': q.question_type == 'code',
+                    'cpu_time_ms': m.get('cpu_time_ms'),
+                    'memory_kb': m.get('memory_kb'),
                 })
 
     return render(request, 'quizzes/ege_results.html', {
@@ -683,6 +772,8 @@ def ege_results_view(request, quiz_id):
         'questions': questions,
         'total_points': total_points,
         'personal_stats': personal_stats,
+        'sort_data_json': sort_data_json,
+        'question_types_json': question_types_json,
     })
 
 
@@ -784,11 +875,50 @@ def ege_solutions_view(request, quiz_id, ege_number):
     ).select_related('user')
     attach_map = {a.user_id: a for a in attachments}
 
-    # Собираем итоговый список решений
+    # Лайки: подсчёт и набор лайкнутых текущим пользователем
+    answer_ids = [sol['answer'].id for sol in solutions_by_user.values() if sol.get('answer')]
+    like_counts = {}
+    if answer_ids:
+        from django.db.models import Count as LikeCount
+        like_qs = SolutionLike.objects.filter(answer_id__in=answer_ids).values('answer_id').annotate(cnt=LikeCount('id'))
+        like_counts = {row['answer_id']: row['cnt'] for row in like_qs}
+    user_liked_ids = set(
+        SolutionLike.objects.filter(user=request.user, answer_id__in=answer_ids).values_list('answer_id', flat=True)
+    ) if answer_ids else set()
+
+    # CPU-время и память из CodeSubmission (для code-задач)
+    submission_metrics = {}
+    if question.question_type == 'code' and answer_ids:
+        from django.db.models import F
+        sub_qs = UserAnswer.objects.filter(
+            id__in=answer_ids, submission__isnull=False,
+        ).select_related('submission').values_list('id', 'submission__cpu_time_ms', 'submission__memory_kb')
+        for aid, cpu, mem in sub_qs:
+            submission_metrics[aid] = {'cpu_time_ms': cpu, 'memory_kb': mem}
+
+    # Собираем итоговый список решений с аннотациями
     solutions = []
     for uid, sol in solutions_by_user.items():
         sol['attachment'] = attach_map.get(uid)
+        ans = sol.get('answer')
+        aid = ans.id if ans else None
+        sol['like_count'] = like_counts.get(aid, 0)
+        sol['user_liked'] = aid in user_liked_ids
+        metrics = submission_metrics.get(aid, {})
+        sol['cpu_time_ms'] = metrics.get('cpu_time_ms')
+        sol['memory_kb'] = metrics.get('memory_kb')
+        sol['is_own'] = (uid == request.user.id)
         solutions.append(sol)
+
+    # Сортировка
+    current_sort = request.GET.get('sort', 'date')
+    if current_sort == 'likes':
+        solutions.sort(key=lambda s: s['like_count'], reverse=True)
+    elif current_sort == 'cpu_time':
+        solutions.sort(key=lambda s: (s['cpu_time_ms'] is None, s['cpu_time_ms'] or 0))
+    elif current_sort == 'memory':
+        solutions.sort(key=lambda s: (s['memory_kb'] is None, s['memory_kb'] or 0))
+    # date — порядок по умолчанию (как собрано)
 
     # Текущее вложение пользователя (для формы)
     my_attachment = attach_map.get(request.user.id)
@@ -799,6 +929,8 @@ def ege_solutions_view(request, quiz_id, ege_number):
         'ege_number': ege_number,
         'solutions': solutions,
         'my_attachment': my_attachment,
+        'current_sort': current_sort,
+        'is_code_question': question.question_type == 'code',
         'has_solved': ExamTaskProgress.objects.filter(
             user=request.user, quiz=quiz, question=question, is_solved=True,
         ).exists(),
@@ -808,6 +940,7 @@ def ege_solutions_view(request, quiz_id, ege_number):
 @login_required
 @require_POST
 def ege_upload_attachment_view(request, quiz_id, ege_number):
+    from django.contrib import messages
     """Загрузка/обновление SolutionAttachment."""
     quiz = get_object_or_404(Quiz, id=quiz_id, quiz_type='exam', is_public=True)
     question = get_object_or_404(Question, quiz=quiz, ege_number=ege_number)
@@ -857,6 +990,94 @@ def ege_upload_attachment_view(request, quiz_id, ege_number):
         attachment.save()
 
     return redirect('ege:ege_solutions', quiz_id=quiz.id, ege_number=ege_number)
+
+
+@login_required
+@require_POST
+def ege_toggle_like_view(request, answer_id):
+    """Toggle лайка на решение. POST, возвращает JSON {liked, like_count}."""
+    answer = get_object_or_404(
+        UserAnswer.objects.select_related('user_result__user'),
+        id=answer_id,
+    )
+
+    if answer.user_result.user == request.user:
+        return JsonResponse({'error': 'Нельзя лайкать своё решение'}, status=403)
+
+    existing = SolutionLike.objects.filter(user=request.user, answer=answer)
+    if existing.exists():
+        existing.delete()
+        liked = False
+    else:
+        SolutionLike.objects.create(user=request.user, answer=answer)
+        liked = True
+
+    return JsonResponse({'liked': liked, 'like_count': answer.likes.count()})
+
+
+@login_required
+@require_GET
+def ege_user_solution_api(request, quiz_id, ege_number, user_id):
+    """JSON API: решение конкретного пользователя по задаче ЕГЭ."""
+    quiz = get_object_or_404(Quiz, id=quiz_id, quiz_type='exam', is_public=True)
+    question = get_object_or_404(Question, quiz=quiz, ege_number=ege_number)
+
+    # Проверка доступа: текущий пользователь решил задачу или superuser
+    has_access = request.user.is_superuser or ExamTaskProgress.objects.filter(
+        user=request.user, quiz=quiz, question=question, is_solved=True,
+    ).exists()
+    if not has_access:
+        return JsonResponse({'error': 'Нет доступа'}, status=403)
+
+    # Лучший ответ целевого пользователя (prefer correct, потом latest)
+    all_answers = UserAnswer.objects.filter(
+        user_result__quiz=quiz, question=question, user_result__user_id=user_id,
+    ).select_related('user_result__user', 'submission').order_by('-user_result__date_completed')
+
+    best = None
+    for ans in all_answers:
+        if best is None:
+            best = ans
+        elif ans.is_correct and not best.is_correct:
+            best = ans
+
+    if not best:
+        return JsonResponse({'error': 'Решение не найдено'}, status=404)
+
+    user = best.user_result.user
+    full_name = f"{user.last_name} {user.first_name}".strip() or user.username
+
+    answer_data = {
+        'text_answer': best.text_answer or '',
+        'code_answer': best.code_answer or '',
+        'is_correct': best.is_correct,
+        'cpu_time_ms': None,
+        'memory_kb': None,
+    }
+    if best.submission:
+        answer_data['cpu_time_ms'] = best.submission.cpu_time_ms
+        answer_data['memory_kb'] = best.submission.memory_kb
+
+    # Аттачмент
+    attachment_data = None
+    try:
+        att = SolutionAttachment.objects.get(user_id=user_id, quiz=quiz, question=question)
+        attachment_data = {
+            'comment': att.comment or '',
+            'file_url': att.file.url if att.file else None,
+            'file_name': os.path.basename(att.file.name) if att.file else None,
+            'image_url': att.image.url if att.image else None,
+        }
+    except SolutionAttachment.DoesNotExist:
+        pass
+
+    return JsonResponse({
+        'full_name': full_name,
+        'question_type': question.question_type,
+        'ege_number': ege_number,
+        'answer': answer_data,
+        'attachment': attachment_data,
+    })
 
 
 @login_required
@@ -1039,7 +1260,7 @@ def quiz_detail_view(request, quiz_id):
 
                     if all_tests_passed:
                         for test_case in test_cases:
-                            output, error = run_code_in_docker(user_input, test_case.input_data, extra_files)
+                            output, error, _, _ = run_code_in_docker(user_input, test_case.input_data, extra_files)
 
                             if error:
                                 all_tests_passed = False
