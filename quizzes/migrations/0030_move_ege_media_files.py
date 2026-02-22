@@ -1,8 +1,27 @@
 import os
 import shutil
+import sys
 
 from django.conf import settings
 from django.db import migrations
+
+
+def _move_and_update(obj, field_name, old_rel, new_rel, media_root):
+    """Перемещает файл и обновляет БД. Возвращает True если обновлено."""
+    old_abs = os.path.join(media_root, old_rel)
+    new_abs = os.path.join(media_root, new_rel)
+    if os.path.exists(old_abs):
+        os.makedirs(os.path.dirname(new_abs), exist_ok=True)
+        shutil.move(old_abs, new_abs)
+        setattr(obj, field_name, new_rel)
+        obj.save(update_fields=[field_name])
+        return True
+    else:
+        sys.stderr.write(
+            f'  WARNING: файл не найден на диске: {old_abs}, '
+            f'путь в БД не изменён ({old_rel})\n'
+        )
+        return False
 
 
 def move_files_forward(apps, schema_editor):
@@ -20,13 +39,7 @@ def move_files_forward(apps, schema_editor):
                 continue
             filename = os.path.basename(old_rel)
             new_rel = f'ege/{slug}/images/{filename}'
-            old_abs = os.path.join(media_root, old_rel)
-            new_abs = os.path.join(media_root, new_rel)
-            if os.path.exists(old_abs):
-                os.makedirs(os.path.dirname(new_abs), exist_ok=True)
-                shutil.move(old_abs, new_abs)
-            img.image = new_rel
-            img.save(update_fields=['image'])
+            _move_and_update(img, 'image', old_rel, new_rel, media_root)
 
         for qf in QuestionFile.objects.filter(question__quiz=quiz):
             old_rel = qf.file.name if qf.file else ''
@@ -34,13 +47,7 @@ def move_files_forward(apps, schema_editor):
                 continue
             filename = os.path.basename(old_rel)
             new_rel = f'ege/{slug}/files/{filename}'
-            old_abs = os.path.join(media_root, old_rel)
-            new_abs = os.path.join(media_root, new_rel)
-            if os.path.exists(old_abs):
-                os.makedirs(os.path.dirname(new_abs), exist_ok=True)
-                shutil.move(old_abs, new_abs)
-            qf.file = new_rel
-            qf.save(update_fields=['file'])
+            _move_and_update(qf, 'file', old_rel, new_rel, media_root)
 
 
 def move_files_backward(apps, schema_editor):
@@ -58,13 +65,7 @@ def move_files_backward(apps, schema_editor):
                 continue
             filename = os.path.basename(old_rel)
             new_rel = f'question_images/{filename}'
-            old_abs = os.path.join(media_root, old_rel)
-            new_abs = os.path.join(media_root, new_rel)
-            if os.path.exists(old_abs):
-                os.makedirs(os.path.dirname(new_abs), exist_ok=True)
-                shutil.move(old_abs, new_abs)
-            img.image = new_rel
-            img.save(update_fields=['image'])
+            _move_and_update(img, 'image', old_rel, new_rel, media_root)
 
         for qf in QuestionFile.objects.filter(question__quiz=quiz):
             old_rel = qf.file.name if qf.file else ''
@@ -72,13 +73,7 @@ def move_files_backward(apps, schema_editor):
                 continue
             filename = os.path.basename(old_rel)
             new_rel = f'question_files/{filename}'
-            old_abs = os.path.join(media_root, old_rel)
-            new_abs = os.path.join(media_root, new_rel)
-            if os.path.exists(old_abs):
-                os.makedirs(os.path.dirname(new_abs), exist_ok=True)
-                shutil.move(old_abs, new_abs)
-            qf.file = new_rel
-            qf.save(update_fields=['file'])
+            _move_and_update(qf, 'file', old_rel, new_rel, media_root)
 
 
 class Migration(migrations.Migration):

@@ -78,6 +78,11 @@ class Command(BaseCommand):
             raise CommandError('Список вопросов пуст')
 
         slug = generate_slug(quiz_data)
+        if slug and Quiz.objects.filter(slug=slug).exists():
+            raise CommandError(
+                f'Вариант с slug "{slug}" уже существует. '
+                f'Удалите существующий вариант или укажите другой slug в JSON.'
+            )
         media_root = settings.MEDIA_ROOT
 
         with transaction.atomic():
