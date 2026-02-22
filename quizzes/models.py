@@ -27,6 +27,8 @@ class Quiz(models.Model):
     quiz_type = models.CharField(max_length=10, choices=QUIZ_TYPE_CHOICES, default='standard', verbose_name="Тип теста")
     exam_mode = models.CharField(max_length=10, choices=EXAM_MODE_CHOICES, default='practice', blank=True, verbose_name="Режим ЕГЭ")
     is_public = models.BooleanField(default=False, verbose_name="Публичный доступ", help_text="Доступен всем без назначения")
+    slug = models.SlugField(max_length=100, blank=True, null=True, unique=True,
+                            verbose_name="Slug (для медиа-путей)")
 
     start_date = models.DateTimeField(null=True, blank=True, verbose_name="Начало доступа", help_text="Дата и время, с которого тест становится доступным")
     end_date = models.DateTimeField(null=True, blank=True, verbose_name="Конец доступа", help_text="Дата и время, после которого тест закрывается")
@@ -116,10 +118,45 @@ class Question(models.Model):
             return '\n'.join(lines[1:])
         return ""
 
+def _ege_slug(quiz):
+    """Возвращает slug квиза если он EGE, иначе None."""
+    if quiz and quiz.quiz_type == 'exam' and quiz.slug:
+        return quiz.slug
+    return None
+
+
+def question_image_upload_path(instance, filename):
+    slug = _ege_slug(instance.question.quiz)
+    if slug:
+        return f'ege/{slug}/images/{filename}'
+    return f'question_images/{filename}'
+
+
+def question_file_upload_path(instance, filename):
+    slug = _ege_slug(instance.question.quiz)
+    if slug:
+        return f'ege/{slug}/files/{filename}'
+    return f'question_files/{filename}'
+
+
+def solution_file_upload_path(instance, filename):
+    slug = _ege_slug(instance.quiz)
+    if slug:
+        return f'ege/{slug}/solutions/u{instance.user_id}/{filename}'
+    return f'solutions/{filename}'
+
+
+def solution_image_upload_path(instance, filename):
+    slug = _ege_slug(instance.quiz)
+    if slug:
+        return f'ege/{slug}/solutions/u{instance.user_id}/images/{filename}'
+    return f'solutions/images/{filename}'
+
+
 class QuestionImage(models.Model):
     """Изображение, отображаемое inline под текстом вопроса."""
     question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name='images', verbose_name="Вопрос")
-    image = models.ImageField(upload_to='question_images/', verbose_name="Изображение")
+    image = models.ImageField(upload_to=question_image_upload_path, verbose_name="Изображение")
     alt_text = models.CharField(max_length=200, blank=True, verbose_name="Альтернативный текст")
     order = models.PositiveIntegerField(default=0, verbose_name="Порядок")
 
@@ -135,7 +172,7 @@ class QuestionImage(models.Model):
 class QuestionFile(models.Model):
     """Файл для скачивания, прикреплённый к вопросу."""
     question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name='files', verbose_name="Вопрос")
-    file = models.FileField(upload_to='question_files/', verbose_name="Файл")
+    file = models.FileField(upload_to=question_file_upload_path, verbose_name="Файл")
     description = models.CharField(max_length=200, blank=True, verbose_name="Описание файла")
     order = models.PositiveIntegerField(default=0, verbose_name="Порядок")
 
@@ -319,9 +356,9 @@ class SolutionAttachment(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='solution_attachments', verbose_name="Пользователь")
     quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE, related_name='solution_attachments', verbose_name="Вариант")
     question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name='solution_attachments', verbose_name="Задача")
-    file = models.FileField(upload_to='solutions/', blank=True, null=True, verbose_name="Файл")
+    file = models.FileField(upload_to=solution_file_upload_path, blank=True, null=True, verbose_name="Файл")
     comment = models.TextField(blank=True, default='', verbose_name="Комментарий")
-    image = models.ImageField(upload_to='solutions/images/', blank=True, null=True, verbose_name="Изображение")
+    image = models.ImageField(upload_to=solution_image_upload_path, blank=True, null=True, verbose_name="Изображение")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
 
     class Meta:

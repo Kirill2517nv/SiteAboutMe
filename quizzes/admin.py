@@ -62,7 +62,7 @@ class QuizAssignmentInline(admin.TabularInline):
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 class QuizAdmin(admin.ModelAdmin):
-    list_display = ('title', 'quiz_type', 'is_public')
+    list_display = ('title', 'quiz_type', 'is_public', 'slug')
     list_filter = ('quiz_type', 'is_public')
     inlines = [QuestionInline, QuizAssignmentInline]
     search_fields = ['title']
@@ -71,7 +71,7 @@ class QuizAdmin(admin.ModelAdmin):
             'fields': ('title', 'description', 'max_attempts', 'start_date', 'end_date')
         }),
         ('ЕГЭ', {
-            'fields': ('quiz_type', 'exam_mode', 'is_public'),
+            'fields': ('quiz_type', 'exam_mode', 'is_public', 'slug'),
             'classes': ('collapse',),
         }),
     )

@@ -1,6 +1,10 @@
 import json
+import os
+import re
+import shutil
 from pathlib import Path
 
+from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
@@ -8,6 +12,39 @@ from quizzes.models import Quiz, Question, Choice, TestCase, QuestionImage, Ques
 
 VALID_TYPES = {'choice', 'text', 'code'}
 VALID_EGE_NUMBERS = set(range(1, 28))
+
+
+def generate_slug(quiz_data):
+    """Генерирует slug из JSON: явный slug > ID из description > None."""
+    if quiz_data.get('slug'):
+        return quiz_data['slug']
+    desc = quiz_data.get('description', '')
+    match = re.search(r'ID:\s*(\d+)', desc)
+    if match:
+        return f'variant-{match.group(1)}'
+    return None
+
+
+def transform_media_path(old_path, slug, media_type):
+    """Трансформирует путь медиа-файла для EGE-варианта.
+
+    media_type: 'images' или 'files'
+    """
+    if not slug:
+        return old_path
+    filename = os.path.basename(old_path)
+    return f'ege/{slug}/{media_type}/{filename}'
+
+
+def ensure_media_file(old_path, new_path, media_root):
+    """Если файл лежит по старому пути, перемещает в новый."""
+    if old_path == new_path:
+        return
+    old_abs = os.path.join(media_root, old_path)
+    new_abs = os.path.join(media_root, new_path)
+    if os.path.exists(old_abs) and not os.path.exists(new_abs):
+        os.makedirs(os.path.dirname(new_abs), exist_ok=True)
+        shutil.move(old_abs, new_abs)
 
 
 class Command(BaseCommand):
@@ -40,6 +77,9 @@ class Command(BaseCommand):
         if not questions_data:
             raise CommandError('Список вопросов пуст')
 
+        slug = generate_slug(quiz_data)
+        media_root = settings.MEDIA_ROOT
+
         with transaction.atomic():
             quiz = Quiz.objects.create(
                 title=quiz_data['title'],
@@ -50,7 +90,13 @@ class Command(BaseCommand):
                 quiz_type='exam',
                 exam_mode=quiz_data['exam_mode'],
                 is_public=quiz_data.get('is_public', True),
+                slug=slug,
             )
+
+            if not slug:
+                slug = f'ege-{quiz.pk}'
+                quiz.slug = slug
+                quiz.save(update_fields=['slug'])
 
             total_points = 0
 
@@ -79,17 +125,23 @@ class Command(BaseCommand):
                 )
 
                 for j, img_data in enumerate(q_data.get('images', [])):
+                    old_path = img_data['image']
+                    new_path = transform_media_path(old_path, slug, 'images')
+                    ensure_media_file(old_path, new_path, media_root)
                     QuestionImage.objects.create(
                         question=question,
-                        image=img_data['image'],
+                        image=new_path,
                         alt_text=img_data.get('alt_text', ''),
                         order=img_data.get('order', j),
                     )
 
                 for j, file_data in enumerate(q_data.get('files', [])):
+                    old_path = file_data['file']
+                    new_path = transform_media_path(old_path, slug, 'files')
+                    ensure_media_file(old_path, new_path, media_root)
                     QuestionFile.objects.create(
                         question=question,
-                        file=file_data['file'],
+                        file=new_path,
                         description=file_data.get('description', ''),
                         order=file_data.get('order', j),
                     )
@@ -111,6 +163,6 @@ class Command(BaseCommand):
                         )
 
         self.stdout.write(self.style.SUCCESS(
-            f'Вариант ЕГЭ "{quiz.title}" загружен: '
+            f'Вариант ЕГЭ "{quiz.title}" загружен (slug={slug}): '
             f'{quiz.questions.count()} вопросов, {total_points} баллов'
         ))
