@@ -40,9 +40,14 @@ class QuizCodeChecker {
             this.socket.onopen = () => {
                 console.log('WebSocket connected');
                 this.connected = true;
+                const wasReconnect = this.reconnectAttempts > 0;
                 this.reconnectAttempts = 0;
                 this.stopPolling();
                 this._notifyConnection('connected');
+                // After reconnect, poll pending submissions once (WS notifications may have been lost)
+                if (wasReconnect && this.pendingSubmissions.size > 0) {
+                    this._pollOnce();
+                }
             };
 
             this.socket.onmessage = (event) => {
@@ -101,7 +106,7 @@ class QuizCodeChecker {
     }
 
     handleSubmissionUpdate(data) {
-        const { question_id, status, is_correct, error_log } = data;
+        const { question_id, status, is_correct, error_log, cpu_time_ms, memory_kb } = data;
 
         // Update pending map
         if (status === 'success' || status === 'failed' || status === 'error') {
@@ -110,7 +115,7 @@ class QuizCodeChecker {
 
         // Trigger UI callback
         if (this.onStatusChange) {
-            this.onStatusChange(question_id, status, is_correct, error_log);
+            this.onStatusChange(question_id, status, is_correct, error_log, cpu_time_ms, memory_kb);
         }
     }
 
@@ -219,6 +224,24 @@ class QuizCodeChecker {
         return Array.from(this.pendingSubmissions.keys());
     }
 
+    // One-time poll after WS reconnect to catch missed notifications
+    async _pollOnce() {
+        for (const [questionId, submissionId] of this.pendingSubmissions) {
+            if (!submissionId) continue;
+            const status = await this.checkSubmissionStatus(submissionId);
+            if (status && status.status !== 'pending' && status.status !== 'running') {
+                this.handleSubmissionUpdate({
+                    question_id: questionId,
+                    status: status.status,
+                    is_correct: status.is_correct,
+                    error_log: status.error_log,
+                    cpu_time_ms: status.cpu_time_ms,
+                    memory_kb: status.memory_kb,
+                });
+            }
+        }
+    }
+
     // Polling fallback
     startPolling() {
         if (this.pollInterval) return;
@@ -231,7 +254,9 @@ class QuizCodeChecker {
                         question_id: questionId,
                         status: status.status,
                         is_correct: status.is_correct,
-                        error_log: status.error_log
+                        error_log: status.error_log,
+                        cpu_time_ms: status.cpu_time_ms,
+                        memory_kb: status.memory_kb,
                     });
                 }
             }

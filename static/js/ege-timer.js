@@ -105,12 +105,21 @@ class TaskTimeTracker {
         // Reset start for next interval
         this.taskStartedAt = Date.now();
 
-        // Fire-and-forget POST
         fetch(`/ege/${this.quizId}/save-time/`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.csrfToken },
             body: JSON.stringify({ question_id: this.currentTaskId, seconds }),
-        }).catch(() => {}); // Non-critical
+        }).catch(() => {});
+    }
+
+    // Call when page is restored from bfcache (pageshow with persisted=true).
+    // taskStartedAt could be a stale value from a previous session — reset it.
+    onBfcacheRestore() {
+        if (this.currentTaskId) {
+            this.taskStartedAt = Date.now();
+            this.stopPeriodic();
+            this.periodicId = setInterval(() => this.sendDelta(), 30000);
+        }
     }
 
     stopPeriodic() {

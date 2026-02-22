@@ -218,6 +218,9 @@ class CodeSubmission(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создано")
     completed_at = models.DateTimeField(null=True, blank=True, verbose_name="Завершено")
 
+    cpu_time_ms = models.FloatField(null=True, blank=True, verbose_name="CPU-время (мс)")
+    memory_kb = models.IntegerField(null=True, blank=True, verbose_name="Пиковая память (КБ)")
+
     class Meta:
         verbose_name = "Отправка кода"
         verbose_name_plural = "Отправки кода"
@@ -292,6 +295,10 @@ class ExamTaskProgress(models.Model):
     attempts_to_solve = models.PositiveIntegerField(default=0, verbose_name="Количество попыток")
     is_solved = models.BooleanField(default=False, verbose_name="Решена")
     first_solved_at = models.DateTimeField(null=True, blank=True, verbose_name="Время первого решения")
+    best_cpu_time_ms = models.FloatField(null=True, blank=True, verbose_name="Лучшее время CPU (мс)")
+    best_cpu_code = models.TextField(blank=True, default='', verbose_name="Код лучшей попытки по CPU")
+    best_memory_kb = models.IntegerField(null=True, blank=True, verbose_name="Лучшая память (КБ)")
+    best_memory_code = models.TextField(blank=True, default='', verbose_name="Код лучшей попытки по памяти")
 
     class Meta:
         verbose_name = "Прогресс задачи ЕГЭ"
@@ -346,6 +353,23 @@ class UserAnswer(models.Model):
         verbose_name = "Ответ пользователя"
         verbose_name_plural = "Ответы пользователя"
         indexes = [
-            models.Index(fields=['user_result', 'is_correct']),  # Для поиска правильных ответов
-            models.Index(fields=['question', 'is_correct']),  # Для статистики по вопросам
+            models.Index(fields=['user_result', 'is_correct']),
+            models.Index(fields=['question', 'is_correct']),
         ]
+
+
+class SolutionLike(models.Model):
+    """Лайк решения другого пользователя."""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='solution_likes', verbose_name="Пользователь")
+    answer = models.ForeignKey(UserAnswer, on_delete=models.CASCADE, related_name='likes', verbose_name="Ответ")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата")
+
+    class Meta:
+        verbose_name = "Лайк решения"
+        verbose_name_plural = "Лайки решений"
+        constraints = [
+            models.UniqueConstraint(fields=['user', 'answer'], name='unique_solution_like'),
+        ]
+
+    def __str__(self):
+        return f"{self.user.username} -> answer #{self.answer_id}"

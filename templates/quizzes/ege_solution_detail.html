@@ -1,0 +1,294 @@
+{% extends 'base.html' %}
+{% load static ege_filters %}
+
+{% block title %}Задача {{ ege_number }} — {{ target_user_name }}{% endblock title %}
+
+{% block extra_css %}
+{% if question.question_type == 'code' %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+{% endif %}
+{% endblock extra_css %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+    <!-- Breadcrumbs -->
+    <nav class="mb-6" data-aos="fade-right">
+        <div class="flex items-center text-sm text-gray-500 space-x-2">
+            <a href="{% url 'ege:ege_list' %}" class="hover:text-brand-600 transition-colors">Тренажёр</a>
+            <span>/</span>
+            <a href="{% url 'ege:ege_detail' quiz_id=quiz.id %}" class="hover:text-brand-600 transition-colors">{{ quiz.title }}</a>
+            <span>/</span>
+            <a href="{% url 'ege:ege_results' quiz_id=quiz.id %}" class="hover:text-brand-600 transition-colors">Результаты</a>
+            <span>/</span>
+            <span class="text-gray-900 font-medium">Задача {{ ege_number }}</span>
+        </div>
+    </nav>
+
+    <!-- Header card -->
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6" data-aos="fade-up">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center gap-4">
+                <div class="w-10 h-10 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-lg font-semibold">
+                    {{ target_user_name|make_list|first }}
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold text-gray-900">{{ target_user_name }}</h1>
+                    <p class="text-sm text-gray-500">Задача {{ ege_number }}{% if answer.is_correct %} — <span class="text-green-600">верно</span>{% endif %}</p>
+                </div>
+            </div>
+
+            <!-- Like button -->
+            {% if not is_own %}
+            <button id="like-btn" onclick="toggleLike(this, {{ answer_id }})"
+                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors {% if user_liked %}bg-red-50 text-red-600 border border-red-200{% else %}bg-gray-50 text-gray-500 border border-gray-200 hover:border-red-300 hover:text-red-500{% endif %}"
+                    data-liked="{{ user_liked|yesno:'true,false' }}">
+                <svg class="w-4 h-4 {% if user_liked %}fill-current{% endif %}" fill="{% if user_liked %}currentColor{% else %}none{% endif %}" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+                </svg>
+                <span class="like-count">{{ like_count }}</span>
+            </button>
+            {% else %}
+            <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm bg-gray-50 text-gray-400 border border-gray-100 cursor-default" title="Своё решение">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+                </svg>
+                <span>{{ like_count }}</span>
+            </span>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Question card -->
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6" data-aos="fade-up" data-aos-delay="50">
+        <h2 class="text-lg font-semibold text-gray-900 mb-3">{{ question.get_title }}</h2>
+        {% if question.get_body %}
+        <div class="prose max-w-none text-gray-700">{{ question.get_body|render_question_text:question }}</div>
+        {% endif %}
+
+        {% if not question.text|has_image_markers %}
+        {% for img in question.images.all %}
+        <div class="mt-4">
+            <img src="{{ img.image.url }}" alt="{{ img.alt_text }}" class="max-w-full rounded-lg border border-gray-200">
+        </div>
+        {% endfor %}
+        {% endif %}
+
+        {% for file in question.files.all %}
+        <a href="{% url 'quizzes:question_file_download' file.id %}"
+           class="inline-flex items-center gap-2 px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-lg text-sm text-gray-700 mt-3 transition-colors">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            {{ file.get_filename }}
+        </a>
+        {% endfor %}
+    </div>
+
+    <!-- Answer card -->
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6" data-aos="fade-up" data-aos-delay="100"
+         {% if question.question_type == 'code' and best_cpu_code and best_memory_code %}x-data="{ viewMode: 'cpu' }"{% endif %}>
+        {% if question.question_type == 'code' and answer.code_answer %}
+
+        {% if best_cpu_code and best_memory_code %}
+        <!-- View mode toggle -->
+        <div class="flex items-center gap-2 mb-4">
+            <span class="text-xs text-gray-500 mr-1">Лучшая попытка:</span>
+            <button @click="viewMode = 'cpu'"
+                    :class="viewMode === 'cpu' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'"
+                    class="px-3 py-1.5 text-xs rounded-lg border transition-colors cursor-pointer">
+                &#9202; По скорости
+            </button>
+            <button @click="viewMode = 'memory'"
+                    :class="viewMode === 'memory' ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-700 border-gray-300 hover:border-purple-400'"
+                    class="px-3 py-1.5 text-xs rounded-lg border transition-colors cursor-pointer">
+                &#128190; По памяти
+            </button>
+        </div>
+
+        <!-- Best CPU code -->
+        <div x-show="viewMode === 'cpu'">
+            <div class="relative group">
+                <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 text-sm overflow-x-auto font-mono leading-relaxed"><code class="language-python">{{ best_cpu_code }}</code></pre>
+                <button onclick="navigator.clipboard.writeText(this.closest('.relative').querySelector('code').textContent).then(() => { this.textContent='Скопировано!'; setTimeout(() => this.textContent='Копировать', 1500) })"
+                        class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity px-2 py-1 text-xs bg-gray-700 text-gray-300 rounded hover:bg-gray-600">
+                    Копировать
+                </button>
+            </div>
+            {% if best_cpu_time_ms is not None %}
+            <div class="flex gap-3 mt-3">
+                <span class="inline-flex items-center px-2.5 py-1 rounded text-xs font-medium bg-blue-50 text-blue-700">
+                    <svg class="w-3.5 h-3.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    {{ best_cpu_time_ms|floatformat:1 }} мс
+                </span>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Best memory code -->
+        <div x-show="viewMode === 'memory'" x-cloak>
+            <div class="relative group">
+                <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 text-sm overflow-x-auto font-mono leading-relaxed"><code class="language-python">{{ best_memory_code }}</code></pre>
+                <button onclick="navigator.clipboard.writeText(this.closest('.relative').querySelector('code').textContent).then(() => { this.textContent='Скопировано!'; setTimeout(() => this.textContent='Копировать', 1500) })"
+                        class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity px-2 py-1 text-xs bg-gray-700 text-gray-300 rounded hover:bg-gray-600">
+                    Копировать
+                </button>
+            </div>
+            {% if best_memory_kb is not None %}
+            <div class="flex gap-3 mt-3">
+                <span class="inline-flex items-center px-2.5 py-1 rounded text-xs font-medium bg-purple-50 text-purple-700">
+                    <svg class="w-3.5 h-3.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                    {{ best_memory_kb }} КБ
+                </span>
+            </div>
+            {% endif %}
+        </div>
+
+        {% else %}
+        <!-- Fallback: нет best-метрик, показываем обычный ответ -->
+        <div class="relative group">
+            <pre class="bg-gray-900 text-gray-100 rounded-lg p-4 text-sm overflow-x-auto font-mono leading-relaxed"><code class="language-python">{{ answer.code_answer }}</code></pre>
+            <button onclick="navigator.clipboard.writeText(this.closest('.relative').querySelector('code').textContent).then(() => { this.textContent='Скопировано!'; setTimeout(() => this.textContent='Копировать', 1500) })"
+                    class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity px-2 py-1 text-xs bg-gray-700 text-gray-300 rounded hover:bg-gray-600">
+                Копировать
+            </button>
+        </div>
+        {% if cpu_time_ms is not None or memory_kb is not None %}
+        <div class="flex gap-3 mt-3">
+            {% if cpu_time_ms is not None %}
+            <span class="inline-flex items-center px-2.5 py-1 rounded text-xs font-medium bg-blue-50 text-blue-700">
+                <svg class="w-3.5 h-3.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                {{ cpu_time_ms|floatformat:1 }} мс
+            </span>
+            {% endif %}
+            {% if memory_kb is not None %}
+            <span class="inline-flex items-center px-2.5 py-1 rounded text-xs font-medium bg-purple-50 text-purple-700">
+                <svg class="w-3.5 h-3.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                {{ memory_kb }} КБ
+            </span>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% endif %}
+
+        {% elif answer.text_answer %}
+        <!-- Text answer -->
+        <div class="inline-flex items-center px-4 py-2 bg-green-50 border border-green-200 rounded-lg text-green-800 font-mono text-sm">
+            {{ answer.text_answer }}
+        </div>
+        {% else %}
+        <p class="text-sm text-gray-500 italic">Задача решена (ответ не сохранён)</p>
+        {% endif %}
+    </div>
+
+    <!-- Attachment section -->
+    {% if attachment %}
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6" data-aos="fade-up" data-aos-delay="200">
+        <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Дополнительные материалы</h2>
+
+        {% if attachment.comment %}
+        <p class="text-sm text-gray-700 mb-4 leading-relaxed">{{ attachment.comment }}</p>
+        {% endif %}
+
+        {% if attachment.file %}
+        <a href="{{ attachment.file.url }}" class="inline-flex items-center text-sm text-brand-600 hover:text-brand-700 mb-3" download>
+            <svg class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+            {{ attachment.get_filename }}
+        </a>
+        {% endif %}
+
+        {% if attachment.image %}
+        <div class="mt-2">
+            <a href="{{ attachment.image.url }}" target="_blank" class="inline-block">
+                <img src="{{ attachment.image.url }}" alt="Иллюстрация к решению" class="max-w-md rounded-lg border border-gray-200 hover:shadow-md transition-shadow cursor-zoom-in">
+            </a>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Upload attachment form (own solution only) -->
+    {% if is_own and has_solved %}
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6" data-aos="fade-up" data-aos-delay="300">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">
+            {% if attachment %}Обновить материалы{% else %}Добавить материалы к решению{% endif %}
+        </h3>
+        <form method="post" action="{% url 'ege:ege_upload_attachment' quiz_id=quiz.id ege_number=ege_number %}" enctype="multipart/form-data" class="space-y-4">
+            {% csrf_token %}
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Комментарий</label>
+                <textarea name="comment" rows="3" class="w-full rounded-lg border-gray-300 shadow-sm focus:ring-brand-500 focus:border-brand-500 text-sm" placeholder="Объяснение решения, ход мыслей...">{% if attachment %}{{ attachment.comment }}{% endif %}</textarea>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Файл</label>
+                    <input type="file" name="file" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100">
+                    {% if attachment.file %}
+                    <p class="text-xs text-gray-500 mt-1">Текущий: {{ attachment.get_filename }}</p>
+                    {% endif %}
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Изображение</label>
+                    <input type="file" name="image" accept="image/*" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100">
+                </div>
+            </div>
+
+            <div class="flex justify-end">
+                <button type="submit" class="px-5 py-2.5 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 transition-colors shadow-sm">
+                    {% if attachment %}Обновить{% else %}Загрузить{% endif %}
+                </button>
+            </div>
+        </form>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+function getCookie(name) {
+    let val = null;
+    document.cookie.split(';').forEach(c => {
+        c = c.trim();
+        if (c.startsWith(name + '=')) val = decodeURIComponent(c.substring(name.length + 1));
+    });
+    return val;
+}
+
+function toggleLike(btn, answerId) {
+    btn.disabled = true;
+    fetch(`{% url 'ege:ege_toggle_like' answer_id=0 %}`.replace('/0/', `/${answerId}/`), {
+        method: 'POST',
+        headers: {'X-CSRFToken': getCookie('csrftoken')},
+    })
+    .then(r => {
+        if (r.status === 403) throw new Error('forbidden');
+        return r.json();
+    })
+    .then(data => {
+        const liked = data.liked;
+        btn.dataset.liked = liked;
+        btn.querySelector('.like-count').textContent = data.like_count;
+
+        const svg = btn.querySelector('svg');
+        if (liked) {
+            btn.className = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors bg-red-50 text-red-600 border border-red-200';
+            svg.setAttribute('fill', 'currentColor');
+            svg.classList.add('fill-current');
+        } else {
+            btn.className = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors bg-gray-50 text-gray-500 border border-gray-200 hover:border-red-300 hover:text-red-500';
+            svg.setAttribute('fill', 'none');
+            svg.classList.remove('fill-current');
+        }
+    })
+    .catch(() => {})
+    .finally(() => { btn.disabled = false; });
+}
+</script>
+
+{% if question.question_type == 'code' %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script>hljs.highlightAll();</script>
+{% endif %}
+{% endblock content %}

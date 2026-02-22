@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load static %}
+{% load static ege_filters %}
 
 {% block title %}{{ quiz.title }}{% endblock title %}
 
@@ -134,15 +134,17 @@
                     </div>
                 </div>
 
-                <!-- Question text -->
-                <div class="prose max-w-none mb-4 text-gray-700 whitespace-pre-line">{{ question.get_body|linebreaksbr }}</div>
+                <!-- Question text (with inline [img:N] support) -->
+                <div class="prose max-w-none mb-4 text-gray-700">{{ question.get_body|render_question_text:question }}</div>
 
-                <!-- Images -->
+                <!-- Images (only if not placed inline via markers) -->
+                {% if not question.text|has_image_markers %}
                 {% for img in question.images.all %}
                 <div class="mb-4">
                     <img src="{{ img.image.url }}" alt="{{ img.alt_text }}" class="max-w-full rounded-lg border">
                 </div>
                 {% endfor %}
+                {% endif %}
 
                 <!-- Files -->
                 {% for file in question.files.all %}
@@ -160,7 +162,10 @@
                     <input type="text"
                            x-model="answers[{{ question.id }}]"
                            @input="onAnswerChange({{ question.id }})"
-                           class="w-full max-w-md px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors"
+                           class="w-full max-w-md px-4 py-2.5 border rounded-lg focus:ring-2 transition-colors"
+                           :class="checkResults[{{ question.id }}] === false
+                               ? 'border-red-400 bg-red-50 text-red-700 focus:ring-red-500 focus:border-red-500'
+                               : 'border-gray-300 focus:ring-brand-500 focus:border-brand-500'"
                            placeholder="Введите ответ..."
                            :disabled="isExam && tasks.find(t => t.id === {{ question.id }})?.is_solved">
                     {% if quiz.exam_mode == 'practice' %}
@@ -217,6 +222,44 @@
                         <div x-show="codeStatuses[{{ question.id }}] === 'error'" class="code-status error">
                             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
                             <span x-text="codeErrors[{{ question.id }}] || 'Системная ошибка'"></span>
+                        </div>
+                        <!-- Performance metrics: current + best -->
+                        <div x-show="codeMetrics[{{ question.id }}] && (codeMetrics[{{ question.id }}]?.cpu_time_ms != null || codeMetrics[{{ question.id }}]?.memory_kb != null)"
+                             x-cloak class="mt-3 rounded-lg border border-gray-100 bg-gray-50 p-3 text-xs">
+                            <!-- Current attempt -->
+                            <div class="flex items-center gap-4 text-gray-600">
+                                <span class="font-medium text-gray-500 w-28">Текущая попытка</span>
+                                <span x-show="codeMetrics[{{ question.id }}]?.cpu_time_ms != null" class="flex items-center gap-1">
+                                    <svg class="w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                    <span x-text="formatCpuTime(codeMetrics[{{ question.id }}]?.cpu_time_ms)"></span>
+                                </span>
+                                <span x-show="codeMetrics[{{ question.id }}]?.memory_kb != null" class="flex items-center gap-1">
+                                    <svg class="w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                                    <span x-text="formatMemory(codeMetrics[{{ question.id }}]?.memory_kb)"></span>
+                                </span>
+                            </div>
+                            <!-- Best result -->
+                            <template x-if="getBestMetrics({{ question.id }})">
+                                <div class="flex items-center gap-4 text-green-700 mt-1.5 pt-1.5 border-t border-gray-200">
+                                    <span class="font-medium text-green-600 w-28">Лучший результат</span>
+                                    <span x-show="getBestMetrics({{ question.id }})?.cpu != null" class="flex items-center gap-1">
+                                        <svg class="w-3.5 h-3.5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                        <span x-text="formatCpuTime(getBestMetrics({{ question.id }})?.cpu)"></span>
+                                        <button x-show="getBestMetrics({{ question.id }})?.has_cpu_code"
+                                                @click="showBestCode({{ question.id }}, 'cpu')"
+                                                class="ml-0.5 text-green-500 hover:text-green-700 underline decoration-dotted"
+                                                title="Посмотреть код лучшей попытки по времени">код</button>
+                                    </span>
+                                    <span x-show="getBestMetrics({{ question.id }})?.mem != null" class="flex items-center gap-1">
+                                        <svg class="w-3.5 h-3.5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                                        <span x-text="formatMemory(getBestMetrics({{ question.id }})?.mem)"></span>
+                                        <button x-show="getBestMetrics({{ question.id }})?.has_mem_code"
+                                                @click="showBestCode({{ question.id }}, 'memory')"
+                                                class="ml-0.5 text-green-500 hover:text-green-700 underline decoration-dotted"
+                                                title="Посмотреть код лучшей попытки по памяти">код</button>
+                                    </span>
+                                </div>
+                            </template>
                         </div>
                     </div>
                 </div>
@@ -332,6 +375,31 @@
         </div>
     </div>
 </div>
+<!-- Best code viewer modal -->
+<div x-show="bestCodeModal.show" x-cloak class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+    <div @click.stop class="bg-white rounded-2xl p-6 max-w-2xl w-full shadow-2xl max-h-[80vh] flex flex-col">
+        <div class="flex items-center justify-between mb-3">
+            <h3 class="text-lg font-bold text-gray-900" x-text="bestCodeModal.title"></h3>
+            <button @click="bestCodeModal.show = false" class="text-gray-400 hover:text-gray-600">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="text-xs text-gray-500 mb-3" x-text="bestCodeModal.subtitle"></div>
+        <div class="flex-1 overflow-auto rounded-lg border border-gray-200">
+            <pre class="p-4 bg-gray-900 text-gray-100 text-sm font-mono whitespace-pre overflow-x-auto"><code x-text="bestCodeModal.code"></code></pre>
+        </div>
+        <div class="flex justify-end gap-2 mt-4">
+            <button @click="loadBestCode()"
+                    class="px-4 py-2 text-sm font-medium bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors">
+                Вставить в редактор
+            </button>
+            <button @click="bestCodeModal.show = false"
+                    class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
+                Закрыть
+            </button>
+        </div>
+    </div>
+</div>
 </div> <!-- close x-data="egeApp()" -->
 {% endblock content %}
 
@@ -357,11 +425,13 @@ function egeApp() {
         checkingAnswer: null,   // questionId being checked
         codeStatuses: {},       // questionId -> status string
         codeErrors: {},         // questionId -> error message
+        codeMetrics: {},        // questionId -> {cpu_time_ms, memory_kb}
         finishing: false,
         showFinishConfirm: false,
         showSavePrompt: false,
         pendingNavigationUrl: null,
         showMobileSidebar: false,
+        bestCodeModal: { show: false, title: '', subtitle: '', code: '', questionId: null },
         isExam: '{{ quiz.exam_mode }}' === 'exam',
         quizId: {{ quiz.id }},
         csrfToken: '{{ csrf_token }}',
@@ -380,7 +450,7 @@ function egeApp() {
         init() {
             const lastSubs = {{ last_submissions_json|safe }};
 
-            // Restore code submission statuses
+            // Restore code submission statuses and metrics
             for (const [qid, sub] of Object.entries(lastSubs)) {
                 if (sub.status === 'success' && sub.is_correct) {
                     this.codeStatuses[qid] = 'success';
@@ -388,6 +458,12 @@ function egeApp() {
                     this.codeStatuses[qid] = 'failed';
                 } else if (sub.status === 'pending' || sub.status === 'running') {
                     this.codeStatuses[qid] = sub.status;
+                }
+                if (sub.cpu_time_ms != null || sub.memory_kb != null) {
+                    this.codeMetrics[qid] = {
+                        cpu_time_ms: sub.cpu_time_ms,
+                        memory_kb: sub.memory_kb,
+                    };
                 }
             }
 
@@ -410,16 +486,24 @@ function egeApp() {
                     if (task.saved_answer && !this.answers[task.id]) {
                         this.answers[task.id] = task.saved_answer;
                     }
+                } else if (task.saved_answer_wrong && task.saved_answer) {
+                    // Нерешённая текстовая задача с предыдущим неправильным ответом
+                    if (!this.answers[task.id]) {
+                        this.answers[task.id] = task.saved_answer;
+                    }
+                    this.checkResults[task.id] = false;
                 }
             }
 
-            // Code checker (WebSocket)
+            // Code checker (WebSocket) — destroy previous if init() re-runs
+            if (this.codeChecker) this.codeChecker.destroy();
             this.codeChecker = new QuizCodeChecker(this.quizId, this.csrfToken);
-            this.codeChecker.onStatusChange = (questionId, status, isCorrect, errorLog) => {
-                this.handleCodeStatus(questionId, status, isCorrect, errorLog);
+            this.codeChecker.onStatusChange = (questionId, status, isCorrect, errorLog, cpuTimeMs, memoryKb) => {
+                this.handleCodeStatus(questionId, status, isCorrect, errorLog, cpuTimeMs, memoryKb);
             };
 
-            // Time tracker
+            // Time tracker (destroy previous if init() called twice by Alpine)
+            if (this.timeTracker) this.timeTracker.destroy();
             this.timeTracker = new TaskTimeTracker(this.quizId, this.csrfToken);
 
             // Exam timer
@@ -462,9 +546,19 @@ function egeApp() {
             };
             window.addEventListener('beforeunload', this._beforeUnload);
 
+            // bfcache: браузер может восстановить страницу из кэша с замороженным
+            // taskStartedAt из предыдущей сессии. Сбрасываем таймер на текущее время.
+            this._pageShow = (e) => {
+                if (e.persisted) this.timeTracker.onBfcacheRestore();
+            };
+            window.addEventListener('pageshow', this._pageShow);
+
             // Ленивая инициализация CodeMirror — при первом показе задачи
             this.$nextTick(() => this.ensureCodeMirror());
-            this.timeTracker.startTask(this.tasks[0]?.id);
+            // Не трекаем уже решённые задачи — сервер всё равно отклонит, но
+            // избегаем лишних запросов.
+            const firstTask = this.tasks[0];
+            if (firstTask && !firstTask.is_solved) this.timeTracker.startTask(firstTask.id);
         },
 
         ensureCodeMirror() {
@@ -503,6 +597,10 @@ function egeApp() {
         },
 
         onAnswerChange(questionId) {
+            // Сбрасываем статус «неверно» при редактировании
+            if (this.checkResults[questionId] === false) {
+                delete this.checkResults[questionId];
+            }
             this.answerStore.save(this.answers);
         },
 
@@ -511,9 +609,9 @@ function egeApp() {
             this.currentTask = index;
             const newTask = this.tasks[index];
 
-            // Track time
+            // Track time (не трекаем уже решённые задачи)
             if (prevTask) this.timeTracker.stopTask(prevTask.id);
-            if (newTask) this.timeTracker.startTask(newTask.id);
+            if (newTask && !newTask.is_solved) this.timeTracker.startTask(newTask.id);
 
             this.ensureCodeMirror();
         },
@@ -600,14 +698,86 @@ function egeApp() {
             }
         },
 
-        handleCodeStatus(questionId, status, isCorrect, errorLog) {
+        handleCodeStatus(questionId, status, isCorrect, errorLog, cpuTimeMs, memoryKb) {
             this.codeStatuses[questionId] = status;
             if (errorLog) this.codeErrors[questionId] = errorLog;
 
+            // Сохраняем метрики текущей попытки
+            if (cpuTimeMs != null || memoryKb != null) {
+                this.codeMetrics[questionId] = {
+                    cpu_time_ms: cpuTimeMs,
+                    memory_kb: memoryKb,
+                };
+            }
+
             if (status === 'success' && isCorrect) {
                 const task = this.tasks.find(t => t.id === questionId);
-                if (task) task.is_solved = true;
+                if (task) {
+                    task.is_solved = true;
+                    // Обновляем лучшие метрики на клиенте (серверная версия обновится в Celery)
+                    const code = this.codeMirrors[questionId]?.getValue() || this.answers[questionId] || '';
+                    if (cpuTimeMs != null && (task.best_cpu_time_ms == null || cpuTimeMs < task.best_cpu_time_ms)) {
+                        task.best_cpu_time_ms = cpuTimeMs;
+                        task.best_cpu_code = code;
+                    }
+                    if (memoryKb != null && (task.best_memory_kb == null || memoryKb < task.best_memory_kb)) {
+                        task.best_memory_kb = memoryKb;
+                        task.best_memory_code = code;
+                    }
+                }
             }
+        },
+
+        formatCpuTime(ms) {
+            if (ms == null) return '';
+            if (ms >= 1000) return (ms / 1000).toFixed(2) + ' с';
+            if (ms < 1) return '< 1 мс';
+            return ms.toFixed(0) + ' мс';
+        },
+
+        formatMemory(kb) {
+            if (kb == null) return '';
+            return kb < 1024 ? kb + ' КБ' : (kb / 1024).toFixed(1) + ' МБ';
+        },
+
+        getBestMetrics(questionId) {
+            const task = this.tasks.find(t => t.id === questionId);
+            if (!task) return null;
+            const cpu = task.best_cpu_time_ms;
+            const mem = task.best_memory_kb;
+            if (cpu == null && mem == null) return null;
+            return {
+                cpu, mem,
+                has_cpu_code: !!task.best_cpu_code,
+                has_mem_code: !!task.best_memory_code,
+            };
+        },
+
+        showBestCode(questionId, type) {
+            const task = this.tasks.find(t => t.id === questionId);
+            if (!task) return;
+            const isCpu = type === 'cpu';
+            this.bestCodeModal = {
+                show: true,
+                title: isCpu ? 'Лучшая попытка по времени' : 'Лучшая попытка по памяти',
+                subtitle: isCpu
+                    ? `Время: ${this.formatCpuTime(task.best_cpu_time_ms)}`
+                    : `Память: ${this.formatMemory(task.best_memory_kb)}`,
+                code: isCpu ? task.best_cpu_code : task.best_memory_code,
+                questionId,
+            };
+        },
+
+        loadBestCode() {
+            const qid = this.bestCodeModal.questionId;
+            const code = this.bestCodeModal.code;
+            if (!qid || !code) return;
+            this.answers[qid] = code;
+            this.answerStore.save(this.answers);
+            if (this.codeMirrors[qid]) {
+                this.codeMirrors[qid].setValue(code);
+            }
+            this.bestCodeModal.show = false;
         },
 
         // Finish
@@ -662,6 +832,7 @@ function egeApp() {
         _removeInterceptors() {
             if (this._beforeUnload) window.removeEventListener('beforeunload', this._beforeUnload);
             if (this._linkInterceptor) document.removeEventListener('click', this._linkInterceptor, true);
+            if (this._pageShow) window.removeEventListener('pageshow', this._pageShow);
         },
 
         // Cleanup

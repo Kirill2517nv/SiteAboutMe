@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.http import HttpResponseRedirect
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
-from .models import Quiz, Question, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, HelpRequest, HelpComment, QuestionImage, QuestionFile, ExamTaskProgress, SolutionAttachment
+from .models import Quiz, Question, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, HelpRequest, HelpComment, QuestionImage, QuestionFile, ExamTaskProgress, SolutionAttachment, SolutionLike, CodeSubmission
 from .forms import BulkQuizAssignmentForm
 
 class ChoiceInline(admin.TabularInline):
@@ -191,5 +191,20 @@ class SolutionAttachmentAdmin(admin.ModelAdmin):
     def has_image(self, obj):
         return bool(obj.image)
 
+class CodeSubmissionAdmin(admin.ModelAdmin):
+    list_display = ('user', 'question', 'quiz', 'status', 'is_correct', 'cpu_time_ms', 'memory_kb', 'created_at')
+    list_filter = ('status', 'is_correct', 'quiz')
+    search_fields = ('user__last_name', 'user__first_name', 'user__username')
+    list_select_related = ('user', 'quiz', 'question')
+    readonly_fields = ('cpu_time_ms', 'memory_kb')
+
+class SolutionLikeAdmin(admin.ModelAdmin):
+    list_display = ('user', 'answer', 'created_at')
+    list_filter = ('created_at',)
+    search_fields = ('user__last_name', 'user__first_name', 'user__username')
+    readonly_fields = ('user', 'answer', 'created_at')
+
 admin.site.register(ExamTaskProgress, ExamTaskProgressAdmin)
 admin.site.register(SolutionAttachment, SolutionAttachmentAdmin)
+admin.site.register(CodeSubmission, CodeSubmissionAdmin)
+admin.site.register(SolutionLike, SolutionLikeAdmin)

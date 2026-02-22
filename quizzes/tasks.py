@@ -60,10 +60,15 @@ def check_code_task(self, submission_id):
                     all_tests_passed = False
                     break
 
-            # Run tests
+            # Run tests, accumulate metrics
+            total_cpu_time = 0.0
+            peak_memory = 0
             if all_tests_passed:
                 for i, test_case in enumerate(test_cases, 1):
-                    output, error = run_code_in_docker(code, test_case.input_data, extra_files)
+                    output, error, cpu_time_ms, memory_kb = run_code_in_docker(code, test_case.input_data, extra_files)
+
+                    total_cpu_time += cpu_time_ms or 0
+                    peak_memory = max(peak_memory, memory_kb or 0)
 
                     if error:
                         all_tests_passed = False
@@ -75,15 +80,20 @@ def check_code_task(self, submission_id):
                         error_log = f"Неверный ответ на тесте #{i}.\nВходные данные: {test_case.input_data}\nВаш ответ: {output}"
                         break
 
-        # Update submission with result
+        # Update submission with result and metrics
         submission.is_correct = all_tests_passed
         submission.status = 'success' if all_tests_passed else 'failed'
         submission.error_log = error_log
         submission.completed_at = timezone.now()
-        submission.save(update_fields=['is_correct', 'status', 'error_log', 'completed_at'])
+        submission.cpu_time_ms = total_cpu_time if total_cpu_time > 0 else None
+        submission.memory_kb = peak_memory if peak_memory > 0 else None
+        submission.save(update_fields=['is_correct', 'status', 'error_log', 'completed_at', 'cpu_time_ms', 'memory_kb'])
 
         # Update linked UserAnswer if quiz was already finished
         update_user_answer_from_submission(submission)
+
+        # Update ExamTaskProgress (best metrics, solved status) — works even without UserAnswer
+        update_exam_progress_from_submission(submission)
 
         # Send WebSocket notification - completed
         send_ws_notification(submission, 'completed')
@@ -183,17 +193,45 @@ def update_user_answer_from_submission(submission):
         user_result.score = total_score
         user_result.save(update_fields=['score'])
 
-    # Обновляем ExamTaskProgress для code-задач ЕГЭ
-    if submission.quiz.quiz_type == 'exam' and submission.is_correct:
-        progress, _ = ExamTaskProgress.objects.get_or_create(
-            user=submission.user,
-            quiz=submission.quiz,
-            question=submission.question,
-        )
-        if not progress.is_solved:
-            progress.is_solved = True
-            progress.first_solved_at = timezone.now()
-            progress.save(update_fields=['is_solved', 'first_solved_at'])
+    # ExamTaskProgress обновляется в update_exam_progress_from_submission()
+
+
+def update_exam_progress_from_submission(submission):
+    """
+    Обновляет ExamTaskProgress после проверки code-задачи ЕГЭ.
+    Вызывается из check_code_task напрямую (не зависит от UserAnswer).
+    """
+    if submission.quiz.quiz_type != 'exam' or not submission.is_correct:
+        return
+
+    from .models import ExamTaskProgress
+
+    progress, _ = ExamTaskProgress.objects.get_or_create(
+        user=submission.user,
+        quiz=submission.quiz,
+        question=submission.question,
+    )
+    fields_to_update = []
+
+    if not progress.is_solved:
+        progress.is_solved = True
+        progress.first_solved_at = timezone.now()
+        fields_to_update += ['is_solved', 'first_solved_at']
+
+    # Обновляем лучшие метрики (меньше = лучше) и запоминаем код
+    if submission.cpu_time_ms is not None:
+        if progress.best_cpu_time_ms is None or submission.cpu_time_ms < progress.best_cpu_time_ms:
+            progress.best_cpu_time_ms = submission.cpu_time_ms
+            progress.best_cpu_code = submission.code
+            fields_to_update += ['best_cpu_time_ms', 'best_cpu_code']
+    if submission.memory_kb is not None:
+        if progress.best_memory_kb is None or submission.memory_kb < progress.best_memory_kb:
+            progress.best_memory_kb = submission.memory_kb
+            progress.best_memory_code = submission.code
+            fields_to_update += ['best_memory_kb', 'best_memory_code']
+
+    if fields_to_update:
+        progress.save(update_fields=fields_to_update)
 
 
 def send_ws_notification(submission, event_type):
@@ -214,6 +252,8 @@ def send_ws_notification(submission, event_type):
         'is_correct': submission.is_correct,
         'error_log': submission.error_log,
         'event_type': event_type,
+        'cpu_time_ms': submission.cpu_time_ms,
+        'memory_kb': submission.memory_kb,
     }
 
     try:

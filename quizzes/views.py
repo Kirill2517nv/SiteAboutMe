@@ -396,17 +396,39 @@ def ege_detail_view(request, quiz_id):
                     'status': sub.status,
                     'is_correct': sub.is_correct,
                     'code': sub.code,
+                    'cpu_time_ms': sub.cpu_time_ms,
+                    'memory_kb': sub.memory_kb,
                 }
+
+    # Последние текстовые ответы из UserAnswer (для нерешённых text-задач)
+    text_questions = [q for q in questions if q.question_type == 'text']
+    last_text_answers = {}  # question_id -> text_answer
+    if text_questions:
+        text_ua_qs = UserAnswer.objects.filter(
+            user_result__user=request.user,
+            user_result__quiz=quiz,
+            question__in=text_questions,
+            text_answer__isnull=False,
+        ).exclude(text_answer='').order_by('-user_result__date_completed')
+        for ua in text_ua_qs:
+            if ua.question_id not in last_text_answers:
+                last_text_answers[ua.question_id] = ua.text_answer
 
     # Данные для Alpine.js
     tasks_data = []
     for q in questions:
         prog = progress_map.get(q.id)
-        # Для решённых текстовых задач — передаём правильный ответ из БД
         saved_answer = ''
-        if prog and prog.is_solved and q.question_type == 'text':
-            saved_answer = q.correct_text_answer or ''
-        tasks_data.append({
+        saved_answer_wrong = False
+        if q.question_type == 'text':
+            if prog and prog.is_solved:
+                # Решена — показываем правильный ответ
+                saved_answer = q.correct_text_answer or ''
+            elif q.id in last_text_answers:
+                # Не решена, но есть предыдущий ответ — показываем его
+                saved_answer = last_text_answers[q.id]
+                saved_answer_wrong = True
+        task_data = {
             'id': q.id,
             'ege_number': q.ege_number,
             'topic': q.topic,
@@ -416,7 +438,15 @@ def ege_detail_view(request, quiz_id):
             'attempts': prog.attempts_to_solve if prog else 0,
             'time_spent': prog.time_spent_seconds if prog else 0,
             'saved_answer': saved_answer,
-        })
+            'saved_answer_wrong': saved_answer_wrong,
+        }
+        # Лучшие метрики для code-задач
+        if q.question_type == 'code' and prog:
+            task_data['best_cpu_time_ms'] = prog.best_cpu_time_ms
+            task_data['best_memory_kb'] = prog.best_memory_kb
+            task_data['best_cpu_code'] = prog.best_cpu_code or ''
+            task_data['best_memory_code'] = prog.best_memory_code or ''
+        tasks_data.append(task_data)
 
     # Сохраняем время начала в session
     session_key = f'ege_{quiz_id}_start'
@@ -719,20 +749,6 @@ def ege_results_view(request, quiz_id):
         ).select_related('question')
         progress_map = {p.question_id: p for p in progress_qs}
 
-        # Метрики из CodeSubmission (последний успешный) для code-задач
-        code_question_ids = [q.id for q in questions if q.question_type == 'code']
-        metrics_map = {}
-        if code_question_ids:
-            for sub in CodeSubmission.objects.filter(
-                user=request.user, quiz=quiz, question_id__in=code_question_ids,
-                is_correct=True,
-            ).order_by('-created_at'):
-                if sub.question_id not in metrics_map:
-                    metrics_map[sub.question_id] = {
-                        'cpu_time_ms': sub.cpu_time_ms,
-                        'memory_kb': sub.memory_kb,
-                    }
-
         if progress_map:
             personal_stats = []
             for q in questions:
@@ -754,7 +770,6 @@ def ege_results_view(request, quiz_id):
                     time_mm_ss = ''
                     color = ''
 
-                m = metrics_map.get(q.id, {})
                 personal_stats.append({
                     'ege_number': ege_num,
                     'time_mm_ss': time_mm_ss,
@@ -762,8 +777,8 @@ def ege_results_view(request, quiz_id):
                     'is_solved': p.is_solved if p else False,
                     'color': color,
                     'is_code': q.question_type == 'code',
-                    'cpu_time_ms': m.get('cpu_time_ms'),
-                    'memory_kb': m.get('memory_kb'),
+                    'cpu_time_ms': p.best_cpu_time_ms if p else None,
+                    'memory_kb': p.best_memory_kb if p else None,
                 })
 
     return render(request, 'quizzes/ege_results.html', {
@@ -794,6 +809,10 @@ def ege_save_time_view(request, quiz_id):
     if not question_id or seconds <= 0:
         return JsonResponse({'error': 'Невалидные данные'}, status=400)
 
+    # Cap per request: защита от стухших таймеров (вкладка открыта без активности).
+    # Периодик шлёт каждые 30 с, поэтому 120 с — разумный лимит на один запрос.
+    seconds = min(seconds, 120)
+
     question = get_object_or_404(Question, id=question_id, quiz=quiz)
 
     progress, _ = ExamTaskProgress.objects.get_or_create(
@@ -811,133 +830,6 @@ def ege_save_time_view(request, quiz_id):
 
 
 @login_required
-def ege_solutions_view(request, quiz_id, ege_number):
-    """Просмотр решений других пользователей по задаче ЕГЭ."""
-    from django.contrib import messages
-    from collections import defaultdict
-
-    quiz = get_object_or_404(Quiz, id=quiz_id, quiz_type='exam', is_public=True)
-    question = get_object_or_404(Question, quiz=quiz, ege_number=ege_number)
-
-    # Проверка доступа: решил задачу или superuser
-    has_access = request.user.is_superuser or ExamTaskProgress.objects.filter(
-        user=request.user, quiz=quiz, question=question, is_solved=True,
-    ).exists()
-
-    if not has_access:
-        messages.warning(request, 'Решите задачу, чтобы увидеть решения других.')
-        return redirect('ege:ege_results', quiz_id=quiz.id)
-
-    # Решившие задачу — из ExamTaskProgress (надёжный источник для тренировки)
-    solved_progress = ExamTaskProgress.objects.filter(
-        quiz=quiz, question=question, is_solved=True,
-    ).select_related('user')
-    solver_users = {p.user_id: p.user for p in solved_progress}
-
-    # Все ответы по задаче, группировка по пользователю (предпочитаем correct, потом последний)
-    all_answers = UserAnswer.objects.filter(
-        user_result__quiz=quiz,
-        question=question,
-    ).select_related('user_result__user').order_by('-user_result__date_completed')
-
-    best_answer_by_user = {}
-    for ans in all_answers:
-        uid = ans.user_result.user_id
-        if uid not in best_answer_by_user:
-            best_answer_by_user[uid] = ans
-        elif ans.is_correct and not best_answer_by_user[uid].is_correct:
-            best_answer_by_user[uid] = ans
-
-    # Собираем решения: все solver_users + пользователи с correct UserAnswer
-    solutions_by_user = {}
-    for uid, user in solver_users.items():
-        full_name = f"{user.last_name} {user.first_name}".strip() or user.username
-        solutions_by_user[uid] = {
-            'user': user,
-            'full_name': full_name,
-            'answer': best_answer_by_user.get(uid),
-        }
-
-    # Также добавляем пользователей с correct UserAnswer, которых нет в ExamTaskProgress
-    for uid, ans in best_answer_by_user.items():
-        if ans.is_correct and uid not in solutions_by_user:
-            user = ans.user_result.user
-            full_name = f"{user.last_name} {user.first_name}".strip() or user.username
-            solutions_by_user[uid] = {
-                'user': user,
-                'full_name': full_name,
-                'answer': ans,
-            }
-
-    # SolutionAttachment для всех пользователей
-    attachments = SolutionAttachment.objects.filter(
-        quiz=quiz, question=question,
-    ).select_related('user')
-    attach_map = {a.user_id: a for a in attachments}
-
-    # Лайки: подсчёт и набор лайкнутых текущим пользователем
-    answer_ids = [sol['answer'].id for sol in solutions_by_user.values() if sol.get('answer')]
-    like_counts = {}
-    if answer_ids:
-        from django.db.models import Count as LikeCount
-        like_qs = SolutionLike.objects.filter(answer_id__in=answer_ids).values('answer_id').annotate(cnt=LikeCount('id'))
-        like_counts = {row['answer_id']: row['cnt'] for row in like_qs}
-    user_liked_ids = set(
-        SolutionLike.objects.filter(user=request.user, answer_id__in=answer_ids).values_list('answer_id', flat=True)
-    ) if answer_ids else set()
-
-    # CPU-время и память из CodeSubmission (для code-задач)
-    submission_metrics = {}
-    if question.question_type == 'code' and answer_ids:
-        from django.db.models import F
-        sub_qs = UserAnswer.objects.filter(
-            id__in=answer_ids, submission__isnull=False,
-        ).select_related('submission').values_list('id', 'submission__cpu_time_ms', 'submission__memory_kb')
-        for aid, cpu, mem in sub_qs:
-            submission_metrics[aid] = {'cpu_time_ms': cpu, 'memory_kb': mem}
-
-    # Собираем итоговый список решений с аннотациями
-    solutions = []
-    for uid, sol in solutions_by_user.items():
-        sol['attachment'] = attach_map.get(uid)
-        ans = sol.get('answer')
-        aid = ans.id if ans else None
-        sol['like_count'] = like_counts.get(aid, 0)
-        sol['user_liked'] = aid in user_liked_ids
-        metrics = submission_metrics.get(aid, {})
-        sol['cpu_time_ms'] = metrics.get('cpu_time_ms')
-        sol['memory_kb'] = metrics.get('memory_kb')
-        sol['is_own'] = (uid == request.user.id)
-        solutions.append(sol)
-
-    # Сортировка
-    current_sort = request.GET.get('sort', 'date')
-    if current_sort == 'likes':
-        solutions.sort(key=lambda s: s['like_count'], reverse=True)
-    elif current_sort == 'cpu_time':
-        solutions.sort(key=lambda s: (s['cpu_time_ms'] is None, s['cpu_time_ms'] or 0))
-    elif current_sort == 'memory':
-        solutions.sort(key=lambda s: (s['memory_kb'] is None, s['memory_kb'] or 0))
-    # date — порядок по умолчанию (как собрано)
-
-    # Текущее вложение пользователя (для формы)
-    my_attachment = attach_map.get(request.user.id)
-
-    return render(request, 'quizzes/ege_solutions.html', {
-        'quiz': quiz,
-        'question': question,
-        'ege_number': ege_number,
-        'solutions': solutions,
-        'my_attachment': my_attachment,
-        'current_sort': current_sort,
-        'is_code_question': question.question_type == 'code',
-        'has_solved': ExamTaskProgress.objects.filter(
-            user=request.user, quiz=quiz, question=question, is_solved=True,
-        ).exists(),
-    })
-
-
-@login_required
 @require_POST
 def ege_upload_attachment_view(request, quiz_id, ege_number):
     from django.contrib import messages
@@ -949,7 +841,7 @@ def ege_upload_attachment_view(request, quiz_id, ege_number):
     if not ExamTaskProgress.objects.filter(
         user=request.user, quiz=quiz, question=question, is_solved=True,
     ).exists():
-        return redirect('ege:ege_solutions', quiz_id=quiz.id, ege_number=ege_number)
+        return redirect('ege:ege_user_solution', quiz_id=quiz.id, ege_number=ege_number, user_id=request.user.id)
 
     attachment, _ = SolutionAttachment.objects.get_or_create(
         user=request.user, quiz=quiz, question=question,
@@ -962,22 +854,22 @@ def ege_upload_attachment_view(request, quiz_id, ege_number):
     if request.FILES.get('file'):
         if request.FILES['file'].size > 20 * 1024 * 1024:
             messages.error(request, 'Нельзя загрузить документ более 20 МБ')
-            return redirect('ege:ege_solutions', quiz_id=quiz.id, ege_number=ege_number)
+            return redirect('ege:ege_user_solution', quiz_id=quiz.id, ege_number=ege_number, user_id=request.user.id)
         ext = os.path.splitext(request.FILES['file'].name)[1].lower().lstrip('.')
         if ext not in ALLOWED_FILE_EXT:
             messages.error(request, f'Допустимые расширения: {", ".join(sorted(ALLOWED_FILE_EXT))}')
-            return redirect('ege:ege_solutions', quiz_id=quiz.id, ege_number=ege_number)
+            return redirect('ege:ege_user_solution', quiz_id=quiz.id, ege_number=ege_number, user_id=request.user.id)
         attachment.file = request.FILES['file']
         has_changes = True
 
     if request.FILES.get('image'):
         if request.FILES['image'].size > 5 * 1024 * 1024:
             messages.error(request, 'Нельзя загрузить изображение более 5 МБ')
-            return redirect('ege:ege_solutions', quiz_id=quiz.id, ege_number=ege_number)
+            return redirect('ege:ege_user_solution', quiz_id=quiz.id, ege_number=ege_number, user_id=request.user.id)
         ext = os.path.splitext(request.FILES['image'].name)[1].lower().lstrip('.')
         if ext not in ALLOWED_IMAGE_EXT:
             messages.error(request, f'Допустимые расширения: {", ".join(sorted(ALLOWED_IMAGE_EXT))}')
-            return redirect('ege:ege_solutions', quiz_id=quiz.id, ege_number=ege_number)
+            return redirect('ege:ege_user_solution', quiz_id=quiz.id, ege_number=ege_number, user_id=request.user.id)
         attachment.image = request.FILES['image']
         has_changes = True
 
@@ -989,7 +881,7 @@ def ege_upload_attachment_view(request, quiz_id, ege_number):
     if has_changes:
         attachment.save()
 
-    return redirect('ege:ege_solutions', quiz_id=quiz.id, ege_number=ege_number)
+    return redirect('ege:ege_user_solution', quiz_id=quiz.id, ege_number=ege_number, user_id=request.user.id)
 
 
 @login_required
@@ -1017,17 +909,19 @@ def ege_toggle_like_view(request, answer_id):
 
 @login_required
 @require_GET
-def ege_user_solution_api(request, quiz_id, ege_number, user_id):
-    """JSON API: решение конкретного пользователя по задаче ЕГЭ."""
+def ege_solution_detail_view(request, quiz_id, ege_number, user_id):
+    """Страница просмотра решения конкретного пользователя по задаче ЕГЭ."""
     quiz = get_object_or_404(Quiz, id=quiz_id, quiz_type='exam', is_public=True)
     question = get_object_or_404(Question, quiz=quiz, ege_number=ege_number)
 
     # Проверка доступа: текущий пользователь решил задачу или superuser
-    has_access = request.user.is_superuser or ExamTaskProgress.objects.filter(
+    has_solved = request.user.is_superuser or ExamTaskProgress.objects.filter(
         user=request.user, quiz=quiz, question=question, is_solved=True,
     ).exists()
-    if not has_access:
-        return JsonResponse({'error': 'Нет доступа'}, status=403)
+    if not has_solved:
+        from django.contrib import messages
+        messages.warning(request, 'Решите задачу, чтобы увидеть решения других.')
+        return redirect('ege:ege_results', quiz_id=quiz.id)
 
     # Лучший ответ целевого пользователя (prefer correct, потом latest)
     all_answers = UserAnswer.objects.filter(
@@ -1042,41 +936,65 @@ def ege_user_solution_api(request, quiz_id, ege_number, user_id):
             best = ans
 
     if not best:
-        return JsonResponse({'error': 'Решение не найдено'}, status=404)
+        raise Http404('Решение не найдено')
 
     user = best.user_result.user
     full_name = f"{user.last_name} {user.first_name}".strip() or user.username
 
-    answer_data = {
-        'text_answer': best.text_answer or '',
-        'code_answer': best.code_answer or '',
-        'is_correct': best.is_correct,
-        'cpu_time_ms': None,
-        'memory_kb': None,
-    }
+    cpu_time_ms = None
+    memory_kb = None
     if best.submission:
-        answer_data['cpu_time_ms'] = best.submission.cpu_time_ms
-        answer_data['memory_kb'] = best.submission.memory_kb
+        cpu_time_ms = best.submission.cpu_time_ms
+        memory_kb = best.submission.memory_kb
+
+    # Лучшие попытки по CPU и памяти из ExamTaskProgress (для code-задач)
+    best_cpu_code = ''
+    best_cpu_time_ms = None
+    best_memory_code = ''
+    best_memory_kb = None
+    if question.question_type == 'code':
+        try:
+            progress = ExamTaskProgress.objects.get(
+                user_id=user_id, quiz=quiz, question=question,
+            )
+            best_cpu_code = progress.best_cpu_code or ''
+            best_cpu_time_ms = progress.best_cpu_time_ms
+            best_memory_code = progress.best_memory_code or ''
+            best_memory_kb = progress.best_memory_kb
+        except ExamTaskProgress.DoesNotExist:
+            pass
 
     # Аттачмент
-    attachment_data = None
+    attachment = None
     try:
-        att = SolutionAttachment.objects.get(user_id=user_id, quiz=quiz, question=question)
-        attachment_data = {
-            'comment': att.comment or '',
-            'file_url': att.file.url if att.file else None,
-            'file_name': os.path.basename(att.file.name) if att.file else None,
-            'image_url': att.image.url if att.image else None,
-        }
+        attachment = SolutionAttachment.objects.get(user_id=user_id, quiz=quiz, question=question)
     except SolutionAttachment.DoesNotExist:
         pass
 
-    return JsonResponse({
-        'full_name': full_name,
-        'question_type': question.question_type,
+    # Лайки
+    like_count = best.likes.count()
+    user_liked = best.likes.filter(user=request.user).exists()
+
+    is_own = (user_id == request.user.id)
+
+    return render(request, 'quizzes/ege_solution_detail.html', {
+        'quiz': quiz,
+        'question': question,
         'ege_number': ege_number,
-        'answer': answer_data,
-        'attachment': attachment_data,
+        'target_user_name': full_name,
+        'answer': best,
+        'cpu_time_ms': cpu_time_ms,
+        'memory_kb': memory_kb,
+        'attachment': attachment,
+        'like_count': like_count,
+        'user_liked': user_liked,
+        'is_own': is_own,
+        'has_solved': has_solved,
+        'answer_id': best.id,
+        'best_cpu_code': best_cpu_code,
+        'best_cpu_time_ms': best_cpu_time_ms,
+        'best_memory_code': best_memory_code,
+        'best_memory_kb': best_memory_kb,
     })
 
 
@@ -1580,6 +1498,8 @@ def submission_status_view(request, submission_id):
         'status': submission.status,
         'is_correct': submission.is_correct,
         'error_log': submission.error_log,
+        'cpu_time_ms': submission.cpu_time_ms,
+        'memory_kb': submission.memory_kb,
         'created_at': submission.created_at.isoformat(),
         'completed_at': submission.completed_at.isoformat() if submission.completed_at else None,
     })
