@@ -6,11 +6,30 @@ from accounts.models import StudentGroup
 
 User = get_user_model()
 
+
+def normalize_text_answer(answer: str) -> str:
+    """Нормализация текстового ответа: strip, lowercase, удаление ведущих нулей."""
+    answer = answer.lower().strip()
+    while answer.startswith("0") and len(answer) > 1:
+        answer = answer[1:]
+
+    return answer
+
+
 class Quiz(models.Model):
+    QUIZ_TYPE_CHOICES = [('standard', 'Стандартный'), ('exam', 'ЕГЭ')]
+    EXAM_MODE_CHOICES = [('exam', 'Экзамен'), ('practice', 'Тренировка')]
+
     title = models.CharField(max_length=200, verbose_name="Название теста")
     description = models.TextField(verbose_name="Описание", blank=True)
     max_attempts = models.PositiveIntegerField(default=3, verbose_name="Максимум попыток", help_text="Сколько раз ученик может пройти тест. 0 - безлимитно.")
-    
+
+    quiz_type = models.CharField(max_length=10, choices=QUIZ_TYPE_CHOICES, default='standard', verbose_name="Тип теста")
+    exam_mode = models.CharField(max_length=10, choices=EXAM_MODE_CHOICES, default='practice', blank=True, verbose_name="Режим ЕГЭ")
+    is_public = models.BooleanField(default=False, verbose_name="Публичный доступ", help_text="Доступен всем без назначения")
+    slug = models.SlugField(max_length=100, blank=True, null=True, unique=True,
+                            verbose_name="Slug (для медиа-путей)")
+
     start_date = models.DateTimeField(null=True, blank=True, verbose_name="Начало доступа", help_text="Дата и время, с которого тест становится доступным")
     end_date = models.DateTimeField(null=True, blank=True, verbose_name="Конец доступа", help_text="Дата и время, после которого тест закрывается")
 
@@ -53,9 +72,13 @@ class Question(models.Model):
     text = models.TextField(verbose_name="Текст вопроса")
     question_type = models.CharField(max_length=10, choices=TYPE_CHOICES, default='choice', verbose_name="Тип вопроса")
     
-    data_file = models.FileField(upload_to='question_files/', blank=True, null=True, verbose_name="Файл с данными (для скачивания)")
     correct_text_answer = models.CharField(max_length=200, blank=True, null=True, verbose_name="Правильный ответ (текст)")
-    
+
+    ege_number = models.PositiveIntegerField(null=True, blank=True, verbose_name="Номер задачи ЕГЭ")
+    topic = models.CharField(max_length=200, blank=True, default='', verbose_name="Тема")
+    points = models.PositiveIntegerField(default=1, verbose_name="Баллы")
+    alternative_answers = models.JSONField(null=True, blank=True, verbose_name="Альтернативные ответы", help_text='Список строк, например: ["42", "42.0"]')
+
     class Meta:
         verbose_name = "Вопрос"
         verbose_name_plural = "Вопросы"
@@ -69,6 +92,15 @@ class Question(models.Model):
         if self.title:
             return self.title
         return self.text.strip().split('\n')[0]
+
+    def check_text_answer(self, user_answer: str) -> bool:
+        """Проверяет текстовый ответ с учётом нормализации и альтернативных ответов."""
+        normalized = normalize_text_answer(user_answer)
+        if normalize_text_answer(self.correct_text_answer or '') == normalized:
+            return True
+        if self.alternative_answers:
+            return any(normalize_text_answer(alt) == normalized for alt in self.alternative_answers)
+        return False
 
     def get_body(self):
         """
@@ -85,6 +117,77 @@ class Question(models.Model):
         if len(lines) > 1:
             return '\n'.join(lines[1:])
         return ""
+
+def _ege_slug(quiz):
+    """Возвращает slug квиза если он EGE, иначе None."""
+    if quiz and quiz.quiz_type == 'exam' and quiz.slug:
+        return quiz.slug
+    return None
+
+
+def question_image_upload_path(instance, filename):
+    slug = _ege_slug(instance.question.quiz)
+    if slug:
+        return f'ege/{slug}/images/{filename}'
+    return f'question_images/{filename}'
+
+
+def question_file_upload_path(instance, filename):
+    slug = _ege_slug(instance.question.quiz)
+    if slug:
+        return f'ege/{slug}/files/{filename}'
+    return f'question_files/{filename}'
+
+
+def solution_file_upload_path(instance, filename):
+    slug = _ege_slug(instance.quiz)
+    if slug:
+        return f'ege/{slug}/solutions/u{instance.user_id}/{filename}'
+    return f'solutions/{filename}'
+
+
+def solution_image_upload_path(instance, filename):
+    slug = _ege_slug(instance.quiz)
+    if slug:
+        return f'ege/{slug}/solutions/u{instance.user_id}/images/{filename}'
+    return f'solutions/images/{filename}'
+
+
+class QuestionImage(models.Model):
+    """Изображение, отображаемое inline под текстом вопроса."""
+    question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name='images', verbose_name="Вопрос")
+    image = models.ImageField(upload_to=question_image_upload_path, verbose_name="Изображение")
+    alt_text = models.CharField(max_length=200, blank=True, verbose_name="Альтернативный текст")
+    order = models.PositiveIntegerField(default=0, verbose_name="Порядок")
+
+    class Meta:
+        verbose_name = "Изображение вопроса"
+        verbose_name_plural = "Изображения вопросов"
+        ordering = ['order', 'id']
+
+    def __str__(self):
+        return f"Изображение для {self.question} (#{self.order})"
+
+
+class QuestionFile(models.Model):
+    """Файл для скачивания, прикреплённый к вопросу."""
+    question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name='files', verbose_name="Вопрос")
+    file = models.FileField(upload_to=question_file_upload_path, verbose_name="Файл")
+    description = models.CharField(max_length=200, blank=True, verbose_name="Описание файла")
+    order = models.PositiveIntegerField(default=0, verbose_name="Порядок")
+
+    class Meta:
+        verbose_name = "Файл вопроса"
+        verbose_name_plural = "Файлы вопросов"
+        ordering = ['order', 'id']
+
+    def __str__(self):
+        return f"Файл для {self.question}: {self.get_filename()}"
+
+    def get_filename(self):
+        import os
+        return os.path.basename(self.file.name)
+
 
 class TestCase(models.Model):
     question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name='test_cases', verbose_name="Вопрос")
@@ -152,6 +255,9 @@ class CodeSubmission(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создано")
     completed_at = models.DateTimeField(null=True, blank=True, verbose_name="Завершено")
 
+    cpu_time_ms = models.FloatField(null=True, blank=True, verbose_name="CPU-время (мс)")
+    memory_kb = models.IntegerField(null=True, blank=True, verbose_name="Пиковая память (КБ)")
+
     class Meta:
         verbose_name = "Отправка кода"
         verbose_name_plural = "Отправки кода"
@@ -217,6 +323,57 @@ class HelpComment(models.Model):
         return f"{self.author.username}{line_info}: {self.text[:50]}"
 
 
+class ExamTaskProgress(models.Model):
+    """Прогресс пользователя по конкретной задаче ЕГЭ (время, попытки, статус)."""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='exam_progress', verbose_name="Пользователь")
+    quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE, related_name='task_progress', verbose_name="Вариант")
+    question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name='exam_progress', verbose_name="Задача")
+    time_spent_seconds = models.PositiveIntegerField(default=0, verbose_name="Время (секунды)")
+    attempts_to_solve = models.PositiveIntegerField(default=0, verbose_name="Количество попыток")
+    is_solved = models.BooleanField(default=False, verbose_name="Решена")
+    first_solved_at = models.DateTimeField(null=True, blank=True, verbose_name="Время первого решения")
+    best_cpu_time_ms = models.FloatField(null=True, blank=True, verbose_name="Лучшее время CPU (мс)")
+    best_cpu_code = models.TextField(blank=True, default='', verbose_name="Код лучшей попытки по CPU")
+    best_memory_kb = models.IntegerField(null=True, blank=True, verbose_name="Лучшая память (КБ)")
+    best_memory_code = models.TextField(blank=True, default='', verbose_name="Код лучшей попытки по памяти")
+
+    class Meta:
+        verbose_name = "Прогресс задачи ЕГЭ"
+        verbose_name_plural = "Прогресс задач ЕГЭ"
+        unique_together = ['user', 'quiz', 'question']
+        indexes = [
+            models.Index(fields=['user', 'quiz']),
+            models.Index(fields=['is_solved']),
+        ]
+
+    def __str__(self):
+        status = "решена" if self.is_solved else f"{self.attempts_to_solve} попыток"
+        return f"{self.user.username} — задача {self.question_id} ({status})"
+
+
+class SolutionAttachment(models.Model):
+    """Дополнительные материалы к решению задачи (файл, комментарий, изображение)."""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='solution_attachments', verbose_name="Пользователь")
+    quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE, related_name='solution_attachments', verbose_name="Вариант")
+    question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name='solution_attachments', verbose_name="Задача")
+    file = models.FileField(upload_to=solution_file_upload_path, blank=True, null=True, verbose_name="Файл")
+    comment = models.TextField(blank=True, default='', verbose_name="Комментарий")
+    image = models.ImageField(upload_to=solution_image_upload_path, blank=True, null=True, verbose_name="Изображение")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
+
+    class Meta:
+        verbose_name = "Доп. материал к решению"
+        verbose_name_plural = "Доп. материалы к решениям"
+        unique_together = ['user', 'quiz', 'question']
+
+    def __str__(self):
+        return f"Материал: {self.user.username} — задача {self.question_id}"
+
+    def get_filename(self):
+        import os
+        return os.path.basename(self.file.name) if self.file else ''
+
+
 class UserAnswer(models.Model):
     user_result = models.ForeignKey(UserResult, on_delete=models.CASCADE, related_name='answers', verbose_name="Результат попытки")
     question = models.ForeignKey(Question, on_delete=models.CASCADE, verbose_name="Вопрос")
@@ -233,6 +390,23 @@ class UserAnswer(models.Model):
         verbose_name = "Ответ пользователя"
         verbose_name_plural = "Ответы пользователя"
         indexes = [
-            models.Index(fields=['user_result', 'is_correct']),  # Для поиска правильных ответов
-            models.Index(fields=['question', 'is_correct']),  # Для статистики по вопросам
+            models.Index(fields=['user_result', 'is_correct']),
+            models.Index(fields=['question', 'is_correct']),
         ]
+
+
+class SolutionLike(models.Model):
+    """Лайк решения другого пользователя."""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='solution_likes', verbose_name="Пользователь")
+    answer = models.ForeignKey(UserAnswer, on_delete=models.CASCADE, related_name='likes', verbose_name="Ответ")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата")
+
+    class Meta:
+        verbose_name = "Лайк решения"
+        verbose_name_plural = "Лайки решений"
+        constraints = [
+            models.UniqueConstraint(fields=['user', 'answer'], name='unique_solution_like'),
+        ]
+
+    def __str__(self):
+        return f"{self.user.username} -> answer #{self.answer_id}"

@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.http import HttpResponseRedirect
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
-from .models import Quiz, Question, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, HelpRequest, HelpComment
+from .models import Quiz, Question, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, HelpRequest, HelpComment, QuestionImage, QuestionFile, ExamTaskProgress, SolutionAttachment, SolutionLike, CodeSubmission
 from .forms import BulkQuizAssignmentForm
 
 class ChoiceInline(admin.TabularInline):
@@ -13,24 +13,37 @@ class TestCaseInline(admin.StackedInline):
     model = TestCase
     extra = 1
 
+class QuestionImageInline(admin.TabularInline):
+    model = QuestionImage
+    extra = 1
+
+class QuestionFileInline(admin.TabularInline):
+    model = QuestionFile
+    extra = 1
+
 class QuestionAdmin(admin.ModelAdmin):
     list_display = ('title', 'quiz', 'question_type')
     list_filter = ('quiz', 'question_type')
     search_fields = ('title', 'text')
-    inlines = [ChoiceInline, TestCaseInline]
+    inlines = [ChoiceInline, TestCaseInline, QuestionImageInline, QuestionFileInline]
     fieldsets = (
         (None, {
-            'fields': ('quiz', 'title', 'text', 'question_type', 'data_file')
+            'fields': ('quiz', 'title', 'text', 'question_type')
         }),
         ('Для свободных ответов', {
-            'fields': ('correct_text_answer',),
+            'fields': ('correct_text_answer', 'alternative_answers'),
             'description': 'Заполнять только если выбран тип вопроса "Свободный ответ"'
+        }),
+        ('ЕГЭ', {
+            'fields': ('ege_number', 'topic', 'points'),
+            'classes': ('collapse',),
+            'description': 'Поля для задач ЕГЭ'
         }),
     )
 
 class QuestionInline(admin.TabularInline):
     model = Question
-    fields = ('title', 'text', 'question_type', 'data_file')
+    fields = ('title', 'text', 'question_type')
     extra = 1
 
 class QuizAssignmentInline(admin.TabularInline):
@@ -49,8 +62,19 @@ class QuizAssignmentInline(admin.TabularInline):
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
 class QuizAdmin(admin.ModelAdmin):
+    list_display = ('title', 'quiz_type', 'is_public', 'slug')
+    list_filter = ('quiz_type', 'is_public')
     inlines = [QuestionInline, QuizAssignmentInline]
     search_fields = ['title']
+    fieldsets = (
+        (None, {
+            'fields': ('title', 'description', 'max_attempts', 'start_date', 'end_date')
+        }),
+        ('ЕГЭ', {
+            'fields': ('quiz_type', 'exam_mode', 'is_public', 'slug'),
+            'classes': ('collapse',),
+        }),
+    )
     change_form_template = 'admin/quizzes/quiz/change_form.html'
 
     def get_urls(self):
@@ -140,8 +164,47 @@ class HelpRequestAdmin(admin.ModelAdmin):
     search_fields = ('student__username', 'student__last_name', 'question__text')
     inlines = [HelpCommentInline]
 
+class ExamTaskProgressAdmin(admin.ModelAdmin):
+    list_display = ('user', 'quiz', 'question', 'is_solved', 'attempts_to_solve', 'time_spent_seconds')
+    list_filter = ('is_solved', 'quiz')
+    search_fields = ('user__last_name', 'user__first_name', 'user__username')
+    list_select_related = ('user', 'quiz', 'question')
+    readonly_fields = ('is_solved', 'first_solved_at')
+
 admin.site.register(Quiz, QuizAdmin)
 admin.site.register(Question, QuestionAdmin)
 admin.site.register(UserResult, UserResultAdmin)
 admin.site.register(QuizAssignment, QuizAssignmentAdmin)
 admin.site.register(HelpRequest, HelpRequestAdmin)
+class SolutionAttachmentAdmin(admin.ModelAdmin):
+    list_display = ('user', 'quiz', 'question', 'has_file', 'has_image', 'created_at')
+    list_filter = ('quiz',)
+    search_fields = ('user__last_name', 'user__first_name', 'user__username')
+    list_select_related = ('user', 'quiz', 'question')
+    readonly_fields = ('created_at',)
+
+    @admin.display(boolean=True, description='Файл')
+    def has_file(self, obj):
+        return bool(obj.file)
+
+    @admin.display(boolean=True, description='Картинка')
+    def has_image(self, obj):
+        return bool(obj.image)
+
+class CodeSubmissionAdmin(admin.ModelAdmin):
+    list_display = ('user', 'question', 'quiz', 'status', 'is_correct', 'cpu_time_ms', 'memory_kb', 'created_at')
+    list_filter = ('status', 'is_correct', 'quiz')
+    search_fields = ('user__last_name', 'user__first_name', 'user__username')
+    list_select_related = ('user', 'quiz', 'question')
+    readonly_fields = ('cpu_time_ms', 'memory_kb')
+
+class SolutionLikeAdmin(admin.ModelAdmin):
+    list_display = ('user', 'answer', 'created_at')
+    list_filter = ('created_at',)
+    search_fields = ('user__last_name', 'user__first_name', 'user__username')
+    readonly_fields = ('user', 'answer', 'created_at')
+
+admin.site.register(ExamTaskProgress, ExamTaskProgressAdmin)
+admin.site.register(SolutionAttachment, SolutionAttachmentAdmin)
+admin.site.register(CodeSubmission, CodeSubmissionAdmin)
+admin.site.register(SolutionLike, SolutionLikeAdmin)

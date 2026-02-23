@@ -4,7 +4,7 @@ from pathlib import Path
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from quizzes.models import Quiz, Question, Choice, TestCase
+from quizzes.models import Quiz, Question, Choice, TestCase, QuestionImage, QuestionFile
 
 VALID_TYPES = {'choice', 'text', 'code'}
 
@@ -32,9 +32,26 @@ def load_quiz_from_data(data):
                 title=q_data.get("title", ""),
                 text=q_data["text"],
                 question_type=q_type,
-                data_file=q_data.get("data_file", ""),
                 correct_text_answer=q_data.get("correct_text_answer"),
             )
+
+            # Изображения
+            for i, img_data in enumerate(q_data.get("images", [])):
+                QuestionImage.objects.create(
+                    question=question,
+                    image=img_data["image"],
+                    alt_text=img_data.get("alt_text", ""),
+                    order=img_data.get("order", i),
+                )
+
+            # Файлы
+            for i, file_data in enumerate(q_data.get("files", [])):
+                QuestionFile.objects.create(
+                    question=question,
+                    file=file_data["file"],
+                    description=file_data.get("description", ""),
+                    order=file_data.get("order", i),
+                )
 
             if q_type == "choice":
                 for ch in q_data.get("choices", []):

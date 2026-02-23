@@ -64,3 +64,5 @@ htmlcov/
 *.bak
 *.tmp
 *.orig
+
+.playwright-mcp

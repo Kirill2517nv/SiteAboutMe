@@ -64,6 +64,8 @@ class QuizConsumer(AsyncWebsocketConsumer):
             'is_correct': event['is_correct'],
             'error_log': event['error_log'],
             'event_type': event['event_type'],
+            'cpu_time_ms': event.get('cpu_time_ms'),
+            'memory_kb': event.get('memory_kb'),
         }))
 
     async def help_comment_update(self, event):

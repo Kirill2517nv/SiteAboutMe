@@ -49,22 +49,26 @@ def check_code_task(self, submission_id):
             all_tests_passed = False
             error_log = "Нет тестовых примеров для проверки."
         else:
-            # Prepare extra files if question has data file
+            # Prepare extra files from QuestionFile attachments
             extra_files = {}
-            if question.data_file:
+            for qf in question.files.all():
                 try:
-                    with question.data_file.open('rb') as f:
-                        content = f.read()
-                        filename = os.path.basename(question.data_file.name)
-                        extra_files[filename] = content
+                    with qf.file.open('rb') as f:
+                        extra_files[os.path.basename(qf.file.name)] = f.read()
                 except Exception as e:
                     error_log = f"Ошибка чтения файла задания: {e}"
                     all_tests_passed = False
+                    break
 
-            # Run tests
+            # Run tests, accumulate metrics
+            total_cpu_time = 0.0
+            peak_memory = 0
             if all_tests_passed:
                 for i, test_case in enumerate(test_cases, 1):
-                    output, error = run_code_in_docker(code, test_case.input_data, extra_files)
+                    output, error, cpu_time_ms, memory_kb = run_code_in_docker(code, test_case.input_data, extra_files)
+
+                    total_cpu_time += cpu_time_ms or 0
+                    peak_memory = max(peak_memory, memory_kb or 0)
 
                     if error:
                         all_tests_passed = False
@@ -76,15 +80,20 @@ def check_code_task(self, submission_id):
                         error_log = f"Неверный ответ на тесте #{i}.\nВходные данные: {test_case.input_data}\nВаш ответ: {output}"
                         break
 
-        # Update submission with result
+        # Update submission with result and metrics
         submission.is_correct = all_tests_passed
         submission.status = 'success' if all_tests_passed else 'failed'
         submission.error_log = error_log
         submission.completed_at = timezone.now()
-        submission.save(update_fields=['is_correct', 'status', 'error_log', 'completed_at'])
+        submission.cpu_time_ms = total_cpu_time if total_cpu_time > 0 else None
+        submission.memory_kb = peak_memory if peak_memory > 0 else None
+        submission.save(update_fields=['is_correct', 'status', 'error_log', 'completed_at', 'cpu_time_ms', 'memory_kb'])
 
         # Update linked UserAnswer if quiz was already finished
         update_user_answer_from_submission(submission)
+
+        # Update ExamTaskProgress (best metrics, solved status) — works even without UserAnswer
+        update_exam_progress_from_submission(submission)
 
         # Send WebSocket notification - completed
         send_ws_notification(submission, 'completed')
@@ -145,7 +154,8 @@ def update_user_answer_from_submission(submission):
     Uses select_for_update to prevent race conditions between parallel workers.
     """
     from django.db import transaction
-    from .models import UserAnswer, UserResult
+    from django.db.models import Sum
+    from .models import UserAnswer, UserResult, ExamTaskProgress
 
     user_answer = UserAnswer.objects.filter(submission=submission).first()
     if not user_answer:
@@ -161,14 +171,67 @@ def update_user_answer_from_submission(submission):
         user_result = UserResult.objects.select_for_update().get(
             id=user_answer.user_result_id
         )
-        total_correct = UserAnswer.objects.filter(
-            user_result__user=user_result.user,
-            user_result__quiz=user_result.quiz,
-            is_correct=True
-        ).values('question_id').distinct().count()
+        quiz = user_result.quiz
 
-        user_result.score = total_correct
+        if quiz.quiz_type == 'exam':
+            # ЕГЭ: считаем сумму баллов (points) за правильные ответы
+            correct_answers = UserAnswer.objects.filter(
+                user_result=user_result,
+                is_correct=True
+            )
+            total_score = correct_answers.aggregate(
+                total=Sum('question__points')
+            )['total'] or 0
+        else:
+            # Стандартный тест: считаем количество правильных ответов
+            total_score = UserAnswer.objects.filter(
+                user_result__user=user_result.user,
+                user_result__quiz=quiz,
+                is_correct=True
+            ).values('question_id').distinct().count()
+
+        user_result.score = total_score
         user_result.save(update_fields=['score'])
+
+    # ExamTaskProgress обновляется в update_exam_progress_from_submission()
+
+
+def update_exam_progress_from_submission(submission):
+    """
+    Обновляет ExamTaskProgress после проверки code-задачи ЕГЭ.
+    Вызывается из check_code_task напрямую (не зависит от UserAnswer).
+    """
+    if submission.quiz.quiz_type != 'exam' or not submission.is_correct:
+        return
+
+    from .models import ExamTaskProgress
+
+    progress, _ = ExamTaskProgress.objects.get_or_create(
+        user=submission.user,
+        quiz=submission.quiz,
+        question=submission.question,
+    )
+    fields_to_update = []
+
+    if not progress.is_solved:
+        progress.is_solved = True
+        progress.first_solved_at = timezone.now()
+        fields_to_update += ['is_solved', 'first_solved_at']
+
+    # Обновляем лучшие метрики (меньше = лучше) и запоминаем код
+    if submission.cpu_time_ms is not None:
+        if progress.best_cpu_time_ms is None or submission.cpu_time_ms < progress.best_cpu_time_ms:
+            progress.best_cpu_time_ms = submission.cpu_time_ms
+            progress.best_cpu_code = submission.code
+            fields_to_update += ['best_cpu_time_ms', 'best_cpu_code']
+    if submission.memory_kb is not None:
+        if progress.best_memory_kb is None or submission.memory_kb < progress.best_memory_kb:
+            progress.best_memory_kb = submission.memory_kb
+            progress.best_memory_code = submission.code
+            fields_to_update += ['best_memory_kb', 'best_memory_code']
+
+    if fields_to_update:
+        progress.save(update_fields=fields_to_update)
 
 
 def send_ws_notification(submission, event_type):
@@ -189,6 +252,8 @@ def send_ws_notification(submission, event_type):
         'is_correct': submission.is_correct,
         'error_log': submission.error_log,
         'event_type': event_type,
+        'cpu_time_ms': submission.cpu_time_ms,
+        'memory_kb': submission.memory_kb,
     }
 
     try:

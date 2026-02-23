@@ -1,0 +1,355 @@
+{% extends 'base.html' %}
+
+{% block title %}Результаты — {{ quiz.title }}{% endblock title %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8"
+     x-data="resultsPage()">
+
+    <!-- Navigation -->
+    <div class="mb-6" data-aos="fade-right">
+        <a href="{% url 'ege:ege_list' %}" class="inline-flex items-center text-sm text-gray-500 hover:text-brand-600 transition-colors">
+            <svg class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+            К списку вариантов
+        </a>
+    </div>
+
+    <!-- Header -->
+    <div class="mb-8" data-aos="fade-down">
+        <h1 class="text-2xl font-bold text-gray-900 mb-2">{{ quiz.title }} — Результаты</h1>
+        <p class="text-sm text-gray-500">
+            {% if results_matrix %}
+                {{ results_matrix|length }} {% with count=results_matrix|length %}{% if count == 1 %}участник{% elif count < 5 %}участника{% else %}участников{% endif %}{% endwith %}
+            {% else %}
+                Нет результатов
+            {% endif %}
+        </p>
+    </div>
+
+    {% if results_matrix %}
+    <!-- Results table -->
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden" data-aos="fade-up">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-gray-200 bg-gray-50">
+                        <th class="sticky left-0 z-10 bg-gray-50 px-4 py-3 text-left font-semibold text-gray-700 min-w-[180px]">
+                            Участник
+                        </th>
+                        {% for q in questions %}
+                        <th class="px-2 py-3 text-center font-semibold text-gray-700 min-w-[40px] relative" x-data="{ popOpen: false }">
+                            <div class="flex flex-col items-center gap-0.5">
+                                <button @click="popOpen = !popOpen"
+                                        @click.outside="popOpen = false"
+                                        class="hover:text-brand-600 transition-colors cursor-pointer"
+                                        :class="activeSortCol === {{ q.ege_number }} ? 'text-brand-600' : ''">
+                                    {{ q.ege_number }}
+                                </button>
+                                <!-- Активная иконка фильтра (появляется после выбора) -->
+                                <div class="h-4 flex items-center justify-center">
+                                    <span x-show="activeSortCol === {{ q.ege_number }} && activeSortCriterion === 'likes'" x-cloak class="text-red-500 text-xs leading-none">&#10084;</span>
+                                    <span x-show="activeSortCol === {{ q.ege_number }} && activeSortCriterion === 'cpu'" x-cloak class="text-blue-500 text-xs leading-none">&#9202;</span>
+                                    <span x-show="activeSortCol === {{ q.ege_number }} && activeSortCriterion === 'memory'" x-cloak class="text-purple-500 text-xs leading-none">&#128190;</span>
+                                </div>
+                            </div>
+                            <!-- Popover меню -->
+                            <div x-show="popOpen" x-transition
+                                 class="absolute top-full left-1/2 -translate-x-1/2 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50 whitespace-nowrap">
+                                <div class="px-2.5 py-1 text-[10px] text-gray-400 uppercase tracking-wider">Сортировать по</div>
+                                <button @click="sortBy({{ q.ege_number }}, 'likes'); popOpen = false"
+                                        class="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-50 transition-colors text-left cursor-pointer"
+                                        :class="activeSortCol === {{ q.ege_number }} && activeSortCriterion === 'likes' ? 'text-red-600 font-medium' : 'text-gray-700'">
+                                    <span>&#10084;</span> Лайки
+                                </button>
+                                {% if q.question_type == 'code' %}
+                                <button @click="sortBy({{ q.ege_number }}, 'cpu'); popOpen = false"
+                                        class="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-50 transition-colors text-left cursor-pointer"
+                                        :class="activeSortCol === {{ q.ege_number }} && activeSortCriterion === 'cpu' ? 'text-blue-600 font-medium' : 'text-gray-700'">
+                                    <span>&#9202;</span> CPU-время
+                                </button>
+                                <button @click="sortBy({{ q.ege_number }}, 'memory'); popOpen = false"
+                                        class="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-50 transition-colors text-left cursor-pointer"
+                                        :class="activeSortCol === {{ q.ege_number }} && activeSortCriterion === 'memory' ? 'text-purple-600 font-medium' : 'text-gray-700'">
+                                    <span>&#128190;</span> Память
+                                </button>
+                                {% endif %}
+                                <template x-if="activeSortCol === {{ q.ege_number }}">
+                                    <div>
+                                        <hr class="my-1 border-gray-100">
+                                        <button @click="resetSort(); popOpen = false"
+                                                class="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-gray-400 hover:bg-gray-50 transition-colors text-left cursor-pointer">
+                                            &#10005; Сбросить
+                                        </button>
+                                    </div>
+                                </template>
+                            </div>
+                        </th>
+                        {% endfor %}
+                        <th class="px-3 py-3 text-center font-semibold text-green-700 min-w-[40px]">&#10003;</th>
+                        <th class="px-3 py-3 text-center font-semibold text-gray-700 min-w-[60px]">Баллы</th>
+                    </tr>
+                </thead>
+                <tbody id="results-tbody" class="divide-y divide-gray-50">
+                    {% for row in results_matrix %}
+                    <tr class="hover:bg-gray-50 transition-colors"
+                        data-user-id="{{ row.user_id }}"
+                        data-score="{{ row.score }}"
+                        data-full-name="{{ row.full_name }}">
+                        <!-- Sticky name column -->
+                        <td class="sticky left-0 z-10 bg-white px-4 py-3 font-medium text-gray-900 whitespace-nowrap">
+                            {{ row.full_name }}
+                        </td>
+
+                        <!-- Task results -->
+                        {% for result in row.task_results %}
+                        <td class="px-2 py-3 text-center">
+                            {% if result.correct is True %}
+                            <a href="{% url 'ege:ege_user_solution' quiz_id=quiz.id ege_number=result.ege_number user_id=result.user_id %}"
+                               class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-green-100 text-green-700 hover:bg-green-200 transition-colors"
+                               title="Верно — посмотреть решение">
+                                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+                                </svg>
+                            </a>
+                            {% elif result.correct is False %}
+                            <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-red-100 text-red-700" title="Неверно">
+                                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                                </svg>
+                            </span>
+                            {% else %}
+                            <span class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-gray-100 text-gray-400" title="Нет ответа">
+                                —
+                            </span>
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+
+                        <!-- Correct count -->
+                        <td class="px-3 py-3 text-center font-semibold text-green-700">
+                            {{ row.correct_count }}
+                        </td>
+
+                        <!-- Score -->
+                        <td class="px-3 py-3 text-center font-bold text-gray-900">
+                            {{ row.score }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {% if personal_stats %}
+    <!-- Personal statistics -->
+    <div class="mt-8 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden" data-aos="fade-up" data-aos-delay="100">
+        <div class="px-6 py-4 border-b border-gray-100">
+            <h2 class="text-lg font-semibold text-gray-900">Моя статистика</h2>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-gray-200 bg-gray-50">
+                        <th class="sticky left-0 z-10 bg-gray-50 px-4 py-3 text-left font-semibold text-gray-700 min-w-[180px]">
+                            Показатель
+                        </th>
+                        {% for q in questions %}
+                        <th class="px-2 py-3 text-center font-semibold text-gray-700 min-w-[40px]">
+                            {{ q.ege_number }}
+                        </th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Time row -->
+                    <tr class="border-b border-gray-50">
+                        <td class="sticky left-0 z-10 bg-white px-4 py-3 font-medium text-gray-700">
+                            Время
+                        </td>
+                        {% for stat in personal_stats %}
+                        <td class="px-2 py-3 text-center">
+                            {% if stat.time_mm_ss %}
+                            <span class="text-xs font-mono px-1.5 py-0.5 rounded
+                                {% if stat.color == 'green' %}bg-green-100 text-green-700
+                                {% elif stat.color == 'yellow' %}bg-yellow-100 text-yellow-700
+                                {% elif stat.color == 'red' %}bg-red-100 text-red-700
+                                {% endif %}">
+                                {{ stat.time_mm_ss }}
+                            </span>
+                            {% else %}
+                            <span class="text-gray-300">—</span>
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    <!-- Attempts row -->
+                    <tr class="border-b border-gray-50">
+                        <td class="sticky left-0 z-10 bg-white px-4 py-3 font-medium text-gray-700">
+                            Попытки
+                        </td>
+                        {% for stat in personal_stats %}
+                        <td class="px-2 py-3 text-center text-xs text-gray-600">
+                            {% if stat.attempts > 0 %}{{ stat.attempts }}{% else %}<span class="text-gray-300">—</span>{% endif %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    <!-- Status row -->
+                    <tr class="border-b border-gray-50">
+                        <td class="sticky left-0 z-10 bg-white px-4 py-3 font-medium text-gray-700">
+                            Статус
+                        </td>
+                        {% for stat in personal_stats %}
+                        <td class="px-2 py-3 text-center">
+                            {% if stat.is_solved %}
+                            <span class="text-green-600 font-bold" title="Решена">&#10003;</span>
+                            {% elif stat.attempts > 0 %}
+                            <span class="text-red-500 font-bold" title="Не решена">&#10007;</span>
+                            {% else %}
+                            <span class="text-gray-300">—</span>
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    <!-- CPU time row (code tasks only) -->
+                    <tr class="border-b border-gray-50">
+                        <td class="sticky left-0 z-10 bg-white px-4 py-3 font-medium text-gray-700">
+                            CPU-время
+                        </td>
+                        {% for stat in personal_stats %}
+                        <td class="px-2 py-3 text-center">
+                            {% if stat.is_code and stat.cpu_time_ms != None %}
+                            <span class="text-xs font-mono px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">
+                                {{ stat.cpu_time_ms|floatformat:1 }}мс
+                            </span>
+                            {% elif stat.is_code %}
+                            <span class="text-gray-300">—</span>
+                            {% else %}
+                            <span class="text-gray-200">·</span>
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    <!-- Memory row (code tasks only) -->
+                    <tr>
+                        <td class="sticky left-0 z-10 bg-white px-4 py-3 font-medium text-gray-700">
+                            Память
+                        </td>
+                        {% for stat in personal_stats %}
+                        <td class="px-2 py-3 text-center">
+                            {% if stat.is_code and stat.memory_kb != None %}
+                            <span class="text-xs font-mono px-1.5 py-0.5 rounded bg-purple-50 text-purple-700">
+                                {{ stat.memory_kb }} КБ
+                            </span>
+                            {% elif stat.is_code %}
+                            <span class="text-gray-300">—</span>
+                            {% else %}
+                            <span class="text-gray-200">·</span>
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    {% else %}
+    <!-- Empty state -->
+    <div class="bg-gray-50 rounded-xl p-8 text-center" data-aos="fade-up">
+        <div class="text-gray-400 mb-2">
+            <svg class="w-12 h-12 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+        </div>
+        <p class="text-gray-500">Пока никто не проходил этот вариант</p>
+    </div>
+    {% endif %}
+
+</div>
+
+<script>
+function resultsPage() {
+    return {
+        // Sort state
+        sortData: {{ sort_data_json|safe }},
+        questionTypes: {{ question_types_json|safe }},
+        activeSortCol: null,
+        activeSortCriterion: null,
+        originalOrder: [],
+
+        init() {
+            const tbody = document.getElementById('results-tbody');
+            if (tbody) {
+                this.originalOrder = Array.from(tbody.querySelectorAll('tr')).map(
+                    tr => tr.getAttribute('data-user-id')
+                );
+            }
+        },
+
+        sortBy(egeNumber, criterion) {
+            // Toggle: повторный клик на ту же иконку → сброс
+            if (this.activeSortCol === egeNumber && this.activeSortCriterion === criterion) {
+                this.resetSort();
+                return;
+            }
+
+            this.activeSortCol = egeNumber;
+            this.activeSortCriterion = criterion;
+
+            const tbody = document.getElementById('results-tbody');
+            if (!tbody) return;
+
+            const descending = (criterion === 'likes');
+
+            const rows = Array.from(tbody.querySelectorAll('tr[data-user-id]'));
+            rows.sort((a, b) => {
+                const uidA = a.getAttribute('data-user-id');
+                const uidB = b.getAttribute('data-user-id');
+
+                const valA = this._getSortValue(uidA, egeNumber, criterion);
+                const valB = this._getSortValue(uidB, egeNumber, criterion);
+
+                if (valA === null && valB === null) return 0;
+                if (valA === null) return 1;
+                if (valB === null) return -1;
+
+                const diff = valA - valB;
+                return descending ? -diff : diff;
+            });
+
+            for (const row of rows) {
+                tbody.appendChild(row);
+            }
+        },
+
+        _getSortValue(userId, egeNumber, criterion) {
+            const userData = this.sortData[userId];
+            if (!userData) return null;
+            const taskData = userData[egeNumber];
+            if (!taskData) return null;
+
+            const raw = taskData[criterion];
+            if (criterion === 'likes') return raw ?? 0;
+            return raw ?? null;
+        },
+
+        resetSort() {
+            this.activeSortCol = null;
+            this.activeSortCriterion = null;
+
+            const tbody = document.getElementById('results-tbody');
+            if (!tbody) return;
+
+            for (const uid of this.originalOrder) {
+                const row = tbody.querySelector(`tr[data-user-id="${uid}"]`);
+                if (row) tbody.appendChild(row);
+            }
+        },
+    };
+}
+</script>
+{% endblock content %}
