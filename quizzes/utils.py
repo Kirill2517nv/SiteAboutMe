@@ -12,11 +12,11 @@ CONTAINER_MEM_LIMIT = "128m" # RAM контейнера
 CONTAINER_CPU_QUOTA = 100000  # 100% одного ядра (из 100000)
 OUTPUT_MAX_BYTES = 65536     # 64 KB макс. вывода
 
-# Runner-скрипт: замер CPU-времени и памяти решения через tracemalloc
+# Runner-скрипт: замер CPU-времени и памяти решения через resource.getrusage
 # Запускает solution.py через exec() в том же процессе,
-# чтобы tracemalloc точно замерил аллокации именно решения
+# замеряет память через ru_maxrss (нулевой overhead, в отличие от tracemalloc)
 RUNNER_PY = '''\
-import sys, os, io, time, tracemalloc
+import sys, os, io, time, resource
 
 # Сохраняем настоящие потоки — маркеры пойдут сюда
 _real_stdout = sys.stdout
@@ -30,8 +30,8 @@ sys.stdin = io.StringIO(input_data)
 captured_out = io.StringIO()
 sys.stdout = captured_out
 
-# 3) Запускаем замеры
-tracemalloc.start()
+# 3) Замеряем базовую память интерпретатора (до запуска решения)
+base_mem_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
 t0 = time.process_time()
 
 # 4) Выполняем solution.py
@@ -47,9 +47,8 @@ except Exception:
 
 # 5) Замеряем метрики
 cpu_ms = (time.process_time() - t0) * 1000
-_, peak_bytes = tracemalloc.get_traced_memory()
-tracemalloc.stop()
-mem_kb = peak_bytes // 1024
+peak_mem_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+mem_kb = max(0, peak_mem_kb - base_mem_kb)
 
 # 6) Выводим перехваченный stdout решения в настоящий stdout
 _real_stdout.write(captured_out.getvalue())
