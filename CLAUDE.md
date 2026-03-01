@@ -34,7 +34,7 @@ To test async code execution locally, run these in separate terminals:
 
 Four apps, each with standard Django structure (models, views, urls, admin, forms):
 
-- **accounts** — User auth, `Profile` (extends User with group assignment, `is_ege` flag), `StudentGroup` for organizing students into classes
+- **accounts** — User auth, `Profile` (extends User with group assignment, `is_ege` flag), `StudentGroup` for organizing students into classes. `ProfileView` aggregates activity metrics (time spent, question type stats, best quiz scores, EGE progress, help requests, likes). `templatetags/profile_tags.py` provides `duration_display` and `duration_short` filters for timedelta formatting in profile templates.
 - **pages** — Home/about pages built from `ContentBlock` models with rich styling (fonts, colors, image crop/positioning)
 - **lessons** — `Section` → `Lesson` → `LessonBlock` hierarchy. Supports file uploads, video URLs, and flexible content layouts. File downloads use Nginx X-Accel-Redirect in production.
 - **quizzes** — `Quiz` with time-based access windows, `Question` (multiple choice, free text, Python code execution with `TestCase` validation, `title` field), `QuizAssignment` (to groups or individuals), `UserResult`/`UserAnswer` for tracking. Attempt limiting with override support. `CodeSubmission` for async code execution results. `HelpRequest`/`HelpComment` for teacher-student dialogue with inline line comments.
