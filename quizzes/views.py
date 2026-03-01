@@ -1071,6 +1071,9 @@ def quiz_detail_view(request, quiz_id):
             'end_date': end_date,
             'is_admin': request.user.is_superuser,
             'read_only': True,
+            'tasks_json': '[]',
+            'last_submissions_json': '{}',
+            'total_points': sum(q.points for q in all_questions),
         })
 
     # --- Active quiz mode (not read-only) ---
@@ -1259,6 +1262,65 @@ def quiz_detail_view(request, quiz_id):
         q.is_solved = q.id in set(correctly_answered_question_ids)
         q.solved_answer = solved_answers.get(q.id)
 
+    # Последние CodeSubmission для code-задач
+    code_questions = [q for q in all_questions if q.question_type == 'code']
+    last_submissions = {}
+    # Лучшие метрики для code-задач (из всех successful submissions)
+    best_metrics = {}  # question_id -> {best_cpu_time_ms, best_cpu_code, best_memory_kb, best_memory_code}
+    for q in code_questions:
+        sub = CodeSubmission.objects.filter(
+            user=request.user, quiz=quiz, question=q
+        ).order_by('-created_at').first()
+        if sub:
+            last_submissions[q.id] = {
+                'id': sub.id,
+                'status': sub.status,
+                'is_correct': sub.is_correct,
+                'code': sub.code,
+                'cpu_time_ms': sub.cpu_time_ms,
+                'memory_kb': sub.memory_kb,
+            }
+        # Лучшие метрики из всех правильных submissions
+        best_cpu_sub = CodeSubmission.objects.filter(
+            user=request.user, quiz=quiz, question=q,
+            is_correct=True, cpu_time_ms__isnull=False,
+        ).order_by('cpu_time_ms').first()
+        best_mem_sub = CodeSubmission.objects.filter(
+            user=request.user, quiz=quiz, question=q,
+            is_correct=True, memory_kb__isnull=False,
+        ).order_by('memory_kb').first()
+        if best_cpu_sub or best_mem_sub:
+            best_metrics[q.id] = {
+                'best_cpu_time_ms': best_cpu_sub.cpu_time_ms if best_cpu_sub else None,
+                'best_cpu_code': best_cpu_sub.code if best_cpu_sub else '',
+                'best_memory_kb': best_mem_sub.memory_kb if best_mem_sub else None,
+                'best_memory_code': best_mem_sub.code if best_mem_sub else '',
+            }
+
+    # Построить tasks_data для Alpine.js (навигация по одной задаче)
+    tasks_data = []
+    for q in all_questions:
+        task = {
+            'id': q.id,
+            'type': q.question_type,
+            'title': q.get_title(),
+            'points': q.points,
+            'is_solved': q.is_solved,
+            'saved_answer': '',
+        }
+        if q.question_type == 'choice' and q.is_solved and q.solved_answer:
+            task['saved_answer'] = str(q.solved_answer.selected_choice_id or '')
+        elif q.question_type == 'text' and q.is_solved and q.solved_answer:
+            task['saved_answer'] = q.solved_answer.text_answer or ''
+        # Лучшие метрики для code-задач
+        if q.question_type == 'code' and q.id in best_metrics:
+            bm = best_metrics[q.id]
+            task['best_cpu_time_ms'] = bm['best_cpu_time_ms']
+            task['best_cpu_code'] = bm['best_cpu_code']
+            task['best_memory_kb'] = bm['best_memory_kb']
+            task['best_memory_code'] = bm['best_memory_code']
+        tasks_data.append(task)
+
     return render(request, 'quizzes/quiz_detail.html', {
         'quiz': quiz,
         'questions_to_show': questions_to_show,
@@ -1268,6 +1330,9 @@ def quiz_detail_view(request, quiz_id):
         'last_attempt_codes_json': last_attempt_codes_json,
         'end_date': end_date,
         'is_admin': request.user.is_superuser,
+        'tasks_json': json.dumps(tasks_data),
+        'last_submissions_json': json.dumps(last_submissions),
+        'total_points': sum(q.points for q in all_questions),
     })
 
 # --- СТАТИСТИКА (без изменений) ---
