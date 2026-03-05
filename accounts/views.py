@@ -32,17 +32,20 @@ class ProfileView(LoginRequiredMixin, generic.TemplateView):
         unique_quizzes = results.values('quiz').distinct().count()
 
         answers = UserAnswer.objects.filter(user_result__user=user)
-        total_answers = answers.count()
-        correct_answers = answers.filter(is_correct=True).count()
+        total_answers = answers.values('question').distinct().count()
+        correct_answers = answers.filter(is_correct=True).values('question').distinct().count()
 
         # Суммарное время
         total_time = results.aggregate(t=Sum('duration'))['t']
 
-        # === Статистика по типам вопросов ===
+        # === Статистика по типам вопросов (уникальные вопросы) ===
         type_stats_qs = (
             answers
             .values('question__question_type')
-            .annotate(total=Count('id'), correct=Count('id', filter=Q(is_correct=True)))
+            .annotate(
+                total=Count('question', distinct=True),
+                correct=Count('question', distinct=True, filter=Q(is_correct=True)),
+            )
         )
         type_stats = {}
         for row in type_stats_qs:
