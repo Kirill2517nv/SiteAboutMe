@@ -1773,7 +1773,7 @@ def finish_quiz_view(request, quiz_id):
         'total': total_questions,
         'failed_questions': failed_questions,
         'pending_checks': pending_checks,
-        'redirect_url': f'/quizzes/{quiz_id}/'
+        'redirect_url': '/quizzes/'
     })
 
 

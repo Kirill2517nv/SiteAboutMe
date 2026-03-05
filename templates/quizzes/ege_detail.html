@@ -148,7 +148,7 @@
 
                 <!-- Files -->
                 {% for file in question.files.all %}
-                <a href="{% url 'quizzes:question_file_download' file.id %}"
+                <a href="{% url 'quizzes:question_file_download' file.id %}" download
                    class="inline-flex items-center gap-2 px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-lg text-sm text-gray-700 mb-4 transition-colors">
                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                     {{ file.get_filename }}
@@ -561,38 +561,49 @@ function egeApp() {
             if (firstTask && !firstTask.is_solved) this.timeTracker.startTask(firstTask.id);
         },
 
+        _createCodeMirror(task) {
+            const wrap = document.getElementById(`codemirror-wrap-${task.id}`);
+            if (!wrap || wrap.offsetParent === null) return;
+
+            // Remove stale CM DOM if any (recreate path)
+            const oldCmEl = wrap.querySelector('.CodeMirror');
+            if (oldCmEl) oldCmEl.remove();
+
+            const cm = CodeMirror(wrap, {
+                value: this.answers[task.id] || '',
+                mode: 'python',
+                theme: 'material-darker',
+                lineNumbers: true,
+                matchBrackets: true,
+                autoCloseBrackets: true,
+                indentUnit: 4,
+                tabSize: 4,
+                indentWithTabs: false,
+                extraKeys: { Tab: (cm) => cm.replaceSelection('    ', 'end') },
+            });
+            cm.on('change', () => {
+                this.answers[task.id] = cm.getValue();
+                this.answerStore.save(this.answers);
+            });
+            this.codeMirrors[task.id] = cm;
+            return cm;
+        },
+
         ensureCodeMirror() {
             // Инициализирует CodeMirror для текущей задачи (если code и ещё не создан)
             const task = this.tasks[this.currentTask];
             if (!task || task.type !== 'code') return;
             if (this.codeMirrors[task.id]) {
-                // Уже создан — просто обновить размеры
-                setTimeout(() => this.codeMirrors[task.id].refresh(), 50);
-                return;
+                // CM5 corrupts internal state after x-show display:none toggle.
+                // Destroy and recreate the instance for a clean state.
+                this.answers[task.id] = this.codeMirrors[task.id].getValue();
+                delete this.codeMirrors[task.id];
             }
 
-            // setTimeout даёт Alpine время обновить x-show (display) перед созданием CodeMirror
             setTimeout(() => {
-                const wrap = document.getElementById(`codemirror-wrap-${task.id}`);
-                if (!wrap || wrap.offsetParent === null) return; // ещё скрыт
-
-                const cm = CodeMirror(wrap, {
-                    value: this.answers[task.id] || '',
-                    mode: 'python',
-                    theme: 'material-darker',
-                    lineNumbers: true,
-                    matchBrackets: true,
-                    autoCloseBrackets: true,
-                    indentUnit: 4,
-                    tabSize: 4,
-                    indentWithTabs: false,
-                    extraKeys: { Tab: (cm) => cm.replaceSelection('    ', 'end') },
-                });
-                cm.on('change', () => {
-                    this.answers[task.id] = cm.getValue();
-                    this.answerStore.save(this.answers);
-                });
-                this.codeMirrors[task.id] = cm;
+                if (this.codeMirrors[task.id]) return;
+                const cm = this._createCodeMirror(task);
+                if (cm) cm.focus();
             }, 80);
         },
 
