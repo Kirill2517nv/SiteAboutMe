@@ -615,14 +615,6 @@ hover:shadow-md                /* с shadow-sm */
 
 ---
 
-## Кастомные CSS файлы
-
-### `static/css/block-editor.css`
-Стили для sidebar-редактора блоков (home page). Floating toolbar, sidebar panel 360px, backdrop, drag & drop.
-
-### `static/css/content-editor-tailwind.css`
-Стили для inline-редактирования контента. Использует `@apply` для Tailwind-совместимости. Включает: contenteditable стили, drag indicators, image context menu, resize handles, color picker.
-
 ---
 
 ## Breakpoints

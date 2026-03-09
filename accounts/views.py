@@ -1,19 +1,11 @@
-from django.urls import reverse_lazy
 from django.views import generic
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import Sum, Max, Count, Q
 from datetime import timedelta
-from .forms import StudentSignUpForm
 from quizzes.models import (
     UserResult, UserAnswer, Quiz,
     ExamTaskProgress, HelpRequest, SolutionLike,
 )
-
-
-class SignUpView(generic.CreateView):
-    form_class = StudentSignUpForm
-    success_url = reverse_lazy('login')
-    template_name = 'registration/signup.html'
 
 
 class ProfileView(LoginRequiredMixin, generic.TemplateView):

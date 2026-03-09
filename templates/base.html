@@ -44,9 +44,6 @@
     <!-- PhotoSwipe CSS -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@5/dist/photoswipe.css">
     
-    <!-- Стили для редактора контента -->
-    <link rel="stylesheet" href="{% static 'css/content-editor-tailwind.css' %}">
-    
     {% block extra_css %}{% endblock extra_css %}
     
     <style>
@@ -252,8 +249,6 @@
     <script src="{% static 'js/notifications.js' %}"></script>
     {% endif %}
 
-    <!-- Старые скрипты для редактора (пока оставляем) -->
-    <script src="{% static 'js/image-crop-view.js' %}"></script>
     {% block extra_js %}{% endblock extra_js %}
 </body>
 </html>

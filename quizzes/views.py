@@ -2,8 +2,8 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.utils import timezone
 from django.contrib.auth.models import User
-from django.db.models import Max, Count, Q, Sum, Prefetch
-from django.http import FileResponse, Http404, HttpResponse, JsonResponse
+from django.db.models import Max, Count, Q, Sum
+from django.http import FileResponse, Http404, JsonResponse
 from django.conf import settings
 from django.views.decorators.http import require_POST, require_GET
 from django.views.decorators.csrf import csrf_protect
@@ -43,11 +43,8 @@ def _attachment_content_disposition(filename: str) -> str:
     ascii_fallback = re.sub(r"[^A-Za-z0-9.\-_]", "_", safe) or "download"
     return f'attachment; filename="{ascii_fallback}"; filename*=UTF-8\'\'{quote(safe)}'
 
-def normalize_output(text):
-    if not text:
-        return ""
-    lines = text.strip().splitlines()
-    return "\n".join([line.rstrip() for line in lines])
+from .tasks import normalize_output
+
 
 def get_effective_quiz_settings(user, quiz):
     """

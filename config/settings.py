@@ -175,9 +175,6 @@ CHANNEL_LAYERS = {
     },
 }
 
-# Code execution settings
-CODE_EXECUTION_WORKERS = int(os.getenv('CODE_EXECUTION_WORKERS', 3))
-
 # Logging configuration
 LOGGING = {
     'version': 1,
