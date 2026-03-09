@@ -66,3 +66,6 @@ htmlcov/
 *.orig
 
 .playwright-mcp
+
+# MkDocs build output
+site/

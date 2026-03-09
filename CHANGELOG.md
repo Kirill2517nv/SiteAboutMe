@@ -3,6 +3,28 @@
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.0.0/).
 Проект использует [Semantic Versioning](https://semver.org/lang/ru/).
 
+## [0.1.3] - 2026-03-09
+
+### Добавлено
+
+#### Уроки (`lessons`)
+- Модель `LessonAttachment` — множественные файловые вложения к уроку (файл, название, порядок). Свойства `display_title` (название или имя файла) и `extension` (расширение)
+- Поля Slidev-презентации на модели `Lesson`: `presentation_url` (путь к собранному SPA), `presentation_title` (отображаемое название), `presentation_pdf` (PDF для скачивания)
+- Endpoint `GET /lessons/<id>/file/<attachment_id>/` — скачивание конкретного вложения с верификацией `lesson_id`
+- Endpoint `GET /lessons/<id>/presentation-pdf/` — скачивание PDF-версии презентации
+- Секция презентации в `lesson_detail.html`: синяя карточка с кнопками «Открыть» и «PDF»
+- Секция файлов в `lesson_detail.html`: зелёная карточка со списком вложений, значком расширения и кнопкой скачивания
+- Admin: `LessonAttachmentInline` в `LessonAdmin`, fieldset «Презентация Slidev», колонки `has_presentation` и `attachment_count` в списке
+- `docs/slidev-guide.md` — инструкция по созданию и деплою Slidev-презентаций к урокам
+- Slidev установлен в проект (`package.json`, `@slidev/cli`, `@slidev/theme-default`)
+
+### Изменено
+
+#### Уроки (`lessons`)
+- Все `upload_to` переведены на единую иерархию `media/lessons/{safe_title}/` через хелпер `_lesson_upload_path`
+- Удалено старое поле `Lesson.file` (одиночный файл заменён на `LessonAttachment`)
+- Dev-сервер (`config/urls.py`): `_media_serve` с `index.html` fallback для корректного открытия Slidev SPA
+
 ## [0.1.2] - 2026-03-05
 
 ### Исправлено

@@ -1,4 +1,30 @@
+import os
+import re
+
 from django.db import models
+
+
+def _lesson_upload_path(lesson, filename, subdir=''):
+    """Build upload path: lessons/{safe_title}/{subdir}/{filename}."""
+    safe = re.sub(r'[^\w\s-]', '', lesson.title).strip()
+    safe = re.sub(r'\s+', '_', safe) or f'lesson_{lesson.pk}'
+    parts = ['lessons', safe]
+    if subdir:
+        parts.append(subdir)
+    parts.append(filename)
+    return '/'.join(parts)
+
+
+def lesson_file_upload(instance, filename):
+    return _lesson_upload_path(instance, filename)
+
+
+def lesson_attachment_upload(instance, filename):
+    return _lesson_upload_path(instance.lesson, filename)
+
+
+def lesson_block_image_upload(instance, filename):
+    return _lesson_upload_path(instance.lesson, filename, 'content')
 
 
 # Общие choices для шрифтов
@@ -58,11 +84,9 @@ class Lesson(models.Model):
     section = models.ForeignKey(Section, on_delete=models.SET_NULL, related_name='lessons', null=True, blank=True, verbose_name="Раздел")
     title = models.CharField(max_length=200, verbose_name="Тема урока")
     description = models.TextField(verbose_name="Описание и материалы", blank=True)
-    file = models.FileField(upload_to='lessons_files/', blank=True, null=True, verbose_name="Файл с материалами")
-    
     # Preview поля для карточек в списке уроков
     preview_image = models.ImageField(
-        upload_to='lesson_previews/',
+        upload_to=lesson_file_upload,
         blank=True,
         null=True,
         verbose_name="Превью изображение",
@@ -82,12 +106,63 @@ class Lesson(models.Model):
         help_text="YouTube, Vimeo или прямая ссылка (на будущее)"
     )
     
+    # Презентация Slidev
+    presentation_url = models.CharField(
+        max_length=300,
+        blank=True,
+        verbose_name="URL презентации",
+        help_text="Путь к презентации, например /media/lessons/Writer/presentation/"
+    )
+    presentation_title = models.CharField(
+        max_length=200,
+        blank=True,
+        verbose_name="Название презентации"
+    )
+    presentation_pdf = models.FileField(
+        upload_to=lesson_file_upload,
+        blank=True,
+        verbose_name="PDF презентации"
+    )
+
     class Meta:
         verbose_name = "Урок"
         verbose_name_plural = "Уроки"
-    
+
     def __str__(self):
         return self.title
+
+
+class LessonAttachment(models.Model):
+    """Файл-вложение к уроку."""
+    lesson = models.ForeignKey(
+        Lesson,
+        on_delete=models.CASCADE,
+        related_name='attachments',
+        verbose_name="Урок"
+    )
+    file = models.FileField(upload_to=lesson_attachment_upload, verbose_name="Файл")
+    title = models.CharField(max_length=200, blank=True, verbose_name="Название")
+    order = models.PositiveIntegerField(default=0, verbose_name="Порядок")
+
+    class Meta:
+        ordering = ['order']
+        verbose_name = "Вложение"
+        verbose_name_plural = "Вложения"
+
+    def __str__(self):
+        return self.display_title
+
+    @property
+    def display_title(self):
+        if self.title:
+            return self.title
+        return os.path.basename(self.file.name) if self.file else "Файл"
+
+    @property
+    def extension(self):
+        if self.file:
+            return os.path.splitext(self.file.name)[1].lstrip('.').lower()
+        return ''
 
 
 class LessonBlock(models.Model):
@@ -136,7 +211,7 @@ class LessonBlock(models.Model):
         verbose_name="Содержимое"
     )
     image = models.ImageField(
-        upload_to='lessons_content/',
+        upload_to=lesson_block_image_upload,
         blank=True,
         null=True,
         verbose_name="Изображение"

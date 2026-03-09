@@ -1,0 +1,82 @@
+site_name: "Kirill Lab - Developer Docs"
+site_description: "Документация для разработчика образовательной платформы kirill-lab.ru"
+site_url: https://kirill-lab.ru/docs/
+
+theme:
+  name: material
+  language: ru
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: "Тёмная тема"
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: "Светлая тема"
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.highlight
+    - content.code.copy
+    - toc.integrate
+
+markdown_extensions:
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.details
+  - pymdownx.mark
+  - admonition
+  - tables
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+
+nav:
+  - "Обзор": index.md
+  - "Архитектура":
+    - "Обзор": architecture/overview.md
+    - "Приложения": architecture/apps.md
+  - "База данных":
+    - "ER-диаграммы": database/er-diagram.md
+    - "Модели": database/models.md
+  - "API и маршруты":
+    - "Обзор": api/overview.md
+    - "Accounts": api/accounts.md
+    - "Pages": api/pages.md
+    - "Lessons": api/lessons.md
+    - "Quizzes": api/quizzes.md
+    - "EGE": api/ege.md
+  - "Бизнес-логика":
+    - "Quiz Flow": flows/quiz-flow.md
+    - "Выполнение кода": flows/code-execution.md
+    - "Система помощи": flows/help-system.md
+    - "EGE Тренажёр": flows/ege-trainer.md
+  - "Уроки":
+    - "Slidev-презентации": slidev-guide.md
+  - "Фронтенд":
+    - "Обзор": frontend/overview.md
+    - "WebSocket": frontend/websocket.md
+    - "Alpine.js": frontend/alpine.md
+  - "Инфраструктура":
+    - "Сервер": infra/server.md
+    - "Деплой": infra/deployment.md
+    - "Сервисы": infra/services.md
+
+plugins:
+  - search

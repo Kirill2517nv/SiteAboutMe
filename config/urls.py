@@ -19,7 +19,6 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from pages.views import home_page_view, about_page_view
-from lessons.views import lesson_list_view, lesson_detail_view, lesson_file_download_view
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -34,4 +33,15 @@ urlpatterns = [
 ]
 
 if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    import os
+    from django.views.static import serve as _static_serve
+
+    def _media_serve(request, path=''):
+        """Serve media with directory index.html fallback (dev only)."""
+        full = os.path.join(settings.MEDIA_ROOT, path)
+        if os.path.isdir(full) and os.path.isfile(os.path.join(full, 'index.html')):
+            path = path.rstrip('/') + '/index.html'
+        return _static_serve(request, path, document_root=settings.MEDIA_ROOT)
+
+    from django.urls import re_path
+    urlpatterns += [re_path(r'^media/(?P<path>.*)$', _media_serve)]

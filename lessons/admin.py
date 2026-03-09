@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Lesson, Section, LessonBlock
+from .models import Lesson, Section, LessonBlock, LessonAttachment
 
 
 @admin.register(Section)
@@ -14,14 +14,24 @@ class LessonBlockInline(admin.TabularInline):
     ordering = ('order',)
 
 
+class LessonAttachmentInline(admin.TabularInline):
+    model = LessonAttachment
+    extra = 1
+    ordering = ('order',)
+
+
 @admin.register(Lesson)
 class LessonAdmin(admin.ModelAdmin):
-    list_display = ('title', 'section', 'has_preview')
+    list_display = ('title', 'section', 'has_preview', 'has_presentation', 'attachment_count')
     list_filter = ('section',)
-    inlines = [LessonBlockInline]
+    inlines = [LessonAttachmentInline, LessonBlockInline]
     fieldsets = (
         (None, {
-            'fields': ('title', 'section', 'description', 'file')
+            'fields': ('title', 'section', 'description')
+        }),
+        ('Презентация Slidev', {
+            'fields': ('presentation_url', 'presentation_title', 'presentation_pdf'),
+            'classes': ('collapse',),
         }),
         ('Превью для карточки', {
             'fields': ('preview_image', 'preview_description'),
@@ -33,10 +43,18 @@ class LessonAdmin(admin.ModelAdmin):
             'classes': ('collapse',),
         }),
     )
-    
+
     @admin.display(boolean=True, description='Превью')
     def has_preview(self, obj):
         return bool(obj.preview_image)
+
+    @admin.display(boolean=True, description='Презентация')
+    def has_presentation(self, obj):
+        return bool(obj.presentation_url)
+
+    @admin.display(description='Файлов')
+    def attachment_count(self, obj):
+        return obj.attachments.count()
 
 
 @admin.register(LessonBlock)

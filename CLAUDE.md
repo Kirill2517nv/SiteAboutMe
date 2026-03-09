@@ -36,7 +36,7 @@ Four apps, each with standard Django structure (models, views, urls, admin, form
 
 - **accounts** — User auth, `Profile` (extends User with group assignment, `is_ege` flag), `StudentGroup` for organizing students into classes. `ProfileView` aggregates activity metrics (time spent, question type stats, best quiz scores, EGE progress, help requests, likes). `templatetags/profile_tags.py` provides `duration_display` and `duration_short` filters for timedelta formatting in profile templates.
 - **pages** — Home/about pages built from `ContentBlock` models with rich styling (fonts, colors, image crop/positioning)
-- **lessons** — `Section` → `Lesson` → `LessonBlock` hierarchy. Supports file uploads, video URLs, and flexible content layouts. File downloads use Nginx X-Accel-Redirect in production.
+- **lessons** — `Section` → `Lesson` → `LessonAttachment` / `LessonBlock` hierarchy. `LessonAttachment` stores multiple downloadable files per lesson. `Lesson` supports Slidev presentations (`presentation_url`, `presentation_title`, `presentation_pdf`) and video URLs. All file uploads use a unified path `media/lessons/{safe_title}/`. File downloads use Nginx X-Accel-Redirect in production. Dev server serves media with `index.html` fallback for Slidev SPA.
 - **quizzes** — `Quiz` with time-based access windows, `Question` (multiple choice, free text, Python code execution with `TestCase` validation, `title` field), `QuizAssignment` (to groups or individuals), `UserResult`/`UserAnswer` for tracking. Attempt limiting with override support. `CodeSubmission` for async code execution results. `HelpRequest`/`HelpComment` for teacher-student dialogue with inline line comments.
 
 **Content block pattern**: Both `pages` and `lessons` use a reusable block model for flexible page composition with database-driven styling (fonts, colors, alignment, sizing).
@@ -60,8 +60,8 @@ Four apps, each with standard Django structure (models, views, urls, admin, form
 - Celery: configured in `config/celery.py`, tasks in `quizzes/tasks.py`
 - Channels: configured in `config/asgi.py`, routing in `quizzes/routing.py`
 - Timezone: Asia/Novosibirsk
-- Media files: `media/` (content, lessons_files, question_files)
-- Static assets: `static/css/` and `static/js/` (block-editor, content-editor-tailwind, quiz-async, help-requests, notifications)
+- Media files: `media/` (`lessons/{safe_title}/` for lesson files/presentations, `question_files/` for quiz files, `content/` for pages)
+- Static assets: `static/js/` (quiz-async, help-requests, notifications, ege-timer)
 - Templates: `templates/` directory with subdirectories per app
 
 ## Infrastructure
