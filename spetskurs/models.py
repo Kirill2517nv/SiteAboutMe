@@ -83,13 +83,9 @@ class Simulation(models.Model):
         upload_to='spetskurs/simulations/', blank=True, null=True,
         verbose_name="Превью изображение"
     )
-    wasm_path = models.CharField(
-        max_length=300, blank=True, verbose_name="Путь к .wasm файлу",
-        help_text="Относительный путь в static/, например: spetskurs/wasm/pendulum.wasm"
-    )
-    js_path = models.CharField(
-        max_length=300, blank=True, verbose_name="Путь к .js файлу (glue code)",
-        help_text="Относительный путь в static/, например: spetskurs/wasm/pendulum.js"
+    html_path = models.CharField(
+        max_length=300, blank=True, verbose_name="Путь к HTML-файлу симуляции",
+        help_text="Относительный путь в static/, например: spetskurs/wasm/pendulum.html"
     )
     semester = models.PositiveSmallIntegerField(
         choices=SEMESTER_CHOICES, default=1, verbose_name="Семестр"

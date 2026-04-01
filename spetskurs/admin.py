@@ -29,7 +29,7 @@ class TheoryPageAdmin(admin.ModelAdmin):
 
 @admin.register(Simulation)
 class SimulationAdmin(admin.ModelAdmin):
-    list_display = ('title', 'semester', 'order', 'is_published', 'wasm_path')
+    list_display = ('title', 'semester', 'order', 'is_published', 'html_path')
     list_filter = ('semester', 'is_published')
     list_editable = ('order', 'is_published')
     prepopulated_fields = {'slug': ('title',)}
@@ -37,9 +37,9 @@ class SimulationAdmin(admin.ModelAdmin):
         (None, {
             'fields': ('slug', 'title', 'description', 'semester', 'order', 'is_published')
         }),
-        ('WASM файлы', {
-            'fields': ('wasm_path', 'js_path'),
-            'description': 'Укажите пути относительно static/ директории, например: spetskurs/wasm/pendulum.wasm'
+        ('Файл симуляции', {
+            'fields': ('html_path',),
+            'description': 'Укажите путь к .html файлу относительно static/, например: spetskurs/wasm/pendulum.html'
         }),
         ('Превью', {
             'fields': ('thumbnail',),
