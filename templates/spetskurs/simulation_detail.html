@@ -1,0 +1,108 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ simulation.title }} — Спецкурс{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-slate-900 text-slate-100">
+    {% include 'spetskurs/_subnav.html' %}
+
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+
+        <!-- Хлебные крошки -->
+        <nav class="flex items-center gap-2 text-sm text-slate-500 mb-8">
+            <a href="{% url 'spetskurs:simulation_list' %}" class="hover:text-slate-300 transition-colors">Симуляции</a>
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+            </svg>
+            <span class="text-slate-300">{{ simulation.title }}</span>
+        </nav>
+
+        <!-- Заголовок -->
+        <header class="mb-8">
+            <div class="flex items-center gap-2 mb-3">
+                <span class="text-xs px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-slate-400">
+                    Семестр {{ simulation.semester }}
+                </span>
+            </div>
+            <h1 class="text-3xl font-bold text-white">{{ simulation.title }}</h1>
+            {% if simulation.description %}
+            <p class="mt-3 text-slate-400 leading-relaxed">{{ simulation.description }}</p>
+            {% endif %}
+        </header>
+
+        <!-- Контейнер симуляции -->
+        <div class="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden"
+             x-data="{ loaded: false, error: false }"
+             x-init="
+                 setTimeout(() => {
+                     if (typeof Module !== 'undefined' || typeof createModule !== 'undefined') {
+                         loaded = true;
+                     } else {
+                         {% if simulation.js_path %}
+                         loaded = true;
+                         {% else %}
+                         error = true;
+                         {% endif %}
+                     }
+                 }, 1500)
+             ">
+
+            <!-- Заголовок панели -->
+            <div class="bg-slate-900/50 px-5 py-3 border-b border-slate-700 flex items-center gap-2">
+                <div class="flex gap-1.5">
+                    <div class="w-3 h-3 rounded-full bg-slate-600"></div>
+                    <div class="w-3 h-3 rounded-full bg-slate-600"></div>
+                    <div class="w-3 h-3 rounded-full bg-slate-600"></div>
+                </div>
+                <span class="text-xs text-slate-500 font-mono ml-2">{{ simulation.title }}</span>
+            </div>
+
+            <!-- Canvas -->
+            <div class="relative bg-slate-950">
+                <canvas id="simulation-canvas" class="w-full block"></canvas>
+
+                <!-- Overlay: загрузка -->
+                <div x-show="!loaded && !error"
+                     class="absolute inset-0 flex flex-col items-center justify-center bg-slate-950 min-h-64">
+                    <div class="w-8 h-8 border-2 border-cyan-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+                    <p class="text-sm text-slate-500">Загрузка симуляции...</p>
+                </div>
+
+                <!-- Overlay: нет файла -->
+                <div x-show="error" x-cloak
+                     class="absolute inset-0 flex flex-col items-center justify-center bg-slate-950 min-h-64">
+                    <svg class="w-12 h-12 text-slate-700 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01M5.07 19H19a2 2 0 001.75-2.97L13.75 4.04a2 2 0 00-3.5 0L3.25 16.03A2 2 0 005.07 19z"/>
+                    </svg>
+                    <p class="text-sm text-slate-500">WASM-файл не подключён</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Ссылка на теорию (если нужно добавить позже) -->
+        <div class="mt-8 flex items-center justify-between">
+            <a href="{% url 'spetskurs:simulation_list' %}"
+               class="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-200 transition-colors">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+                </svg>
+                Все симуляции
+            </a>
+            <a href="{% url 'spetskurs:theory_list' %}"
+               class="flex items-center gap-2 text-sm text-cyan-500 hover:text-cyan-400 transition-colors">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                </svg>
+                Теоретические материалы
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% if simulation.js_path %}
+<script src="{% static simulation.js_path %}"></script>
+{% endif %}
+{% endblock %}
