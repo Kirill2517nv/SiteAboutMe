@@ -3,32 +3,31 @@
 {% block title %}Спецкурс — Численное моделирование физических процессов{% endblock %}
 
 {% block content %}
-<div class="min-h-screen bg-slate-900 text-slate-100">
+<div class="min-h-screen bg-gray-50 dark:bg-slate-900 text-gray-900 dark:text-slate-100">
     {% include 'spetskurs/_subnav.html' %}
 
     <!-- Hero -->
     <section class="relative overflow-hidden py-24 px-4">
         <!-- Декоративные глоу-пятна -->
-        <div class="absolute top-0 left-1/4 w-96 h-96 bg-cyan-900/20 blur-3xl rounded-full pointer-events-none"></div>
-        <div class="absolute bottom-0 right-1/4 w-80 h-80 bg-blue-900/20 blur-3xl rounded-full pointer-events-none"></div>
+        <div class="absolute top-0 left-1/4 w-96 h-96 bg-cyan-100/40 dark:bg-cyan-900/20 blur-3xl rounded-full pointer-events-none"></div>
+        <div class="absolute bottom-0 right-1/4 w-80 h-80 bg-blue-100/40 dark:bg-blue-900/20 blur-3xl rounded-full pointer-events-none"></div>
 
         <div class="relative max-w-4xl mx-auto text-center">
             <!-- Бейдж -->
-            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-900/40 border border-cyan-700/50 text-cyan-400 text-sm font-medium mb-6">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-50 dark:bg-cyan-900/40 border border-cyan-200 dark:border-cyan-700/50 text-cyan-600 dark:text-cyan-400 text-sm font-medium mb-6">
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
                 </svg>
                 C++ · Вычислительная физика · WebAssembly
             </div>
 
-            <h1 class="text-4xl sm:text-5xl font-bold text-white leading-tight mb-6">
+            <h1 class="text-4xl sm:text-5xl font-bold text-gray-900 dark:text-white leading-tight mb-6">
                 Численное моделирование<br>
-                <span class="text-cyan-400">физических процессов</span>
+                <span class="text-cyan-600 dark:text-cyan-400">физических процессов</span>
             </h1>
-            <p class="text-lg text-slate-400 max-w-2xl mx-auto mb-10 leading-relaxed">
-                Погружение в мир вычислительной физики. Мы пишем код на <span class="text-slate-200 font-medium">C++</span>,
-                который оживляет физические законы, и смотрим на результаты
-                в виде <span class="text-slate-200 font-medium">графиков и анимации</span> прямо в браузере.
+            <p class="text-lg text-gray-600 dark:text-slate-400 max-w-2xl mx-auto mb-10 leading-relaxed">
+                Погружение в мир вычислительной физики. Мы пишем код на <span class="text-gray-800 dark:text-slate-200 font-medium">C++</span>,
+                который оживляет физические законы, и смотрим на результаты в виде <span class="text-gray-800 dark:text-slate-200 font-medium">графиков и анимации</span>.
             </p>
             <div class="flex flex-col sm:flex-row gap-4 justify-center">
                 <a href="{% url 'spetskurs:theory_list' %}"
@@ -36,7 +35,7 @@
                     Изучить теорию
                 </a>
                 <a href="{% url 'spetskurs:simulation_list' %}"
-                   class="px-6 py-3 bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium rounded-lg transition-colors border border-slate-600">
+                   class="px-6 py-3 bg-white dark:bg-slate-700 hover:bg-gray-50 dark:hover:bg-slate-600 text-gray-700 dark:text-slate-200 font-medium rounded-lg transition-colors border border-gray-200 dark:border-slate-600">
                     Запустить симуляцию
                 </a>
             </div>
@@ -46,18 +45,18 @@
     <!-- Авторы -->
     <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
         <div class="flex flex-wrap justify-center gap-6">
-            <div class="flex items-center gap-3 px-5 py-3 bg-slate-800 rounded-xl border border-slate-700">
-                <div class="w-9 h-9 rounded-full bg-cyan-700/40 flex items-center justify-center text-cyan-400 font-bold text-sm">КН</div>
+            <div class="flex items-center gap-3 px-5 py-3 bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700">
+                <div class="w-9 h-9 rounded-full bg-cyan-100 dark:bg-cyan-700/40 flex items-center justify-center text-cyan-600 dark:text-cyan-400 font-bold text-sm">КН</div>
                 <div>
-                    <div class="text-sm font-medium text-white">Новоселов Кирилл Васильевич</div>
-                    <div class="text-xs text-slate-500">Автор курса</div>
+                    <div class="text-sm font-medium text-gray-900 dark:text-white">Новоселов Кирилл Васильевич</div>
+                    <div class="text-xs text-gray-500 dark:text-slate-500">Автор курса</div>
                 </div>
             </div>
-            <div class="flex items-center gap-3 px-5 py-3 bg-slate-800 rounded-xl border border-slate-700">
-                <div class="w-9 h-9 rounded-full bg-blue-700/40 flex items-center justify-center text-blue-400 font-bold text-sm">НЗ</div>
+            <div class="flex items-center gap-3 px-5 py-3 bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700">
+                <div class="w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-700/40 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-sm">НЗ</div>
                 <div>
-                    <div class="text-sm font-medium text-white">Золотарев Никита Алексеевич</div>
-                    <div class="text-xs text-slate-500">Соавтор</div>
+                    <div class="text-sm font-medium text-gray-900 dark:text-white">Золотарев Никита Алексеевич</div>
+                    <div class="text-xs text-gray-500 dark:text-slate-500">Соавтор</div>
                 </div>
             </div>
         </div>
@@ -65,18 +64,18 @@
 
     <!-- Разделитель -->
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="border-t border-slate-800"></div>
+        <div class="border-t border-gray-200 dark:border-slate-800"></div>
     </div>
 
     <!-- Семестр 1 -->
     <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <div class="flex items-center gap-4 mb-10">
-            <div class="flex-shrink-0 w-12 h-12 rounded-xl bg-cyan-900/40 border border-cyan-700/50 flex items-center justify-center">
-                <span class="text-cyan-400 font-bold text-lg">1</span>
+            <div class="flex-shrink-0 w-12 h-12 rounded-xl bg-cyan-50 dark:bg-cyan-900/40 border border-cyan-200 dark:border-cyan-700/50 flex items-center justify-center">
+                <span class="text-cyan-600 dark:text-cyan-400 font-bold text-lg">1</span>
             </div>
             <div>
-                <h2 class="text-2xl font-bold text-white">Семестр 1 — Фундамент</h2>
-                <p class="text-slate-400 text-sm mt-1">Осваиваем C++ и графическую библиотеку на классических задачах механики</p>
+                <h2 class="text-2xl font-bold text-gray-900 dark:text-white">Семестр 1 — Фундамент</h2>
+                <p class="text-gray-600 dark:text-slate-400 text-sm mt-1">Осваиваем C++ и графическую библиотеку на классических задачах механики</p>
             </div>
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -87,47 +86,74 @@
             {% endwith %}
 
             <!-- Баллистика -->
-            <div class="bg-slate-800 rounded-xl border border-slate-700 p-5 hover:border-cyan-700/50 transition-colors group">
-                <div class="w-10 h-10 rounded-lg bg-slate-700 flex items-center justify-center mb-4 group-hover:bg-cyan-900/40 transition-colors">
-                    <svg class="w-5 h-5 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+            <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-5 hover:border-cyan-400 dark:hover:border-cyan-700/50 transition-colors group">
+                <div class="w-10 h-10 rounded-lg bg-gray-100 dark:bg-slate-700 flex items-center justify-center mb-4 group-hover:bg-cyan-50 dark:group-hover:bg-cyan-900/40 transition-colors">
+                    <svg class="w-5 h-5 text-cyan-600 dark:text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <!-- Параболическая траектория -->
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 20 Q10 3 21 8"/>
+                        <!-- Наконечник стрелы -->
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 5l4 3-4 2"/>
+                        <!-- Точка запуска -->
+                        <circle cx="3" cy="20" r="1.5" fill="currentColor" stroke="none"/>
                     </svg>
                 </div>
-                <h3 class="font-semibold text-white mb-1">Баллистика</h3>
-                <p class="text-sm text-slate-400">Движение тела под углом к горизонту</p>
+                <h3 class="font-semibold text-gray-900 dark:text-white mb-1">Баллистика</h3>
+                <p class="text-sm text-gray-600 dark:text-slate-400">Движение тела под углом к горизонту</p>
             </div>
 
             <!-- Колебания -->
-            <div class="bg-slate-800 rounded-xl border border-slate-700 p-5 hover:border-cyan-700/50 transition-colors group">
-                <div class="w-10 h-10 rounded-lg bg-slate-700 flex items-center justify-center mb-4 group-hover:bg-cyan-900/40 transition-colors">
-                    <svg class="w-5 h-5 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/>
+            <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-5 hover:border-cyan-400 dark:hover:border-cyan-700/50 transition-colors group">
+                <div class="w-10 h-10 rounded-lg bg-gray-100 dark:bg-slate-700 flex items-center justify-center mb-4 group-hover:bg-cyan-50 dark:group-hover:bg-cyan-900/40 transition-colors">
+                    <svg class="w-5 h-5 text-cyan-600 dark:text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <!-- Биения: амплитудно-модулированная волна (мало → много → мало) -->
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M2 12 Q3 11 4 12 Q5 13 6 12
+                                 Q7.5 8 9 12 Q10.5 16 12 12 Q13.5 8 15 12 Q16.5 16 18 12
+                                 Q19 11 20 12 Q21 13 22 12"/>
+                        <!-- Огибающая (envelope) — верхняя -->
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" stroke-dasharray="1.5 1.5" opacity="0.5"
+                              d="M2 12 Q6 12 9 8 Q12 4 15 8 Q18 12 22 12"/>
+                        <!-- Огибающая — нижняя -->
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" stroke-dasharray="1.5 1.5" opacity="0.5"
+                              d="M2 12 Q6 12 9 16 Q12 20 15 16 Q18 12 22 12"/>
                     </svg>
                 </div>
-                <h3 class="font-semibold text-white mb-1">Колебания и биения</h3>
-                <p class="text-sm text-slate-400">Сложение гармонических колебаний</p>
+                <h3 class="font-semibold text-gray-900 dark:text-white mb-1">Колебания и биения</h3>
+                <p class="text-sm text-gray-600 dark:text-slate-400">Сложение гармонических колебаний</p>
             </div>
 
             <!-- Маятник -->
-            <div class="bg-slate-800 rounded-xl border border-slate-700 p-5 hover:border-cyan-700/50 transition-colors group">
-                <div class="w-10 h-10 rounded-lg bg-slate-700 flex items-center justify-center mb-4 group-hover:bg-cyan-900/40 transition-colors">
-                    <svg class="w-5 h-5 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1M4.22 4.22l.707.707m12.02 12.02l.707.707M1 12h1m18 0h1M4.22 19.78l.707-.707M18.95 5.05l.707-.707"/>
+            <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-5 hover:border-cyan-400 dark:hover:border-cyan-700/50 transition-colors group">
+                <div class="w-10 h-10 rounded-lg bg-gray-100 dark:bg-slate-700 flex items-center justify-center mb-4 group-hover:bg-cyan-50 dark:group-hover:bg-cyan-900/40 transition-colors">
+                    <svg class="w-5 h-5 text-cyan-600 dark:text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <!-- Ось маятника -->
+                        <line x1="6" y1="3" x2="18" y2="3" stroke-width="2" stroke-linecap="round"/>
+                        <!-- Стержень маятника (наклонён) -->
+                        <line x1="12" y1="3" x2="7" y2="17" stroke-width="2" stroke-linecap="round"/>
+                        <!-- Боб -->
+                        <circle cx="7" cy="19" r="2" stroke-width="2"/>
+                        <!-- Дуга колебания -->
+                        <path stroke-linecap="round" stroke-width="1.5" d="M5 12 Q12 18 19 12" fill="none" stroke-dasharray="2 2"/>
                     </svg>
                 </div>
-                <h3 class="font-semibold text-white mb-1">Маятник</h3>
-                <p class="text-sm text-slate-400">Динамика математического маятника</p>
+                <h3 class="font-semibold text-gray-900 dark:text-white mb-1">Маятник</h3>
+                <p class="text-sm text-gray-600 dark:text-slate-400">Динамика математического маятника</p>
             </div>
 
             <!-- Гравитация -->
-            <div class="bg-slate-800 rounded-xl border border-slate-700 p-5 hover:border-cyan-700/50 transition-colors group">
-                <div class="w-10 h-10 rounded-lg bg-slate-700 flex items-center justify-center mb-4 group-hover:bg-cyan-900/40 transition-colors">
-                    <svg class="w-5 h-5 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064"/>
+            <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-5 hover:border-cyan-400 dark:hover:border-cyan-700/50 transition-colors group">
+                <div class="w-10 h-10 rounded-lg bg-gray-100 dark:bg-slate-700 flex items-center justify-center mb-4 group-hover:bg-cyan-50 dark:group-hover:bg-cyan-900/40 transition-colors">
+                    <svg class="w-5 h-5 text-cyan-600 dark:text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <!-- Планета (центральное тело) -->
+                        <circle cx="12" cy="12" r="3" stroke-width="2"/>
+                        <!-- Орбита (эллипс) -->
+                        <ellipse cx="12" cy="12" rx="9" ry="5" stroke-width="1.5" transform="rotate(-30 12 12)"/>
+                        <!-- Спутник на орбите -->
+                        <circle cx="19" cy="9" r="1.2" fill="currentColor" stroke="none"/>
                     </svg>
                 </div>
-                <h3 class="font-semibold text-white mb-1">Гравитация</h3>
-                <p class="text-sm text-slate-400">Движение тел в гравитационном поле</p>
+                <h3 class="font-semibold text-gray-900 dark:text-white mb-1">Гравитация</h3>
+                <p class="text-sm text-gray-600 dark:text-slate-400">Движение тел в гравитационном поле</p>
             </div>
         </div>
     </section>
@@ -135,57 +161,76 @@
     <!-- Семестр 2 -->
     <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
         <div class="flex items-center gap-4 mb-10">
-            <div class="flex-shrink-0 w-12 h-12 rounded-xl bg-blue-900/40 border border-blue-700/50 flex items-center justify-center">
-                <span class="text-blue-400 font-bold text-lg">2</span>
+            <div class="flex-shrink-0 w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-900/40 border border-blue-200 dark:border-blue-700/50 flex items-center justify-center">
+                <span class="text-blue-600 dark:text-blue-400 font-bold text-lg">2</span>
             </div>
             <div>
-                <h2 class="text-2xl font-bold text-white">Семестр 2 — Исследование</h2>
-                <p class="text-slate-400 text-sm mt-1">Индивидуальные проекты — создаёшь собственный научный симулятор</p>
+                <h2 class="text-2xl font-bold text-gray-900 dark:text-white">Семестр 2 — Исследование</h2>
+                <p class="text-gray-600 dark:text-slate-400 text-sm mt-1">Индивидуальные проекты — создаёшь собственный научный симулятор</p>
             </div>
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <!-- Электрический пробой -->
-            <div class="bg-slate-800 rounded-xl border border-slate-700 p-5 hover:border-blue-700/50 transition-colors group">
-                <div class="w-10 h-10 rounded-lg bg-slate-700 flex items-center justify-center mb-4 group-hover:bg-blue-900/40 transition-colors">
-                    <svg class="w-5 h-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-5 hover:border-blue-400 dark:hover:border-blue-700/50 transition-colors group">
+                <div class="w-10 h-10 rounded-lg bg-gray-100 dark:bg-slate-700 flex items-center justify-center mb-4 group-hover:bg-blue-50 dark:group-hover:bg-blue-900/40 transition-colors">
+                    <svg class="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
                     </svg>
                 </div>
-                <h3 class="font-semibold text-white mb-1">Электрический пробой</h3>
-                <p class="text-sm text-slate-400">Пробой в диэлектриках</p>
+                <h3 class="font-semibold text-gray-900 dark:text-white mb-1">Электрический пробой</h3>
+                <p class="text-sm text-gray-600 dark:text-slate-400">Пробой в диэлектриках</p>
             </div>
 
-            <!-- Решёточные уравнения Больцмана -->
-            <div class="bg-slate-800 rounded-xl border border-slate-700 p-5 hover:border-blue-700/50 transition-colors group">
-                <div class="w-10 h-10 rounded-lg bg-slate-700 flex items-center justify-center mb-4 group-hover:bg-blue-900/40 transition-colors">
-                    <svg class="w-5 h-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+            <!-- Вычислительная гидродинамика -->
+            <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-5 hover:border-blue-400 dark:hover:border-blue-700/50 transition-colors group">
+                <div class="w-10 h-10 rounded-lg bg-gray-100 dark:bg-slate-700 flex items-center justify-center mb-4 group-hover:bg-blue-50 dark:group-hover:bg-blue-900/40 transition-colors">
+                    <svg class="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <!-- Три линии тока (streamlines) -->
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M2 6 C6 6 7 4 11 4 S16 6 20 5"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M2 12 C5 10 8 14 12 12 S17 10 22 12"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M2 18 C6 18 7 20 11 20 S16 18 22 19"/>
+                        <!-- Стрелки потока -->
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M18 3l2 2-2 2"/>
                     </svg>
                 </div>
-                <h3 class="font-semibold text-white mb-1">Метод Больцмана</h3>
-                <p class="text-sm text-slate-400">Решёточные уравнения Больцмана</p>
+                <h3 class="font-semibold text-gray-900 dark:text-white mb-1">Вычислительная гидродинамика</h3>
+                <p class="text-sm text-gray-600 dark:text-slate-400">Решёточные уравнения Больцмана</p>
             </div>
 
-            <!-- Течение жидкости -->
-            <div class="bg-slate-800 rounded-xl border border-slate-700 p-5 hover:border-blue-700/50 transition-colors group">
-                <div class="w-10 h-10 rounded-lg bg-slate-700 flex items-center justify-center mb-4 group-hover:bg-blue-900/40 transition-colors">
-                    <svg class="w-5 h-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/>
+            <!-- Перенос тепла -->
+            <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-5 hover:border-blue-400 dark:hover:border-blue-700/50 transition-colors group">
+                <div class="w-10 h-10 rounded-lg bg-gray-100 dark:bg-slate-700 flex items-center justify-center mb-4 group-hover:bg-blue-50 dark:group-hover:bg-blue-900/40 transition-colors">
+                    <svg class="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z"/>
                     </svg>
                 </div>
-                <h3 class="font-semibold text-white mb-1">Течение жидкости</h3>
-                <p class="text-sm text-slate-400">Течение Пуазейля, многофазные потоки</p>
+                <h3 class="font-semibold text-gray-900 dark:text-white mb-1">Перенос тепла</h3>
+                <p class="text-sm text-gray-600 dark:text-slate-400">Уравнение теплопроводности</p>
             </div>
 
-            <!-- Фазовые переходы -->
-            <div class="bg-slate-800 rounded-xl border border-slate-700 p-5 hover:border-blue-700/50 transition-colors group">
-                <div class="w-10 h-10 rounded-lg bg-slate-700 flex items-center justify-center mb-4 group-hover:bg-blue-900/40 transition-colors">
-                    <svg class="w-5 h-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+            <!-- Молекулярная динамика -->
+            <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-5 hover:border-blue-400 dark:hover:border-blue-700/50 transition-colors group">
+                <div class="w-10 h-10 rounded-lg bg-gray-100 dark:bg-slate-700 flex items-center justify-center mb-4 group-hover:bg-blue-50 dark:group-hover:bg-blue-900/40 transition-colors">
+                    <svg class="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <!-- Центральный атом -->
+                        <circle cx="12" cy="12" r="2.5" stroke-width="2"/>
+                        <!-- Три атома вокруг -->
+                        <circle cx="5"  cy="7"  r="1.5" stroke-width="2"/>
+                        <circle cx="19" cy="7"  r="1.5" stroke-width="2"/>
+                        <circle cx="12" cy="20" r="1.5" stroke-width="2"/>
+                        <!-- Связи -->
+                        <line x1="7"  y1="8.5"  x2="10.3" y2="10.5" stroke-width="1.5" stroke-linecap="round"/>
+                        <line x1="17" y1="8.5"  x2="13.7" y2="10.5" stroke-width="1.5" stroke-linecap="round"/>
+                        <line x1="12" y1="14.5" x2="12"   y2="18.5" stroke-width="1.5" stroke-linecap="round"/>
                     </svg>
                 </div>
-                <h3 class="font-semibold text-white mb-1">Фазовые переходы</h3>
-                <p class="text-sm text-slate-400">Моделирование фазовых переходов</p>
+                <h3 class="font-semibold text-gray-900 dark:text-white mb-1">Молекулярная динамика</h3>
+                <p class="text-sm text-gray-600 dark:text-slate-400">Моделирование фазовых переходов</p>
             </div>
         </div>
     </section>
@@ -193,25 +238,25 @@
     <!-- Превью симуляций из БД -->
     {% if simulations %}
     <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-20">
-        <div class="border-t border-slate-800 pt-16">
+        <div class="border-t border-gray-200 dark:border-slate-800 pt-16">
             <div class="flex items-center justify-between mb-8">
-                <h2 class="text-xl font-bold text-white">Запустить симуляцию</h2>
-                <a href="{% url 'spetskurs:simulation_list' %}" class="text-sm text-cyan-400 hover:text-cyan-300 transition-colors">
+                <h2 class="text-xl font-bold text-gray-900 dark:text-white">Запустить симуляцию</h2>
+                <a href="{% url 'spetskurs:simulation_list' %}" class="text-sm text-cyan-600 dark:text-cyan-400 hover:text-cyan-500 dark:hover:text-cyan-300 transition-colors">
                     Все симуляции →
                 </a>
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                 {% for sim in simulations %}
                 <a href="{{ sim.get_absolute_url }}"
-                   class="group block bg-slate-800 rounded-xl border border-slate-700 hover:border-cyan-600/50 overflow-hidden transition-all hover:shadow-lg hover:shadow-cyan-900/20">
+                   class="group block bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 hover:border-cyan-400 dark:hover:border-cyan-600/50 overflow-hidden transition-all hover:shadow-lg hover:shadow-cyan-100 dark:hover:shadow-cyan-900/20">
                     {% if sim.thumbnail %}
-                    <div class="aspect-video overflow-hidden bg-slate-950">
+                    <div class="aspect-video overflow-hidden bg-gray-100 dark:bg-slate-950">
                         <img src="{{ sim.thumbnail.url }}" alt="{{ sim.title }}"
                              class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-80 group-hover:opacity-100">
                     </div>
                     {% else %}
-                    <div class="aspect-video bg-slate-950 flex items-center justify-center">
-                        <svg class="w-12 h-12 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <div class="aspect-video bg-gray-100 dark:bg-slate-950 flex items-center justify-center">
+                        <svg class="w-12 h-12 text-gray-300 dark:text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                         </svg>
@@ -219,11 +264,11 @@
                     {% endif %}
                     <div class="p-5">
                         <div class="flex items-center gap-2 mb-2">
-                            <span class="text-xs px-2 py-0.5 rounded-full bg-slate-700 text-slate-400">Семестр {{ sim.semester }}</span>
+                            <span class="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-400">Семестр {{ sim.semester }}</span>
                         </div>
-                        <h3 class="font-semibold text-white group-hover:text-cyan-400 transition-colors">{{ sim.title }}</h3>
+                        <h3 class="font-semibold text-gray-900 dark:text-white group-hover:text-cyan-600 dark:group-hover:text-cyan-400 transition-colors">{{ sim.title }}</h3>
                         {% if sim.description %}
-                        <p class="mt-1 text-sm text-slate-400 line-clamp-2">{{ sim.description }}</p>
+                        <p class="mt-1 text-sm text-gray-600 dark:text-slate-400 line-clamp-2">{{ sim.description }}</p>
                         {% endif %}
                     </div>
                 </a>
