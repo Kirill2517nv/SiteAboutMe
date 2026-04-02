@@ -27,6 +27,11 @@ fixtures/*
 media/
 staticfiles/
 
+# Spetskurs compiled/WASM static files (deployed manually to server)
+static/spetskurs/wasm/*.js
+static/spetskurs/wasm/*.wasm
+static/spetskurs/wasm/*.html
+
 # Node
 node_modules/
 package-lock.json

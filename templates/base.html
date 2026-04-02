@@ -6,10 +6,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Мой сайт{% endblock title %}</title>
     
+    <!-- Тема: применяем ДО рендера, чтобы не было мигания -->
+    <script>
+        (function() {
+            var t = localStorage.getItem('theme');
+            if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.classList.add('dark');
+            }
+        })();
+    </script>
+
     <!-- Tailwind CSS (CDN) -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
+            darkMode: 'class',
             theme: {
                 extend: {
                     fontFamily: {
@@ -47,53 +58,127 @@
     {% block extra_css %}{% endblock extra_css %}
     
     <style>
-        /* Базовые стили для плавного перехода */
-        body {
-            font-family: 'Inter', system-ui, sans-serif;
+        /* Базовые стили */
+        body { font-family: 'Inter', system-ui, sans-serif; }
+        [x-cloak] { display: none !important; }
+
+        /* Плавный переход темы */
+        html { transition: background-color 0.2s, color 0.2s; }
+
+        /* ─── Тёмная тема: переопределяем светлые Tailwind-классы ───
+           Используем :where() чтобы снизить специфичность до (0,1,1):
+           это позволяет dark:* и hover:* классам нормально перебивать эти правила. ─── */
+
+        /* Фоны — !important нужен только body, остальное через :where() */
+        html.dark body { background-color: #0f172a !important; }
+        html.dark :where(.bg-gray-50)  { background-color: #0f172a; }
+        html.dark :where(.bg-white)    { background-color: #1e293b; }
+        html.dark :where(.bg-gray-100) { background-color: #1e293b; }
+        html.dark :where(.bg-gray-200) { background-color: #334155; }
+
+        /* Градиентные фоны главной и других страниц */
+        html.dark :where(.from-brand-50) { --tw-gradient-from: #1e293b; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, rgb(30 41 59 / 0)); }
+        html.dark :where(.from-blue-50)  { --tw-gradient-from: #172554; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, rgb(23 37 84 / 0)); }
+        html.dark :where(.to-blue-50)    { --tw-gradient-to: #0f172a; }
+
+        /* Текст — :where() позволяет dark:text-* и hover:text-* перебивать */
+        html.dark :where(.text-gray-900) { color: #f1f5f9; }
+        html.dark :where(.text-gray-800) { color: #e2e8f0; }
+        html.dark :where(.text-gray-700) { color: #cbd5e1; }
+        html.dark :where(.text-gray-600) { color: #94a3b8; }
+        html.dark :where(.text-gray-500) { color: #64748b; }
+        html.dark :where(.text-gray-400) { color: #475569; }
+
+        /* Границы */
+        html.dark :where(.border-gray-100) { border-color: #1e293b; }
+        html.dark :where(.border-gray-200) { border-color: #334155; }
+        html.dark :where(.border-gray-300) { border-color: #475569; }
+
+        /* Тени */
+        html.dark :where(.shadow-sm) { box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.4); }
+        html.dark :where(.shadow-md) { box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.4); }
+        html.dark :where(.shadow-lg) { box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.4); }
+
+        /* Формы */
+        html.dark input,
+        html.dark textarea,
+        html.dark select {
+            background-color: #1e293b !important;
+            border-color: #334155 !important;
+            color: #e2e8f0 !important;
         }
-        
-        /* Скрываем элементы с x-cloak до инициализации Alpine.js */
-        [x-cloak] {
-            display: none !important;
-        }
+        html.dark input::placeholder,
+        html.dark textarea::placeholder { color: #64748b !important; }
+
+        /* Разделители */
+        html.dark hr { border-color: #334155 !important; }
+
+        /* Django messages в тёмной теме */
+        html.dark :where(.bg-red-50)    { background-color: #450a0a; }
+        html.dark :where(.bg-yellow-50) { background-color: #422006; }
+        html.dark :where(.bg-green-50)  { background-color: #052e16; }
+        html.dark :where(.bg-blue-50)   { background-color: #172554; }
+        html.dark :where(.border-red-200)    { border-color: #991b1b; }
+        html.dark :where(.border-yellow-200) { border-color: #92400e; }
+        html.dark :where(.border-green-200)  { border-color: #166534; }
+        html.dark :where(.border-blue-200)   { border-color: #1e40af; }
     </style>
 </head>
-<body class="min-h-screen bg-gray-50 flex flex-col">
+<body class="min-h-screen bg-gray-50 dark:bg-slate-900 flex flex-col">
     <!-- Навигация -->
-    <header class="bg-white shadow-sm sticky top-0 z-50" x-data="{ mobileMenu: false }">
+    <header class="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-700 sticky top-0 z-50" x-data="{ mobileMenu: false }">
         <nav class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between h-16">
                 <!-- Левая часть - логотип и навигация -->
                 <div class="flex items-center space-x-8">
-                    <a href="{% url 'home' %}" class="text-xl font-bold text-brand-600 hover:text-brand-700 transition-colors">
-                        Учебный портал <span class="text-xs font-normal text-gray-400">v0.1.2</span>
+                    <a href="{% url 'home' %}" class="text-xl font-bold text-brand-600 hover:text-brand-700 dark:text-white dark:hover:text-slate-200 transition-colors">
+                        Учебный портал <span class="text-xs font-normal text-gray-400 dark:text-slate-400">v0.1.2</span>
                     </a>
                     <div class="hidden md:flex items-center space-x-6">
                         <a href="{% url 'lessons:lesson_list' %}"
-                           class="text-gray-600 hover:text-brand-600 font-medium transition-colors">
+                           class="text-gray-600 hover:text-brand-600 dark:text-slate-100 dark:hover:text-cyan-400 font-medium transition-colors">
                             База знаний
                         </a>
                         <a href="{% url 'quizzes:quiz_list' %}"
-                           class="text-gray-600 hover:text-brand-600 font-medium transition-colors">
+                           class="text-gray-600 hover:text-brand-600 dark:text-slate-100 dark:hover:text-cyan-400 font-medium transition-colors">
                             Задачи
                         </a>
                         <a href="{% url 'ege:ege_list' %}"
-                           class="text-gray-600 hover:text-brand-600 font-medium transition-colors">
+                           class="text-gray-600 hover:text-brand-600 dark:text-slate-100 dark:hover:text-cyan-400 font-medium transition-colors">
                             Тренажёр ЕГЭ
                         </a>
+                        <a href="{% url 'spetskurs:landing' %}"
+                           class="text-gray-600 hover:text-brand-600 dark:text-slate-100 dark:hover:text-cyan-400 font-medium transition-colors">
+                            Спецкурс
+                        </a>
                         <a href="{% url 'about' %}"
-                           class="text-gray-600 hover:text-brand-600 font-medium transition-colors">
+                           class="text-gray-600 hover:text-brand-600 dark:text-slate-100 dark:hover:text-cyan-400 font-medium transition-colors">
                             Об авторе
                         </a>
                     </div>
                 </div>
-                
+
                 <!-- Правая часть - пользователь -->
                 <div class="flex items-center space-x-4">
+                    <!-- Переключатель темы -->
+                    <button id="theme-toggle" type="button"
+                            class="text-gray-500 hover:text-gray-900 dark:text-slate-400 dark:hover:text-slate-100 transition-colors p-1 rounded-md"
+                            title="Переключить тему">
+                        <!-- Иконка луны (показываем в светлой теме) -->
+                        <svg id="theme-icon-moon" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                  d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+                        </svg>
+                        <!-- Иконка солнца (показываем в тёмной теме) -->
+                        <svg id="theme-icon-sun" class="w-5 h-5 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                  d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+                        </svg>
+                    </button>
                     {% if user.is_authenticated %}
                         {% if user.is_superuser %}
                         <a href="{% url 'quizzes:help_requests_list' %}"
-                           class="relative text-gray-500 hover:text-amber-600 transition-colors"
+                           class="relative text-gray-500 hover:text-amber-600 dark:text-slate-400 dark:hover:text-amber-400 transition-colors"
                            title="Запросы помощи">
                             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
@@ -103,46 +188,46 @@
                         {% else %}
                         <div class="relative" x-data="{ notifOpen: false }" @click.outside="notifOpen = false">
                             <button type="button" @click="notifOpen = !notifOpen; if(notifOpen && window.notificationManager) window.notificationManager.loadDropdown()"
-                                    class="relative text-gray-600 hover:text-amber-600 font-medium transition-colors flex items-center gap-1">
+                                    class="relative text-gray-600 hover:text-amber-600 dark:text-slate-300 dark:hover:text-amber-400 font-medium transition-colors flex items-center gap-1">
                                 Уведомления
                                 <span id="help-badge-global" class="hidden min-w-[18px] h-[18px] px-1 bg-amber-500 text-white text-[10px] font-bold rounded-full inline-flex items-center justify-center"></span>
                             </button>
                             <!-- Dropdown -->
                             <div x-show="notifOpen" x-cloak x-transition
-                                 class="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-lg border border-gray-200 z-50 overflow-hidden">
-                                <div class="px-4 py-3 bg-gray-50 border-b border-gray-100">
-                                    <span class="text-sm font-semibold text-gray-700">Ответы учителя</span>
+                                 class="absolute right-0 mt-2 w-80 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-gray-200 dark:border-slate-700 z-50 overflow-hidden">
+                                <div class="px-4 py-3 bg-gray-50 dark:bg-slate-700 border-b border-gray-100 dark:border-slate-600">
+                                    <span class="text-sm font-semibold text-gray-700 dark:text-slate-200">Ответы учителя</span>
                                 </div>
                                 <div id="notif-dropdown-list" class="max-h-80 overflow-y-auto">
-                                    <div class="px-4 py-6 text-center text-sm text-gray-400">Загрузка...</div>
+                                    <div class="px-4 py-6 text-center text-sm text-gray-400 dark:text-slate-400">Загрузка...</div>
                                 </div>
                             </div>
                         </div>
                         {% endif %}
                         <a href="{% url 'accounts:profile' %}"
-                           class="text-gray-600 hover:text-brand-600 font-medium transition-colors">
+                           class="text-gray-600 hover:text-brand-600 dark:text-slate-100 dark:hover:text-cyan-400 font-medium transition-colors">
                             Мой профиль
                         </a>
                         <form action="{% url 'logout' %}" method="post" class="inline">
                             {% csrf_token %}
                             <button type="submit"
-                                    class="text-gray-500 hover:text-red-600 font-medium transition-colors">
+                                    class="text-gray-500 hover:text-red-600 dark:text-slate-400 dark:hover:text-red-400 font-medium transition-colors">
                                 Выйти
                             </button>
                         </form>
                     {% else %}
-                        <a href="{% url 'login' %}" 
+                        <a href="{% url 'login' %}"
                            class="bg-brand-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-brand-700 transition-colors">
                             Войти
                         </a>
                     {% endif %}
                 </div>
-                
+
                 <!-- Мобильное меню (кнопка) -->
                 <div class="md:hidden flex items-center">
                     <button type="button"
                             @click="mobileMenu = !mobileMenu"
-                            class="text-gray-600 hover:text-gray-900 p-2"
+                            class="text-gray-600 hover:text-gray-900 dark:text-slate-400 dark:hover:text-slate-100 p-2"
                             :aria-expanded="mobileMenu">
                         <!-- Иконка: гамбургер / крестик -->
                         <svg x-show="!mobileMenu" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -155,7 +240,7 @@
                 </div>
             </div>
         </nav>
-        
+
         <!-- Мобильное меню (выпадающее) -->
         <div class="md:hidden"
              x-show="mobileMenu"
@@ -167,11 +252,12 @@
              x-transition:leave-start="opacity-100 translate-y-0"
              x-transition:leave-end="opacity-0 -translate-y-1"
              @click.outside="mobileMenu = false">
-            <div class="px-4 pt-2 pb-3 space-y-1 bg-white border-t">
-                <a href="{% url 'lessons:lesson_list' %}" class="block px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg">База знаний</a>
-                <a href="{% url 'quizzes:quiz_list' %}" class="block px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg">Задачи</a>
-                <a href="{% url 'ege:ege_list' %}" class="block px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg">Тренажёр ЕГЭ</a>
-                <a href="{% url 'about' %}" class="block px-3 py-2 text-gray-600 hover:bg-gray-50 rounded-lg">Об авторе</a>
+            <div class="px-4 pt-2 pb-3 space-y-1 bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-slate-700">
+                <a href="{% url 'lessons:lesson_list' %}" class="block px-3 py-2 text-gray-600 hover:bg-gray-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-cyan-400 rounded-lg">База знаний</a>
+                <a href="{% url 'quizzes:quiz_list' %}" class="block px-3 py-2 text-gray-600 hover:bg-gray-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-cyan-400 rounded-lg">Задачи</a>
+                <a href="{% url 'ege:ege_list' %}" class="block px-3 py-2 text-gray-600 hover:bg-gray-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-cyan-400 rounded-lg">Тренажёр ЕГЭ</a>
+                <a href="{% url 'spetskurs:landing' %}" class="block px-3 py-2 text-gray-600 hover:bg-gray-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-cyan-400 rounded-lg">Спецкурс</a>
+                <a href="{% url 'about' %}" class="block px-3 py-2 text-gray-600 hover:bg-gray-50 hover:text-brand-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-cyan-400 rounded-lg">Об авторе</a>
             </div>
         </div>
     </header>
@@ -200,7 +286,7 @@
     </main>
 
     <!-- Футер -->
-    <footer class="bg-white border-t mt-auto">
+    <footer class="bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-slate-700 mt-auto">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
             <p class="text-center text-gray-500 text-sm">
                 &copy; Новоселов Кирилл Васильевич. 2026
@@ -250,5 +336,35 @@
     {% endif %}
 
     {% block extra_js %}{% endblock extra_js %}
+
+    <!-- Переключатель темы -->
+    <script>
+        (function() {
+            var btn  = document.getElementById('theme-toggle');
+            var moon = document.getElementById('theme-icon-moon');
+            var sun  = document.getElementById('theme-icon-sun');
+
+            function applyTheme(dark) {
+                if (dark) {
+                    document.documentElement.classList.add('dark');
+                    moon.classList.add('hidden');
+                    sun.classList.remove('hidden');
+                } else {
+                    document.documentElement.classList.remove('dark');
+                    moon.classList.remove('hidden');
+                    sun.classList.add('hidden');
+                }
+            }
+
+            // Установить иконку по текущей теме
+            applyTheme(document.documentElement.classList.contains('dark'));
+
+            btn.addEventListener('click', function() {
+                var isDark = document.documentElement.classList.contains('dark');
+                localStorage.setItem('theme', isDark ? 'light' : 'dark');
+                applyTheme(!isDark);
+            });
+        })();
+    </script>
 </body>
 </html>

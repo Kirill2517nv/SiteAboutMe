@@ -28,6 +28,7 @@ urlpatterns = [
     path('ege/', include('quizzes.urls_ege')),
     path('pages/', include('pages.urls')),
     path('lessons/', include('lessons.urls')),
+    path('spetskurs/', include('spetskurs.urls')),
     path('', home_page_view, name='home'),
     path('about/', about_page_view, name='about'),
 ]

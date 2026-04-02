@@ -46,6 +46,27 @@ Reverse proxy + отдача статических и media файлов.
 | `/static/` | Статические файлы | Прямая отдача |
 | `/media/` | Media файлы | X-Accel-Redirect |
 
+### WASM MIME-тип
+
+Браузер отказывается загружать `.wasm` файлы без заголовка `Content-Type: application/wasm`. Нужно добавить в конфиг nginx (`/etc/nginx/sites-available/site`) в блок `/static/`:
+
+```nginx
+location /static/ {
+    alias /home/admin/site/staticfiles/;
+
+    # WASM-симуляции спецкурса
+    location ~* \.wasm$ {
+        types { application/wasm wasm; }
+    }
+}
+```
+
+После изменения конфига:
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+```
+
 ### Команды
 
 ```bash
