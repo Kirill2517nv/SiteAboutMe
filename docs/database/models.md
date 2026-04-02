@@ -1,6 +1,6 @@
 # Модели
 
-Детальное описание всех **20 моделей** проекта с диаграммами классов и пояснениями.
+Детальное описание всех **23 моделей** проекта с диаграммами классов и пояснениями.
 
 ---
 
@@ -495,3 +495,91 @@ classDiagram
 | `question_file_upload_path(instance, filename)` | EGE-aware путь загрузки файлов |
 | `solution_file_upload_path(instance, filename)` | Путь загрузки решений по пользователю |
 | `solution_image_upload_path(instance, filename)` | Путь загрузки изображений решений |
+
+---
+
+## spetskurs — Курс численной физики
+
+```mermaid
+classDiagram
+    class TheoryPage {
+        +int id
+        +str slug [unique]
+        +str title
+        +str description
+        +ImageField thumbnail
+        +int semester
+        +int order
+        +bool is_published
+        +get_absolute_url() str
+    }
+
+    class TheoryBlock {
+        +int id
+        +TheoryPage theory_page [FK]
+        +str block_type
+        +str title
+        +text content
+        +str code_language
+        +ImageField image
+        +int order
+    }
+
+    class Simulation {
+        +int id
+        +str slug [unique]
+        +str title
+        +str description
+        +ImageField thumbnail
+        +str html_path
+        +int semester
+        +int order
+        +bool is_published
+        +get_absolute_url() str
+    }
+
+    TheoryPage "1" -- "*" TheoryBlock
+```
+
+### TheoryPage
+
+Страница теоретических материалов курса, сгруппированная по семестрам.
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `slug` | SlugField(100) | URL-идентификатор, unique |
+| `title` | CharField(200) | Заголовок страницы |
+| `description` | TextField | Краткое описание, blank |
+| `thumbnail` | ImageField | Превью, `spetskurs/theory/`, nullable |
+| `semester` | PositiveSmallIntegerField | 1 или 2 |
+| `order` | PositiveIntegerField | Порядок сортировки, default=0 |
+| `is_published` | BooleanField | Опубликована, default=False |
+
+### TheoryBlock
+
+Контентный блок внутри страницы теории. Поддерживает текст, LaTeX-формулы, код с подсветкой и изображения.
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `theory_page` | FK(TheoryPage) | Родительская страница |
+| `block_type` | CharField(20) | `text`, `formula`, `code`, `image` |
+| `title` | CharField(200) | Заголовок блока, blank |
+| `content` | TextField | Содержимое (текст, LaTeX, код), blank |
+| `code_language` | CharField(20) | `cpp`, `c`, `python`, `bash` |
+| `image` | ImageField | Изображение, `spetskurs/theory/images/`, nullable |
+| `order` | PositiveIntegerField | Порядок сортировки, default=0 |
+
+### Simulation
+
+WASM-симуляция, запускаемая в браузере. Скомпилированные файлы (`.js`, `.wasm`, `.html`) хранятся в `static/spetskurs/wasm/` и деплоятся на сервер вручную (не в git).
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `slug` | SlugField(100) | URL-идентификатор, unique |
+| `title` | CharField(200) | Название симуляции |
+| `description` | TextField | Описание, blank |
+| `thumbnail` | ImageField | Превью, `spetskurs/simulations/`, nullable |
+| `html_path` | CharField(300) | Путь к HTML-файлу в `static/`, например `spetskurs/wasm/pendulum.html` |
+| `semester` | PositiveSmallIntegerField | 1 или 2 |
+| `order` | PositiveIntegerField | Порядок сортировки, default=0 |
+| `is_published` | BooleanField | Опубликована, default=False |
