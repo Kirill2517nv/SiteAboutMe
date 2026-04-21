@@ -1,0 +1,182 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ full_name }} — {{ quiz.title }}{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+    <!-- Navigation -->
+    <div class="mb-6">
+        <a href="{% url 'ege:ege_results' quiz_id=quiz.id %}"
+           class="inline-flex items-center text-sm text-gray-500 hover:text-brand-600 transition-colors">
+            <svg class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+            К результатам варианта
+        </a>
+    </div>
+
+    <!-- Header -->
+    <div class="mb-8">
+        <h1 class="text-2xl font-bold text-gray-900 mb-1">{{ full_name }}</h1>
+        <p class="text-sm text-gray-500">{{ quiz.title }}</p>
+    </div>
+
+    <!-- Summary cards -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 text-center">
+            <div class="text-2xl font-bold text-gray-900" id="card-total">{{ questions|length }}</div>
+            <div class="text-xs text-gray-400 mt-1">Всего задач</div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 text-center">
+            <div class="text-2xl font-bold text-green-600" id="card-solved">—</div>
+            <div class="text-xs text-gray-400 mt-1">Решено</div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 text-center">
+            <div class="text-2xl font-bold text-blue-600" id="card-attempts">—</div>
+            <div class="text-xs text-gray-400 mt-1">Всего попыток</div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 text-center">
+            <div class="text-2xl font-bold text-purple-600" id="card-time">—</div>
+            <div class="text-xs text-gray-400 mt-1">Общее время</div>
+        </div>
+    </div>
+
+    <!-- Stats table -->
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100">
+            <h2 class="text-base font-semibold text-gray-900">Детальная статистика по задачам</h2>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-gray-200 bg-gray-50">
+                        <th class="sticky left-0 z-10 bg-gray-50 px-4 py-3 text-left font-semibold text-gray-700 min-w-[160px]">
+                            Показатель
+                        </th>
+                        {% for q in questions %}
+                        <th class="px-2 py-3 text-center font-semibold text-gray-700 min-w-[40px]">
+                            {{ q.ege_number }}
+                        </th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Статус -->
+                    <tr class="border-b border-gray-50">
+                        <td class="sticky left-0 z-10 bg-white px-4 py-3 font-medium text-gray-700">Статус</td>
+                        {% for stat in stats %}
+                        <td class="px-2 py-3 text-center">
+                            {% if stat.is_solved %}
+                            <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-green-100 text-green-700" title="Решена">
+                                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                            </span>
+                            {% elif stat.attempts > 0 %}
+                            <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-red-100 text-red-700" title="Не решена">
+                                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                            </span>
+                            {% else %}
+                            <span class="text-gray-300">—</span>
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+
+                    <!-- Время -->
+                    <tr class="border-b border-gray-50">
+                        <td class="sticky left-0 z-10 bg-white px-4 py-3 font-medium text-gray-700">Время</td>
+                        {% for stat in stats %}
+                        <td class="px-2 py-3 text-center">
+                            {% if stat.time_mm_ss %}
+                            <span class="text-xs font-mono px-1.5 py-0.5 rounded
+                                {% if stat.color == 'green' %}bg-green-100 text-green-700
+                                {% elif stat.color == 'yellow' %}bg-yellow-100 text-yellow-700
+                                {% elif stat.color == 'red' %}bg-red-100 text-red-700
+                                {% endif %}">
+                                {{ stat.time_mm_ss }}
+                            </span>
+                            {% else %}
+                            <span class="text-gray-300">—</span>
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+
+                    <!-- Попытки -->
+                    <tr class="border-b border-gray-50">
+                        <td class="sticky left-0 z-10 bg-white px-4 py-3 font-medium text-gray-700">Попытки</td>
+                        {% for stat in stats %}
+                        <td class="px-2 py-3 text-center text-xs text-gray-600">
+                            {% if stat.attempts > 0 %}{{ stat.attempts }}{% else %}<span class="text-gray-300">—</span>{% endif %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+
+                    <!-- CPU-время (только для code задач) -->
+                    <tr class="border-b border-gray-50">
+                        <td class="sticky left-0 z-10 bg-white px-4 py-3 font-medium text-gray-700">CPU-время</td>
+                        {% for stat in stats %}
+                        <td class="px-2 py-3 text-center">
+                            {% if stat.is_code and stat.cpu_time_ms != None %}
+                            <span class="text-xs font-mono px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">
+                                {{ stat.cpu_time_ms|floatformat:1 }}мс
+                            </span>
+                            {% elif stat.is_code %}
+                            <span class="text-gray-300">—</span>
+                            {% else %}
+                            <span class="text-gray-200">·</span>
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+
+                    <!-- Память (только для code задач) -->
+                    <tr>
+                        <td class="sticky left-0 z-10 bg-white px-4 py-3 font-medium text-gray-700">Память</td>
+                        {% for stat in stats %}
+                        <td class="px-2 py-3 text-center">
+                            {% if stat.is_code and stat.memory_kb != None %}
+                            <span class="text-xs font-mono px-1.5 py-0.5 rounded bg-purple-50 text-purple-700">
+                                {{ stat.memory_kb }} КБ
+                            </span>
+                            {% elif stat.is_code %}
+                            <span class="text-gray-300">—</span>
+                            {% else %}
+                            <span class="text-gray-200">·</span>
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+<script>
+(function() {
+    const stats = {{ stats_json|safe }};
+
+    const solved = stats.filter(s => s.is_solved).length;
+    const totalAttempts = stats.reduce((sum, s) => sum + s.attempts, 0);
+
+    let totalSeconds = 0;
+    for (const s of stats) {
+        if (s.time_mm_ss) {
+            const [m, sec] = s.time_mm_ss.split(':').map(Number);
+            totalSeconds += m * 60 + sec;
+        }
+    }
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = totalSeconds % 60;
+    const timeStr = h > 0 ? `${h}ч ${m}м` : m > 0 ? `${m}м ${s}с` : (s > 0 ? `${s}с` : '—');
+
+    document.getElementById('card-solved').textContent = solved;
+    document.getElementById('card-attempts').textContent = totalAttempts || '—';
+    document.getElementById('card-time').textContent = timeStr;
+})();
+</script>
+
+{% endblock content %}

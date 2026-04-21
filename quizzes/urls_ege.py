@@ -14,4 +14,5 @@ urlpatterns = [
     path('<int:quiz_id>/task/<int:ege_number>/upload-attachment/', views.ege_upload_attachment_view, name='ege_upload_attachment'),
     path('<int:quiz_id>/task/<int:ege_number>/solution/<int:user_id>/', views.ege_solution_detail_view, name='ege_user_solution'),
     path('solutions/<int:answer_id>/like/', views.ege_toggle_like_view, name='ege_toggle_like'),
+    path('<int:quiz_id>/results/student/<int:user_id>/', views.ege_student_stats_view, name='ege_student_stats'),
 ]

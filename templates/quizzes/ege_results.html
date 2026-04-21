@@ -89,6 +89,8 @@
                         {% endfor %}
                         <th class="px-3 py-3 text-center font-semibold text-green-700 min-w-[40px]">&#10003;</th>
                         <th class="px-3 py-3 text-center font-semibold text-gray-700 min-w-[60px]">Баллы</th>
+                        <th class="px-3 py-3 text-center font-semibold text-brand-600 min-w-[60px]" title="Тестовый балл ЕГЭ">Тест</th>
+                        <th class="px-3 py-3 text-center font-semibold text-gray-500 min-w-[70px]">Время</th>
                     </tr>
                 </thead>
                 <tbody id="results-tbody" class="divide-y divide-gray-50">
@@ -99,7 +101,12 @@
                         data-full-name="{{ row.full_name }}">
                         <!-- Sticky name column -->
                         <td class="sticky left-0 z-10 bg-white px-4 py-3 font-medium text-gray-900 whitespace-nowrap">
+                            {% if user.is_superuser %}
+                            <a href="{% url 'ege:ege_student_stats' quiz_id=quiz.id user_id=row.user_id %}"
+                               class="hover:text-brand-600 transition-colors">{{ row.full_name }}</a>
+                            {% else %}
                             {{ row.full_name }}
+                            {% endif %}
                         </td>
 
                         <!-- Task results -->
@@ -135,6 +142,16 @@
                         <!-- Score -->
                         <td class="px-3 py-3 text-center font-bold text-gray-900">
                             {{ row.score }}
+                        </td>
+
+                        <!-- Test score -->
+                        <td class="px-3 py-3 text-center font-bold text-brand-600">
+                            {{ row.test_score }}
+                        </td>
+
+                        <!-- Total time -->
+                        <td class="px-3 py-3 text-center text-xs font-mono text-gray-500">
+                            {% if row.total_time %}{{ row.total_time }}{% else %}<span class="text-gray-300">—</span>{% endif %}
                         </td>
                     </tr>
                     {% endfor %}

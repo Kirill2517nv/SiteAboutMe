@@ -18,6 +18,17 @@ from urllib.parse import quote
 from .utils import run_code_in_docker
 from .tasks import check_code_task
 
+# Перевод первичных баллов ЕГЭ по информатике в тестовые (2024)
+EGE_SCORE_CONVERSION = {
+    0: 0,
+    1: 7, 2: 14, 3: 20, 4: 27, 5: 34,
+    6: 40, 7: 43, 8: 46, 9: 48, 10: 51,
+    11: 54, 12: 56, 13: 59, 14: 62, 15: 64,
+    16: 67, 17: 70, 18: 72, 19: 75, 20: 78,
+    21: 80, 22: 83, 23: 85, 24: 88, 25: 90,
+    26: 93, 27: 95, 28: 98, 29: 100,
+}
+
 # Рекомендуемое время на задачу ЕГЭ по информатике (минуты)
 EGE_RECOMMENDED_TIME = {
     1: 3, 2: 3, 3: 3, 4: 2, 5: 4, 6: 4, 7: 5, 8: 4,
@@ -722,6 +733,21 @@ def ege_results_view(request, quiz_id):
         for uid, qid, secs in progress_qs:
             time_map[(uid, qid)] = secs
 
+    # Суммарное время по каждому пользователю
+    user_total_time = {}
+    for (uid, qid), secs in time_map.items():
+        user_total_time[uid] = user_total_time.get(uid, 0) + secs
+    for row in results_matrix:
+        total_secs = user_total_time.get(row['user_id'], 0)
+        if total_secs > 0:
+            h = total_secs // 3600
+            m = (total_secs % 3600) // 60
+            s = total_secs % 60
+            row['total_time'] = f"{h}ч {m:02d}м" if h > 0 else f"{m}м {s:02d}с"
+        else:
+            row['total_time'] = ''
+        row['test_score'] = EGE_SCORE_CONVERSION.get(row['score'], 100 if row['score'] > 29 else 0)
+
     # Собираем sort_data: {user_id: {ege_number: {likes, cpu, memory, time}}}
     sort_data = {}
     for (uid, qid), aid in best_answer_map.items():
@@ -786,6 +812,64 @@ def ege_results_view(request, quiz_id):
         'personal_stats': personal_stats,
         'sort_data_json': sort_data_json,
         'question_types_json': question_types_json,
+    })
+
+
+@login_required
+def ege_student_stats_view(request, quiz_id, user_id):
+    """Статистика конкретного ученика по варианту ЕГЭ (только для суперпользователя)."""
+    if not request.user.is_superuser:
+        from django.core.exceptions import PermissionDenied
+        raise PermissionDenied
+
+    quiz = get_object_or_404(Quiz, id=quiz_id, quiz_type='exam', is_public=True)
+    student = get_object_or_404(User, id=user_id)
+
+    questions = list(quiz.questions.filter(ege_number__isnull=False).order_by('ege_number'))
+
+    progress_qs = ExamTaskProgress.objects.filter(user=student, quiz=quiz).select_related('question')
+    progress_map = {p.question_id: p for p in progress_qs}
+
+    stats = []
+    for q in questions:
+        p = progress_map.get(q.id)
+        ege_num = q.ege_number or 0
+        rec_min = EGE_RECOMMENDED_TIME.get(ege_num, 5)
+
+        if p and p.time_spent_seconds > 0:
+            mins = p.time_spent_seconds // 60
+            secs = p.time_spent_seconds % 60
+            time_mm_ss = f"{mins}:{secs:02d}"
+            if mins <= rec_min:
+                color = 'green'
+            elif mins <= rec_min * 1.5:
+                color = 'yellow'
+            else:
+                color = 'red'
+        else:
+            time_mm_ss = ''
+            color = ''
+
+        stats.append({
+            'ege_number': ege_num,
+            'time_mm_ss': time_mm_ss,
+            'attempts': p.attempts_to_solve if p else 0,
+            'is_solved': p.is_solved if p else False,
+            'color': color,
+            'is_code': q.question_type == 'code',
+            'cpu_time_ms': p.best_cpu_time_ms if p else None,
+            'memory_kb': p.best_memory_kb if p else None,
+        })
+
+    full_name = f"{student.last_name} {student.first_name}".strip() or student.username
+
+    return render(request, 'quizzes/ege_student_stats.html', {
+        'quiz': quiz,
+        'student': student,
+        'full_name': full_name,
+        'questions': questions,
+        'stats': stats,
+        'stats_json': json.dumps(stats),
     })
 
 

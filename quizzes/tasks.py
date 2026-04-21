@@ -38,55 +38,64 @@ def check_code_task(self, submission_id):
 
     question = submission.question
     code = submission.code
-    all_tests_passed = True
+    any_test_passed = False
     error_log = None
+    passed_cpu_time = None
+    passed_memory_kb = None
 
     try:
         # Get test cases
         test_cases = list(question.test_cases.all())
 
         if not test_cases:
-            all_tests_passed = False
             error_log = "Нет тестовых примеров для проверки."
         else:
             # Prepare extra files from QuestionFile attachments
             extra_files = {}
+            files_ok = True
             for qf in question.files.all():
                 try:
                     with qf.file.open('rb') as f:
                         extra_files[os.path.basename(qf.file.name)] = f.read()
                 except Exception as e:
                     error_log = f"Ошибка чтения файла задания: {e}"
-                    all_tests_passed = False
+                    files_ok = False
                     break
 
-            # Run tests, accumulate metrics
-            total_cpu_time = 0.0
-            peak_memory = 0
-            if all_tests_passed:
+            if files_ok:
+                # Run tests — задача засчитана если хотя бы один тест прошёл
+                first_error_log = None
                 for i, test_case in enumerate(test_cases, 1):
                     output, error, cpu_time_ms, memory_kb = run_code_in_docker(code, test_case.input_data, extra_files)
 
-                    total_cpu_time += cpu_time_ms or 0
-                    peak_memory = max(peak_memory, memory_kb or 0)
-
                     if error:
-                        all_tests_passed = False
-                        error_log = error
-                        break
+                        if first_error_log is None:
+                            first_error_log = error
+                        continue
 
-                    if normalize_output(output) != normalize_output(test_case.output_data):
-                        all_tests_passed = False
-                        error_log = f"Неверный ответ на тесте #{i}.\nВходные данные: {test_case.input_data}\nВаш ответ: {output}"
+                    if normalize_output(output) == normalize_output(test_case.output_data):
+                        any_test_passed = True
+                        passed_cpu_time = cpu_time_ms
+                        passed_memory_kb = memory_kb
                         break
+                    else:
+                        if first_error_log is None:
+                            first_error_log = (
+                                f"Неверный ответ на тесте #{i}.\n"
+                                f"Входные данные: {test_case.input_data}\n"
+                                f"Ваш ответ: {output}"
+                            )
+
+                if not any_test_passed:
+                    error_log = first_error_log
 
         # Update submission with result and metrics
-        submission.is_correct = all_tests_passed
-        submission.status = 'success' if all_tests_passed else 'failed'
+        submission.is_correct = any_test_passed
+        submission.status = 'success' if any_test_passed else 'failed'
         submission.error_log = error_log
         submission.completed_at = timezone.now()
-        submission.cpu_time_ms = total_cpu_time if total_cpu_time > 0 else None
-        submission.memory_kb = peak_memory if peak_memory > 0 else None
+        submission.cpu_time_ms = passed_cpu_time if passed_cpu_time is not None else None
+        submission.memory_kb = passed_memory_kb if passed_memory_kb is not None else None
         submission.save(update_fields=['is_correct', 'status', 'error_log', 'completed_at', 'cpu_time_ms', 'memory_kb'])
 
         # Update linked UserAnswer if quiz was already finished
@@ -100,7 +109,7 @@ def check_code_task(self, submission_id):
 
         return {
             'submission_id': submission_id,
-            'is_correct': all_tests_passed,
+            'is_correct': any_test_passed,
             'status': submission.status,
             'error_log': error_log,
         }
