@@ -33,10 +33,10 @@
                     <div class="flex items-start justify-between mb-3">
                         <div class="flex-1">
                             {% if item.is_blocked %}
-                            <h3 class="text-lg font-semibold text-gray-400">{{ item.quiz.title }}</h3>
+                            <h3 class="text-base font-semibold text-gray-400">{{ item.quiz.title }}</h3>
                             {% else %}
-                            <a href="{% url 'quizzes:quiz_detail' item.quiz.id %}" 
-                               class="text-lg font-semibold text-gray-900 hover:text-brand-600 transition-colors">
+                            <a href="{% url 'quizzes:quiz_detail' item.quiz.id %}"
+                               class="text-base font-semibold text-gray-900 hover:text-brand-600 transition-colors">
                                 {{ item.quiz.title }}
                             </a>
                             {% endif %}
@@ -136,10 +136,10 @@
                     <div class="flex items-start justify-between mb-3">
                         <div class="flex-1">
                             {% if item.is_blocked %}
-                            <h3 class="text-lg font-semibold text-gray-400">{{ item.quiz.title }}</h3>
+                            <h3 class="text-base font-semibold text-gray-400">{{ item.quiz.title }}</h3>
                             {% else %}
-                            <a href="{% url 'quizzes:quiz_detail' item.quiz.id %}" 
-                               class="text-lg font-semibold text-gray-900 hover:text-purple-600 transition-colors">
+                            <a href="{% url 'quizzes:quiz_detail' item.quiz.id %}"
+                               class="text-base font-semibold text-gray-900 hover:text-purple-600 transition-colors">
                                 {{ item.quiz.title }}
                             </a>
                             {% endif %}
@@ -258,7 +258,7 @@
                         <div class="flex items-start justify-between mb-3">
                             <div class="flex-1">
                                 <a href="{% url 'quizzes:quiz_detail' item.quiz.id %}"
-                                   class="text-lg font-semibold text-gray-700 hover:text-brand-600 transition-colors">
+                                   class="text-base font-semibold text-gray-700 hover:text-brand-600 transition-colors">
                                     {{ item.quiz.title }}
                                 </a>
                             </div>
