@@ -1,0 +1,96 @@
+{% extends 'base.html' %}
+
+{% block title %}Управление пакетами — Своя игра{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+    <div class="flex items-center justify-between mb-8">
+        <div>
+            <div class="flex items-center gap-2 text-sm text-gray-400 dark:text-slate-500 mb-1">
+                <a href="{% url 'games:si_list' %}" class="hover:text-brand-600 dark:hover:text-cyan-400">Своя игра</a>
+                <span>/</span>
+                <span>Управление пакетами</span>
+            </div>
+            <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Пакеты</h1>
+        </div>
+        <div class="flex gap-2">
+            <a href="{% url 'games:si_pack_create' %}"
+               class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-brand-600 rounded-lg hover:bg-brand-700 transition-colors">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                </svg>
+                Создать пакет
+            </a>
+            <a href="{% url 'games:si_list' %}"
+               class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 dark:text-slate-300 border border-gray-300 dark:border-slate-600 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+                </svg>
+                К просмотру
+            </a>
+        </div>
+    </div>
+
+    <div class="space-y-3">
+        {% for pack in packs %}
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-4">
+            <div class="flex items-start gap-4">
+                <!-- Публичность: toggle-форма -->
+                <form method="post" action="{% url 'games:si_pack_toggle_public' pack.id %}" class="shrink-0 mt-0.5">
+                    {% csrf_token %}
+                    <button type="submit"
+                            title="{% if pack.is_public %}Сделать скрытым{% else %}Опубликовать{% endif %}"
+                            class="w-10 h-6 rounded-full transition-colors relative flex items-center
+                                {% if pack.is_public %}bg-green-500 hover:bg-green-600{% else %}bg-gray-300 dark:bg-slate-600 hover:bg-gray-400 dark:hover:bg-slate-500{% endif %}">
+                        <span class="absolute w-4 h-4 bg-white rounded-full shadow transition-transform
+                            {% if pack.is_public %}translate-x-5{% else %}translate-x-1{% endif %}"></span>
+                    </button>
+                </form>
+
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 mb-1">
+                        <h3 class="font-semibold text-gray-900 dark:text-white">{{ pack.title }}</h3>
+                        {% if pack.is_public %}
+                        <span class="px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 rounded-full">Публичный</span>
+                        {% else %}
+                        <span class="px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-slate-400 rounded-full">Скрытый</span>
+                        {% endif %}
+                    </div>
+                    {% if pack.description %}
+                    <p class="text-sm text-gray-500 dark:text-slate-400 mb-1">{{ pack.description }}</p>
+                    {% endif %}
+                    <p class="text-xs text-gray-400 dark:text-slate-500">
+                        Автор: {{ pack.created_by.get_full_name|default:pack.created_by.username }}
+                        · {{ pack.created_at|date:"d.m.Y" }}
+                    </p>
+                    {% if pack.pack_categories.exists %}
+                    <div class="mt-2 flex flex-wrap gap-1">
+                        {% for pc in pack.pack_categories.all %}
+                        <span class="px-2 py-0.5 text-xs bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300 rounded">
+                            {{ pc.category.title }}
+                        </span>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div class="shrink-0 flex gap-2">
+                    <a href="{% url 'games:si_pack_detail' pack.id %}"
+                       class="text-sm text-gray-400 dark:text-slate-500 hover:text-brand-600 dark:hover:text-cyan-400 transition-colors">
+                        Детали
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <div class="text-center py-16">
+            <p class="text-gray-400 dark:text-slate-500 text-lg mb-4">Пакетов пока нет</p>
+            <a href="{% url 'games:si_pack_create' %}"
+               class="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-brand-600 rounded-xl hover:bg-brand-700 transition-colors">
+                Создать первый пакет
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,262 @@
+{% extends 'base.html' %}
+
+{% block title %}Создать тему — Своя игра{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+    <div class="flex items-center gap-2 text-sm text-gray-400 dark:text-slate-500 mb-6">
+        <a href="{% url 'games:si_list' %}" class="hover:text-brand-600 dark:hover:text-cyan-400">Своя игра</a>
+        <span>/</span>
+        <span>Создать тему</span>
+    </div>
+    <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">Создать тему</h1>
+    <p class="text-gray-500 dark:text-slate-400 mb-8">Тема будет отправлена на проверку администратору. После одобрения её можно будет включить в игру.</p>
+
+    <form method="post" enctype="multipart/form-data" class="space-y-8">
+        {% csrf_token %}
+
+        <!-- Данные темы -->
+        <div class="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 p-6">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Тема</h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                        Название темы <span class="text-red-500">*</span>
+                    </label>
+                    {{ cat_form.title }}
+                    {% for error in cat_form.title.errors %}
+                    <p class="mt-1 text-sm text-red-500">{{ error }}</p>
+                    {% endfor %}
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                        Описание (необязательно)
+                    </label>
+                    {{ cat_form.description }}
+                </div>
+            </div>
+        </div>
+
+        <!-- Вопросы -->
+        {{ q_formset.management_form }}
+        <div>
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Вопросы</h2>
+                <span id="question-count-label" class="text-sm text-gray-400 dark:text-slate-500">
+                    {{ q_formset.total_form_count }} / {{ q_formset.max_num }}
+                </span>
+            </div>
+
+            <div id="questions-container" class="space-y-4">
+                {% for form in q_formset %}
+                <div class="question-block bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <span class="question-number text-sm font-semibold text-gray-700 dark:text-slate-300">
+                            Вопрос {{ forloop.counter }}
+                        </span>
+                        {{ form.order }}
+                        {% for error in form.non_field_errors %}
+                        <p class="text-sm text-red-500">{{ error }}</p>
+                        {% endfor %}
+                    </div>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Стоимость в очках</label>
+                            {{ form.points }}
+                            {% for error in form.points.errors %}
+                            <p class="mt-1 text-sm text-red-500">{{ error }}</p>
+                            {% endfor %}
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Текст вопроса <span class="text-red-500">*</span></label>
+                            {{ form.text }}
+                            {% for error in form.text.errors %}
+                            <p class="mt-1 text-sm text-red-500">{{ error }}</p>
+                            {% endfor %}
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Ответ <span class="text-red-500">*</span></label>
+                            {{ form.answer }}
+                            {% for error in form.answer.errors %}
+                            <p class="mt-1 text-sm text-red-500">{{ error }}</p>
+                            {% endfor %}
+                        </div>
+                        {% if size_errors and forloop.counter0 in size_errors %}
+                        <div class="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+                            <p class="text-sm text-red-600 dark:text-red-400 font-medium">Суммарный размер файлов превышает 20 МБ. Уменьшите количество или размер вложений.</p>
+                        </div>
+                        {% endif %}
+                        <!-- Медиафайлы к вопросу -->
+                        <div class="pt-2 border-t border-gray-100 dark:border-slate-700">
+                            <p class="text-xs font-medium text-gray-500 dark:text-slate-400 mb-2">
+                                Медиафайлы к <span class="text-brand-600 dark:text-brand-400">вопросу</span> (до 5 каждого типа)
+                            </p>
+                            <div class="grid grid-cols-3 gap-3">
+                                <div>
+                                    <label class="block text-xs text-gray-400 dark:text-slate-500 mb-1">Изображения</label>
+                                    <input type="file" name="media_image_{{ forloop.counter0 }}" accept="image/*" multiple
+                                           class="block w-full text-xs text-gray-500 dark:text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-brand-50 dark:file:bg-slate-700 file:text-brand-700 dark:file:text-cyan-300">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-400 dark:text-slate-500 mb-1">Аудио</label>
+                                    <input type="file" name="media_audio_{{ forloop.counter0 }}" accept="audio/*" multiple
+                                           class="block w-full text-xs text-gray-500 dark:text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-brand-50 dark:file:bg-slate-700 file:text-brand-700 dark:file:text-cyan-300">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-400 dark:text-slate-500 mb-1">Видео</label>
+                                    <input type="file" name="media_video_{{ forloop.counter0 }}" accept="video/*" multiple
+                                           class="block w-full text-xs text-gray-500 dark:text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-brand-50 dark:file:bg-slate-700 file:text-brand-700 dark:file:text-cyan-300">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Медиафайлы к ответу -->
+                        <div class="pt-2 border-t border-gray-100 dark:border-slate-700">
+                            <p class="text-xs font-medium text-gray-500 dark:text-slate-400 mb-2">
+                                Медиафайлы к <span class="text-green-600 dark:text-green-400">ответу</span> (до 5 каждого типа)
+                            </p>
+                            <p class="text-xs text-gray-400 dark:text-slate-500 mb-2">Суммарный объём всех файлов к одному вопросу — не более <span class="font-medium text-gray-600 dark:text-slate-300">20 МБ</span></p>
+                            <div class="grid grid-cols-3 gap-3">
+                                <div>
+                                    <label class="block text-xs text-gray-400 dark:text-slate-500 mb-1">Изображения</label>
+                                    <input type="file" name="answer_media_image_{{ forloop.counter0 }}" accept="image/*" multiple
+                                           class="block w-full text-xs text-gray-500 dark:text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-green-50 dark:file:bg-slate-700 file:text-green-700 dark:file:text-green-300">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-400 dark:text-slate-500 mb-1">Аудио</label>
+                                    <input type="file" name="answer_media_audio_{{ forloop.counter0 }}" accept="audio/*" multiple
+                                           class="block w-full text-xs text-gray-500 dark:text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-green-50 dark:file:bg-slate-700 file:text-green-700 dark:file:text-green-300">
+                                </div>
+                                <div>
+                                    <label class="block text-xs text-gray-400 dark:text-slate-500 mb-1">Видео</label>
+                                    <input type="file" name="answer_media_video_{{ forloop.counter0 }}" accept="video/*" multiple
+                                           class="block w-full text-xs text-gray-500 dark:text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-green-50 dark:file:bg-slate-700 file:text-green-700 dark:file:text-green-300">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            <!-- Кнопка добавить вопрос -->
+            <button type="button"
+                    id="add-question-btn"
+                    onclick="addQuestion()"
+                    class="mt-4 w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-gray-300 dark:border-slate-600 text-sm font-medium text-gray-500 dark:text-slate-400 hover:border-brand-400 dark:hover:border-brand-500 hover:text-brand-600 dark:hover:text-brand-400 transition-colors">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+                </svg>
+                Добавить вопрос
+            </button>
+        </div>
+
+        <div class="flex gap-4">
+            <button type="submit"
+                    class="px-6 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-medium rounded-xl transition-colors">
+                Отправить на проверку
+            </button>
+            <a href="{% url 'games:si_list' %}"
+               class="px-6 py-2.5 text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white border border-gray-300 dark:border-slate-600 rounded-xl transition-colors">
+                Отмена
+            </a>
+        </div>
+    </form>
+</div>
+
+<script>
+const MAX_QUESTIONS = {{ q_formset.max_num }};
+
+function addQuestion() {
+    const container = document.getElementById('questions-container');
+    const totalFormsEl = document.getElementById('id_form-TOTAL_FORMS');
+    const countLabel = document.getElementById('question-count-label');
+    const addBtn = document.getElementById('add-question-btn');
+
+    const currentCount = parseInt(totalFormsEl.value);
+    if (currentCount >= MAX_QUESTIONS) {
+        addBtn.disabled = true;
+        addBtn.textContent = `Максимум ${MAX_QUESTIONS} вопросов`;
+        return;
+    }
+
+    const blocks = container.querySelectorAll('.question-block');
+    const lastBlock = blocks[blocks.length - 1];
+    const lastIndex = currentCount - 1;
+    const newIndex = currentCount;
+
+    const newBlock = lastBlock.cloneNode(true);
+
+    // Обновляем name и id на формовых полях
+    newBlock.querySelectorAll('[name]').forEach(el => {
+        el.name = el.name.replace(`form-${lastIndex}-`, `form-${newIndex}-`);
+    });
+    newBlock.querySelectorAll('[id]').forEach(el => {
+        el.id = el.id.replace(`form-${lastIndex}-`, `form-${newIndex}-`);
+    });
+    newBlock.querySelectorAll('[for]').forEach(el => {
+        el.setAttribute('for', el.getAttribute('for').replace(`form-${lastIndex}-`, `form-${newIndex}-`));
+    });
+
+    // Обновляем имена медиа-инпутов (_0, _1, …)
+    newBlock.querySelectorAll('input[type="file"]').forEach(el => {
+        el.name = el.name.replace(`_${lastIndex}`, `_${newIndex}`);
+        el.value = '';
+    });
+
+    // Обновляем номер вопроса в заголовке блока
+    const numberEl = newBlock.querySelector('.question-number');
+    if (numberEl) numberEl.textContent = `Вопрос ${newIndex + 1}`;
+
+    // Сбрасываем текстовые поля
+    newBlock.querySelectorAll('input[type="text"], input[type="number"], textarea').forEach(el => {
+        el.value = '';
+    });
+
+    // Ставим дефолтные очки (100)
+    const pointsInput = newBlock.querySelector(`[name="form-${newIndex}-points"]`);
+    if (pointsInput) pointsInput.value = 100;
+
+    container.appendChild(newBlock);
+
+    totalFormsEl.value = newIndex + 1;
+
+    // Обновляем счётчик
+    if (countLabel) countLabel.textContent = `${newIndex + 1} / ${MAX_QUESTIONS}`;
+
+    // Прячем кнопку если достигли лимита
+    if (newIndex + 1 >= MAX_QUESTIONS) {
+        addBtn.style.display = 'none';
+    }
+
+    newBlock.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+document.querySelector('form').addEventListener('submit', function(e) {
+    const MAX = 20 * 1024 * 1024;
+    const blocks = document.querySelectorAll('.question-block');
+    let hasError = false;
+    blocks.forEach(function(block) {
+        let total = 0;
+        block.querySelectorAll('input[type="file"]').forEach(function(input) {
+            for (let i = 0; i < input.files.length; i++) {
+                total += input.files[i].size;
+            }
+        });
+        let errEl = block.querySelector('.js-size-error');
+        if (total > MAX) {
+            hasError = true;
+            if (!errEl) {
+                errEl = document.createElement('p');
+                errEl.className = 'js-size-error mt-2 text-sm text-red-500 font-medium';
+                block.querySelector('.space-y-3').appendChild(errEl);
+            }
+            errEl.textContent = 'Суммарный размер файлов превышает 20 МБ. Уменьшите вложения.';
+        } else if (errEl) {
+            errEl.remove();
+        }
+    });
+    if (hasError) e.preventDefault();
+});
+</script>
+{% endblock %}

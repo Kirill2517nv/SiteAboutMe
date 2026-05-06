@@ -1,0 +1,81 @@
+{% extends 'base.html' %}
+
+{% block title %}Создать пакет — Своя игра{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+    <div class="flex items-center gap-2 text-sm text-gray-400 dark:text-slate-500 mb-6">
+        <a href="{% url 'games:si_list' %}" class="hover:text-brand-600 dark:hover:text-cyan-400">Своя игра</a>
+        <span>/</span>
+        <span>Создать пакет</span>
+    </div>
+    <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-8">Создать игровой пакет</h1>
+
+    <form method="post" class="space-y-8">
+        {% csrf_token %}
+
+        <!-- Данные пака -->
+        <div class="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 p-6">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Информация</h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Название пакета</label>
+                    {{ pack_form.title }}
+                    {% for error in pack_form.title.errors %}
+                    <p class="mt-1 text-sm text-red-500">{{ error }}</p>
+                    {% endfor %}
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Описание</label>
+                    {{ pack_form.description }}
+                </div>
+                <label class="flex items-center gap-3 cursor-pointer">
+                    {{ pack_form.is_public }}
+                    <span class="text-sm text-gray-700 dark:text-slate-300">Публичный (доступен всем пользователям)</span>
+                </label>
+            </div>
+        </div>
+
+        <!-- Выбор тем -->
+        <div class="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 p-6">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">Темы</h2>
+            <p class="text-sm text-gray-500 dark:text-slate-400 mb-4">
+                Выберите одобренные темы (обычно 6). Порядок — как на экране.
+            </p>
+            <div class="space-y-2">
+                {% for cat in approved_categories %}
+                <label class="flex items-start gap-3 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-700 cursor-pointer transition-colors">
+                    <input type="checkbox" name="category_ids" value="{{ cat.id }}"
+                           class="mt-0.5 rounded border-gray-300 text-brand-600 focus:ring-brand-500">
+                    <div>
+                        <div class="font-medium text-gray-900 dark:text-white text-sm">{{ cat.title }}</div>
+                        <div class="text-xs text-gray-400 dark:text-slate-500 mt-0.5">
+                            {{ cat.questions.count }} вопр. · {{ cat.created_by.get_full_name|default:cat.created_by.username }}
+                        </div>
+                        {% if cat.description %}
+                        <div class="text-xs text-gray-400 dark:text-slate-500">{{ cat.description }}</div>
+                        {% endif %}
+                    </div>
+                </label>
+                {% empty %}
+                <p class="text-center text-gray-400 dark:text-slate-500 py-8">
+                    Нет одобренных тем. Сначала одобрите темы через
+                    <a href="{% url 'games:si_moderate_list' %}" class="text-brand-600 dark:text-cyan-400 hover:underline">модерацию</a>.
+                </p>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="flex gap-4">
+            <button type="submit"
+                    class="px-6 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-medium rounded-xl transition-colors">
+                Создать пакет
+            </button>
+            <a href="{% url 'games:si_list' %}"
+               class="px-6 py-2.5 text-gray-600 dark:text-slate-300 border border-gray-300 dark:border-slate-600 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors">
+                Отмена
+            </a>
+        </div>
+    </form>
+</div>
+{% endblock %}

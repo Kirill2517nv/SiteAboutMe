@@ -1,0 +1,98 @@
+{% extends 'base.html' %}
+
+{% block title %}Своя игра — пакеты{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+    <div class="flex items-center justify-between mb-8">
+        <div>
+            <div class="flex items-center gap-2 text-sm text-gray-400 dark:text-slate-500 mb-1">
+                <a href="{% url 'games:landing' %}" class="hover:text-brand-600 dark:hover:text-cyan-400">Игры</a>
+                <span>/</span>
+                <span>Своя игра</span>
+            </div>
+            <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Своя игра</h1>
+        </div>
+        <div class="flex flex-wrap gap-2">
+            {% if user.is_authenticated %}
+            <a href="{% url 'games:si_my' %}"
+               class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-slate-200 border border-gray-300 dark:border-slate-600 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors">
+                Мои заявки
+            </a>
+            <a href="{% url 'games:si_create' %}"
+               class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-brand-600 rounded-lg hover:bg-brand-700 transition-colors">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                </svg>
+                Создать тему
+            </a>
+            {% endif %}
+            {% if user.is_staff %}
+            <a href="{% url 'games:si_pack_create' %}"
+               class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-brand-600 dark:text-cyan-400 border border-brand-300 dark:border-cyan-700 rounded-lg hover:bg-brand-50 dark:hover:bg-slate-700 transition-colors">
+                Собрать пакет
+            </a>
+            <a href="{% url 'games:si_pack_manage' %}"
+               class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-purple-600 dark:text-purple-400 border border-purple-300 dark:border-purple-700 rounded-lg hover:bg-purple-50 dark:hover:bg-slate-700 transition-colors">
+                Паки
+            </a>
+            <a href="{% url 'games:si_moderate_list' %}"
+               class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-amber-600 dark:text-amber-400 border border-amber-300 dark:border-amber-700 rounded-lg hover:bg-amber-50 dark:hover:bg-slate-700 transition-colors">
+                Модерация
+            </a>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        {% for pack in packs %}
+        <div class="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 overflow-hidden hover:shadow-lg transition-shadow">
+            <div class="p-6">
+                <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-2">{{ pack.title }}</h2>
+                {% if pack.description %}
+                <p class="text-sm text-gray-500 dark:text-slate-400 mb-4">{{ pack.description }}</p>
+                {% endif %}
+                <div class="flex flex-wrap gap-2 mb-4">
+                    {% for pc in pack.pack_categories.all %}
+                    <span class="inline-flex flex-col px-2 py-1 text-xs bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300 rounded-full leading-tight">
+                        <span>{{ pc.category.title }}</span>
+                        {% if pc.category.created_by %}
+                        <span class="text-[10px] text-gray-400 dark:text-slate-500">
+                            {{ pc.category.created_by.get_full_name|default:pc.category.created_by.username }}
+                        </span>
+                        {% endif %}
+                    </span>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="px-6 py-4 bg-gray-50 dark:bg-slate-700/50 border-t border-gray-100 dark:border-slate-700 flex gap-3">
+                <a href="{% url 'games:si_pack_detail' pack.id %}"
+                   class="text-sm text-gray-600 dark:text-slate-300 hover:text-brand-600 dark:hover:text-cyan-400 transition-colors">
+                    Подробнее
+                </a>
+                {% if user.is_authenticated %}
+                <a href="{% url 'games:si_play' pack.id %}"
+                   class="ml-auto inline-flex items-center gap-1 px-4 py-1.5 text-sm font-medium text-white bg-brand-600 rounded-lg hover:bg-brand-700 transition-colors">
+                    Играть
+                </a>
+                {% else %}
+                <a href="{% url 'login' %}?next={% url 'games:si_play' pack.id %}"
+                   class="ml-auto inline-flex items-center gap-1 px-4 py-1.5 text-sm font-medium text-white bg-brand-600 rounded-lg hover:bg-brand-700 transition-colors">
+                    Войти и играть
+                </a>
+                {% endif %}
+            </div>
+        </div>
+        {% empty %}
+        <div class="col-span-3 text-center py-20">
+            <p class="text-gray-400 dark:text-slate-500 text-lg">Пока нет доступных пакетов</p>
+            {% if user.is_authenticated %}
+            <p class="mt-2 text-sm text-gray-400 dark:text-slate-600">
+                Вы можете <a href="{% url 'games:si_create' %}" class="text-brand-600 dark:text-cyan-400 hover:underline">создать тему</a> и отправить её на модерацию
+            </p>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

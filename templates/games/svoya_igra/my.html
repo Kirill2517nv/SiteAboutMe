@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+
+{% block title %}Мои заявки — Своя игра{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+    <div class="flex items-center justify-between mb-8">
+        <div>
+            <div class="flex items-center gap-2 text-sm text-gray-400 dark:text-slate-500 mb-1">
+                <a href="{% url 'games:si_list' %}" class="hover:text-brand-600 dark:hover:text-cyan-400">Своя игра</a>
+                <span>/</span>
+                <span>Мои заявки</span>
+            </div>
+            <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Мои заявки</h1>
+        </div>
+        <a href="{% url 'games:si_create' %}"
+           class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-brand-600 rounded-lg hover:bg-brand-700 transition-colors">
+            + Создать тему
+        </a>
+    </div>
+
+    {% for group_label, group_status, items, color in categories_groups %}
+    {% if items %}
+    <div class="mb-8">
+        <h2 class="text-lg font-semibold mb-3 {{ color }}">{{ group_label }} ({{ items|length }})</h2>
+        <div class="space-y-3">
+            {% for cat in items %}
+            <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-4">
+                <div class="flex items-start justify-between">
+                    <div>
+                        <h3 class="font-semibold text-gray-900 dark:text-white">{{ cat.title }}</h3>
+                        {% if cat.description %}
+                        <p class="text-sm text-gray-500 dark:text-slate-400 mt-0.5">{{ cat.description }}</p>
+                        {% endif %}
+                        <p class="text-xs text-gray-400 dark:text-slate-500 mt-1">
+                            {{ cat.questions.count }} вопрос(ов) · {{ cat.created_at|date:"d.m.Y" }}
+                        </p>
+                        {% if cat.moderator_comment %}
+                        <p class="text-sm text-amber-600 dark:text-amber-400 mt-2">
+                            Комментарий: {{ cat.moderator_comment }}
+                        </p>
+                        {% endif %}
+                    </div>
+                    <div class="flex items-center gap-2 shrink-0 ml-4">
+                        {% if cat.status == 'rejected' %}
+                        <a href="{% url 'games:si_my_edit' cat.id %}"
+                           class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg transition-colors">
+                            Исправить и переотправить
+                        </a>
+                        {% endif %}
+                        <span class="px-2.5 py-1 text-xs font-medium rounded-full
+                            {% if cat.status == 'pending' %}bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400
+                            {% elif cat.status == 'approved' %}bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400
+                            {% else %}bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400{% endif %}">
+                            {{ cat.get_status_display }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+    {% endfor %}
+
+    {% if not pending and not approved and not rejected %}
+    <div class="text-center py-16">
+        <p class="text-gray-400 dark:text-slate-500 text-lg mb-4">У вас пока нет заявок</p>
+        <a href="{% url 'games:si_create' %}"
+           class="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-brand-600 rounded-xl hover:bg-brand-700 transition-colors">
+            Создать первую тему
+        </a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

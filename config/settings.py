@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     'accounts',
     'quizzes',
     'spetskurs',
+    'games',
 ]
 
 MIDDLEWARE = [

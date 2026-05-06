@@ -1,0 +1,57 @@
+{% extends 'base.html' %}
+
+{% block title %}Модерация тем — Своя игра{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+    <div class="flex items-center justify-between mb-6">
+        <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Модерация тем</h1>
+        <a href="{% url 'games:si_list' %}"
+           class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 dark:text-slate-300 border border-gray-300 dark:border-slate-600 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+            </svg>
+            К просмотру тем
+        </a>
+    </div>
+
+    <!-- Фильтр по статусу -->
+    <div class="flex gap-2 mb-6">
+        {% for value, label in status_choices %}
+        <a href="?status={{ value }}"
+           class="px-4 py-1.5 text-sm rounded-full font-medium transition-colors
+               {% if status_filter == value %}
+                   bg-brand-600 text-white
+               {% else %}
+                   bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-600
+               {% endif %}">
+            {{ label }}
+        </a>
+        {% endfor %}
+    </div>
+
+    <div class="space-y-3">
+        {% for cat in categories %}
+        <a href="{% url 'games:si_moderate_detail' cat.id %}"
+           class="block bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-4 hover:border-brand-400 dark:hover:border-cyan-600 transition-colors">
+            <div class="flex items-start justify-between">
+                <div>
+                    <h3 class="font-semibold text-gray-900 dark:text-white">{{ cat.title }}</h3>
+                    <p class="text-sm text-gray-500 dark:text-slate-400 mt-0.5">
+                        {{ cat.questions.count }} вопр. · Автор: {{ cat.created_by.get_full_name|default:cat.created_by.username }} · {{ cat.created_at|date:"d.m.Y H:i" }}
+                    </p>
+                </div>
+                <span class="shrink-0 ml-4 px-2.5 py-1 text-xs font-medium rounded-full
+                    {% if cat.status == 'pending' %}bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400
+                    {% elif cat.status == 'approved' %}bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400
+                    {% else %}bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400{% endif %}">
+                    {{ cat.get_status_display }}
+                </span>
+            </div>
+        </a>
+        {% empty %}
+        <p class="text-center text-gray-400 dark:text-slate-500 py-12">Нет заявок в данном статусе</p>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

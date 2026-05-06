@@ -1,0 +1,446 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ pack.title }} — Играть{% endblock %}
+
+{% block extra_css %}
+<style>
+  /* ── Анимации ─────────────────────────────────────────────── */
+  @keyframes modalIn {
+    from { opacity: 0; transform: scale(0.94) translateY(8px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+  }
+  @keyframes overlayIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  @keyframes answerReveal {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .si-modal-enter   { animation: modalIn    0.25s cubic-bezier(0.34,1.56,0.64,1) forwards; }
+  .si-overlay-enter { animation: overlayIn  0.2s ease forwards; }
+  .si-answer-reveal { animation: answerReveal 0.3s ease forwards; }
+
+  /* ── Ячейки вопросов ──────────────────────────────────────── */
+  .si-cell-active {
+    box-shadow: 0 0 0 1px rgba(37,99,235,0.4),
+                0 0 20px rgba(37,99,235,0.25),
+                inset 0 1px 0 rgba(255,255,255,0.08);
+    transition: box-shadow 0.15s, transform 0.15s;
+  }
+  .si-cell-active:hover {
+    box-shadow: 0 0 0 1px rgba(59,130,246,0.7),
+                0 0 30px rgba(59,130,246,0.4),
+                inset 0 1px 0 rgba(255,255,255,0.12);
+    transform: scale(1.04);
+  }
+  .si-cell-active:active { transform: scale(0.97); }
+
+  /* ── Заголовок категории ──────────────────────────────────── */
+  .si-cat-header {
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+  }
+
+  /* ── Карточки счёта — светлая тема ───────────────────────── */
+  .si-score-card {
+    background: rgba(0,0,0,0.05);
+    border: 1px solid rgba(0,0,0,0.1);
+  }
+  html.dark .si-score-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    backdrop-filter: blur(8px);
+  }
+
+  /* ── Скроллбар игрового поля ─────────────────────────────── */
+  .si-board-wrap { overflow-x: auto; }
+  .si-board-wrap::-webkit-scrollbar { width: 4px; height: 4px; }
+  .si-board-wrap::-webkit-scrollbar-thumb {
+    background: rgba(0,0,0,0.15);
+    border-radius: 2px;
+  }
+  html.dark .si-board-wrap::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.1);
+  }
+</style>
+{% endblock %}
+
+{% block pre_alpine_js %}
+<script src="{% static 'js/svoya-igra-board.js' %}"></script>
+{% endblock %}
+
+{% block content %}
+<div x-data="gameBoard({
+    sessionId: {{ session_id }},
+    categories: {{ categories_json }},
+    boardState: {{ board_state_json }},
+    players: {{ players_json }}
+})" class="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white">
+
+    <!-- ── Шапка ──────────────────────────────────────────────── -->
+    <div class="flex items-center justify-between px-4 py-3 sticky top-0 z-10
+                bg-white/90 dark:bg-black/40 backdrop-blur-sm
+                border-b border-gray-200 dark:border-white/[0.06]">
+        <div class="flex items-center gap-3">
+            <a href="{% url 'games:si_list' %}"
+               class="p-1 text-gray-400 dark:text-slate-500 hover:text-gray-900 dark:hover:text-white transition-colors">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+                </svg>
+            </a>
+            <span class="font-bold text-gray-900 dark:text-white">{{ pack.title }}</span>
+        </div>
+        <div class="flex items-center gap-4">
+            <span x-show="saveError" x-text="saveError" class="text-xs text-red-500 dark:text-red-400"></span>
+            <span x-show="!setupMode"
+                  class="text-xs tabular-nums text-gray-400 dark:text-slate-500"
+                  x-text="`${Object.keys(boardState).length}/${categories.reduce((s,c)=>s+c.questions.length,0)} вопросов`"></span>
+            <button @click="resetGame()" x-show="!setupMode"
+                    class="flex items-center gap-1.5 text-xs
+                           text-gray-400 dark:text-slate-500
+                           hover:text-gray-900 dark:hover:text-white transition-colors">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                Сначала
+            </button>
+        </div>
+    </div>
+
+    <!-- ── Экран настройки игроков ────────────────────────────── -->
+    <div x-show="setupMode" x-cloak class="flex items-center justify-center px-4 py-16">
+        <div class="w-full max-w-md rounded-3xl p-8
+                    bg-white dark:bg-slate-900
+                    border border-gray-200 dark:border-brand-900/40
+                    shadow-xl dark:shadow-none">
+            <h2 class="text-2xl font-bold text-center mb-2 text-gray-900 dark:text-white">Добавьте игроков</h2>
+            <p class="text-sm text-center mb-8 text-gray-400 dark:text-slate-500">
+                До 6 участников · можно играть без команд
+            </p>
+
+            <div class="space-y-2 mb-4 min-h-[48px]">
+                <template x-for="(player, i) in players" :key="i">
+                    <div class="flex items-center gap-3 px-4 py-3 rounded-xl
+                                bg-gray-100 dark:bg-slate-800
+                                border border-gray-200 dark:border-white/[0.07]">
+                        <span class="flex-1 font-medium text-gray-900 dark:text-white"
+                              x-text="player.name"></span>
+                        <button @click="removePlayer(i)"
+                                class="text-gray-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 transition-colors">
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+                    </div>
+                </template>
+            </div>
+
+            <template x-if="players.length < 6">
+                <div class="flex gap-2 mb-6">
+                    <input x-model="newPlayerName"
+                           @keydown.enter="addPlayer()"
+                           type="text"
+                           placeholder="Имя команды / игрока"
+                           class="flex-1 px-4 py-2.5 rounded-xl text-sm outline-none
+                                  bg-white dark:bg-slate-800
+                                  border border-gray-300 dark:border-white/[0.1]
+                                  text-gray-900 dark:text-white
+                                  placeholder-gray-400 dark:placeholder-slate-500
+                                  focus:border-brand-500 dark:focus:border-brand-500">
+                    <button @click="addPlayer()"
+                            class="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:scale-105
+                                   bg-brand-100 dark:bg-brand-900/30 text-brand-600 dark:text-brand-300
+                                   border border-brand-200 dark:border-brand-700">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+                        </svg>
+                    </button>
+                </div>
+            </template>
+
+            <button @click="startGame()"
+                    class="w-full py-3.5 rounded-2xl font-bold text-base text-white transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+                    style="background:linear-gradient(135deg,#2563eb,#1d4ed8);
+                           box-shadow:0 0 24px rgba(37,99,235,0.3);">
+                Начать игру
+            </button>
+        </div>
+    </div>
+
+    <!-- ── Игровая доска ──────────────────────────────────────── -->
+    <div x-show="!setupMode" x-cloak>
+
+        <!-- Табло очков -->
+        <div class="pt-4 pb-4">
+            <div class="flex gap-2 px-4">
+                <template x-for="(player, i) in players" :key="i">
+                    <div class="si-score-card flex-1 min-w-0 rounded-2xl px-4 py-4 flex items-center justify-between gap-3">
+                        <div class="text-4xl font-bold truncate text-gray-900 dark:text-white"
+                             x-text="player.name"></div>
+                        <span @click="let v = prompt('Новый счёт:', player.score); if (v !== null) { let n = parseInt(v); player.score = isNaN(n) ? player.score : n; scheduleSave(); }"
+                              class="text-4xl font-bold tabular-nums shrink-0 cursor-pointer select-none"
+                              title="Нажмите для изменения"
+                              :class="player.score < 0 ? 'text-red-500 dark:text-red-400'
+                                    : player.score > 0 ? 'text-brand-600 dark:text-blue-400'
+                                    : 'text-gray-500 dark:text-slate-400'"
+                              x-text="(player.score > 0 ? '+' : '') + player.score"></span>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Сетка (категории строками, вопросы в строке) -->
+        <div x-show="!allAnswered" class="si-board-wrap px-4 pb-6">
+            <div class="grid gap-2"
+                 :style="`grid-template-columns: minmax(280px,400px) repeat(${maxRows}, minmax(60px,1fr))`">
+                <template x-for="cat in categories" :key="cat.id">
+                    <!-- display:contents — невидим для Grid, один корень для Alpine x-for -->
+                    <div style="display:contents">
+                        <!-- Заголовок категории — первая колонка строки -->
+                        <div class="si-cat-header flex flex-col items-center justify-center rounded-xl py-4 px-2 text-center gap-0.5"
+                             style="background:linear-gradient(145deg,#172554,#1e3a8a);
+                                    border:1px solid rgba(37,99,235,0.3);
+                                    min-height:112px;">
+                            <span class="text-[2.5rem] font-bold text-white leading-tight" x-text="cat.title"></span>
+                            <span x-show="cat.author"
+                                  class="text-xs leading-tight mt-0.5"
+                                  style="color:rgba(148,163,184,0.8);"
+                                  x-text="cat.author"></span>
+                        </div>
+                        <!-- Ячейки вопросов — оставшиеся колонки той же строки -->
+                        <template x-for="colIdx in maxRows" :key="colIdx">
+                            <button
+                                :disabled="!cat.questions[colIdx-1] || isAnswered(cat.questions[colIdx-1].id)"
+                                @click="cat.questions[colIdx-1] && !isAnswered(cat.questions[colIdx-1].id) && openQuestion(cat.questions[colIdx-1], cat.title)"
+                                class="rounded-xl h-28 w-full flex items-center justify-center font-bold text-[2.5rem]"
+                                :class="cat.questions[colIdx-1] && !isAnswered(cat.questions[colIdx-1].id) ? 'si-cell-active cursor-pointer' : 'cursor-default'"
+                                :style="cat.questions[colIdx-1] && !isAnswered(cat.questions[colIdx-1].id)
+                                    ? 'background:linear-gradient(145deg,#1e3a8a,#1d4ed8);color:#fbbf24;text-shadow:0 1px 4px rgba(0,0,0,0.5);'
+                                    : cat.questions[colIdx-1] && isAnswered(cat.questions[colIdx-1].id)
+                                        ? 'background:rgba(15,23,42,0.15);border:1px solid rgba(15,23,42,0.12);color:#9ca3af;'
+                                        : 'background:transparent;'">
+                                <template x-if="cat.questions[colIdx-1] && !isAnswered(cat.questions[colIdx-1].id)">
+                                    <span x-text="cat.questions[colIdx-1].points"></span>
+                                </template>
+                                <template x-if="cat.questions[colIdx-1] && isAnswered(cat.questions[colIdx-1].id)">
+                                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24"
+                                         stroke="currentColor" stroke-width="2.5" class="text-gray-400">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+                                    </svg>
+                                </template>
+                            </button>
+                        </template>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- ── Финальный экран ─────────────────────────────────── -->
+        <div x-show="allAnswered" class="flex flex-col items-center justify-center text-center px-4 py-16">
+            <div class="w-20 h-20 rounded-full flex items-center justify-center mb-6"
+                 style="background:linear-gradient(135deg,#fbbf24,#f59e0b);box-shadow:0 0 40px rgba(251,191,36,0.3);">
+                <svg class="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                          d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0
+                             3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946
+                             3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138
+                             3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806
+                             3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438
+                             3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/>
+                </svg>
+            </div>
+            <h2 class="text-3xl font-black mb-2 text-gray-900 dark:text-white">Игра окончена!</h2>
+
+            <template x-if="players.length > 0">
+                <div>
+                    <p class="text-lg mb-1 text-gray-500 dark:text-slate-400">
+                        Победитель:
+                        <span class="font-bold text-yellow-500 dark:text-yellow-400"
+                              x-text="[...players].sort((a,b)=>b.score-a.score)[0].name"></span>
+                    </p>
+                    <p class="text-2xl font-bold mb-8 text-brand-600 dark:text-blue-400"
+                       x-text="([...players].sort((a,b)=>b.score-a.score)[0].score > 0 ? '+' : '')
+                               + [...players].sort((a,b)=>b.score-a.score)[0].score + ' очков'"></p>
+                </div>
+            </template>
+
+            <!-- Итоговая таблица -->
+            <div class="rounded-2xl overflow-hidden mb-8 w-full max-w-xs
+                        border border-gray-200 dark:border-white/[0.08]">
+                <template x-for="(p, i) in [...players].sort((a,b)=>b.score-a.score)" :key="i">
+                    <div class="flex items-center justify-between px-5 py-3"
+                         :class="i === 0
+                             ? 'bg-yellow-50 dark:bg-yellow-400/[0.08]'
+                             : 'bg-white dark:bg-white/[0.02]'"
+                         :style="i < players.length-1 ? 'border-bottom:1px solid var(--si-row-border)' : ''">
+                        <div class="flex items-center gap-3">
+                            <span class="text-sm w-5 text-gray-400 dark:text-slate-500" x-text="i+1"></span>
+                            <span class="font-medium text-gray-900 dark:text-white" x-text="p.name"></span>
+                        </div>
+                        <span class="font-bold tabular-nums"
+                              :class="i===0 ? 'text-yellow-500 dark:text-yellow-400' : 'text-gray-600 dark:text-slate-300'"
+                              x-text="(p.score > 0 ? '+' : '') + p.score"></span>
+                    </div>
+                </template>
+            </div>
+
+            <button @click="resetGame()"
+                    class="px-8 py-3 rounded-2xl font-bold text-base text-white transition-all hover:scale-[1.02]"
+                    style="background:linear-gradient(135deg,#2563eb,#1d4ed8);
+                           box-shadow:0 0 24px rgba(37,99,235,0.3);">
+                Играть снова
+            </button>
+        </div>
+    </div>
+
+    <!-- ── Полноэкранное окно вопроса ────────────────────────── -->
+    <div x-show="activeQuestion" x-cloak
+         class="si-overlay-enter fixed inset-0 z-50 flex flex-col"
+         style="background:linear-gradient(180deg,#080e1e 0%,#0d1a35 100%);"
+         @keydown.escape.window="closeModal()">
+
+        <!-- Верхняя строка: категория + очки + закрыть -->
+        <div class="flex items-center justify-between px-6 py-4 flex-shrink-0"
+             style="border-bottom:1px solid rgba(255,255,255,0.06);">
+            <div>
+                <div class="text-xs font-semibold uppercase tracking-widest mb-0.5 text-slate-500"
+                     x-text="activeQuestion?.categoryTitle"></div>
+                <div class="text-2xl font-black"
+                     style="color:#fbbf24;text-shadow:0 0 16px rgba(251,191,36,0.4);"
+                     x-text="(activeQuestion?.points || 0) + ' очков'"></div>
+            </div>
+            <button @click="closeModal()"
+                    class="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:bg-white/10 text-slate-500 hover:text-white">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+
+        <!-- Центр: текст вопроса + медиа (flex-1 чтобы занять всё пространство) -->
+        <div class="flex-1 flex flex-col items-center justify-center px-8 py-6 overflow-y-auto">
+
+            <!-- Медиафайлы -->
+            <template x-if="activeQuestion?.media?.length">
+                <div class="mb-6 flex flex-wrap gap-3 justify-center">
+                    <template x-for="(m, i) in activeQuestion.media" :key="i">
+                        <div>
+                            <template x-if="m.type === 'image'">
+                                <img :src="m.url" class="max-h-64 rounded-2xl object-contain">
+                            </template>
+                            <template x-if="m.type === 'audio'">
+                                <audio :src="m.url" controls class="w-full min-w-[300px]"></audio>
+                            </template>
+                            <template x-if="m.type === 'video'">
+                                <video :src="m.url" controls class="max-h-64 rounded-2xl"></video>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+            </template>
+
+            <!-- Текст вопроса — крупно по центру -->
+            <p class="text-5xl sm:text-6xl lg:text-7xl font-bold text-white text-center leading-tight max-w-6xl"
+               x-text="activeQuestion?.text"></p>
+
+            <!-- Ответ (появляется по кнопке) -->
+            <div class="mt-8 w-full max-w-5xl">
+                <div x-show="!showAnswer">
+                    <button @click="revealAnswer()"
+                            class="w-full py-3.5 rounded-2xl font-semibold text-base transition-all duration-200 hover:scale-[1.01]"
+                            style="background:rgba(37,99,235,0.15);border:1px solid rgba(37,99,235,0.4);color:#93c5fd;">
+                        Показать ответ
+                    </button>
+                </div>
+                <div x-show="showAnswer" class="si-answer-reveal rounded-2xl p-5"
+                     style="background:rgba(22,163,74,0.12);border:1px solid rgba(22,163,74,0.35);">
+                    <div class="text-xs font-semibold uppercase tracking-widest mb-2"
+                         style="color:#22c55e;">Ответ</div>
+                    <div class="text-5xl sm:text-6xl font-bold mb-3 leading-tight" style="color:#86efac;"
+                         x-text="activeQuestion?.answer"></div>
+                    <!-- Медиафайлы к ответу -->
+                    <template x-if="activeQuestion?.answer_media?.length">
+                        <div class="flex flex-wrap gap-3 mt-3 pt-3"
+                             style="border-top:1px solid rgba(22,163,74,0.2);">
+                            <template x-for="(m, i) in activeQuestion.answer_media" :key="i">
+                                <div>
+                                    <template x-if="m.type === 'image'">
+                                        <img :src="m.url" class="max-h-56 rounded-xl object-contain">
+                                    </template>
+                                    <template x-if="m.type === 'audio'">
+                                        <audio :src="m.url" controls class="min-w-[280px]"></audio>
+                                    </template>
+                                    <template x-if="m.type === 'video'">
+                                        <video :src="m.url" controls class="max-h-56 rounded-xl"></video>
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+
+        <!-- Низ: кнопки результата -->
+        <div class="flex-shrink-0 px-6 py-5"
+             style="border-top:1px solid rgba(255,255,255,0.06);background:rgba(0,0,0,0.3);">
+
+            <!-- Обычный режим: кнопки игроков -->
+            <div x-show="!allWrong">
+                <div class="text-xs font-semibold uppercase tracking-widest mb-3 text-slate-500">
+                    Кто ответил правильно?
+                </div>
+                <div class="flex flex-wrap gap-2 items-center">
+                    <template x-for="(player, i) in players" :key="i">
+                        <div class="flex gap-1.5">
+                            <button @click="!hasAnsweredWrong(i) && markResult(i, true)"
+                                    :disabled="hasAnsweredWrong(i)"
+                                    class="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition-all"
+                                    :class="hasAnsweredWrong(i) ? 'opacity-40 cursor-not-allowed' : 'hover:scale-[1.03]'"
+                                    :style="hasAnsweredWrong(i)
+                                        ? 'background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:#64748b;'
+                                        : 'background:rgba(22,163,74,0.2);border:1px solid rgba(22,163,74,0.4);color:#86efac;'">
+                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+                                </svg>
+                                <span x-text="player.name"
+                                      :class="hasAnsweredWrong(i) ? 'line-through' : ''"></span>
+                            </button>
+                            <button @click="!hasAnsweredWrong(i) && markResult(i, false)"
+                                    :disabled="hasAnsweredWrong(i)"
+                                    class="flex items-center justify-center px-3 py-2 rounded-xl text-sm font-semibold transition-all"
+                                    :class="hasAnsweredWrong(i) ? 'opacity-40 cursor-not-allowed' : 'hover:scale-[1.03]'"
+                                    :style="hasAnsweredWrong(i)
+                                        ? 'background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:#64748b;'
+                                        : 'background:rgba(220,38,38,0.15);border:1px solid rgba(220,38,38,0.3);color:#fca5a5;'">
+                                ✗
+                            </button>
+                        </div>
+                    </template>
+                    <button @click="skipQuestion()"
+                            class="px-4 py-2 rounded-xl text-sm font-medium transition-all hover:scale-[1.03]"
+                            style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;">
+                        Никто / пропустить
+                    </button>
+                </div>
+            </div>
+
+            <!-- Все ответили неверно: кнопка возврата -->
+            <div x-show="allWrong" class="flex flex-col items-center gap-3">
+                <p class="text-sm text-slate-400">Никто не ответил правильно</p>
+                <button @click="skipQuestion()"
+                        class="flex items-center gap-2 px-6 py-3 rounded-2xl font-semibold text-base transition-all hover:scale-[1.02]"
+                        style="background:rgba(37,99,235,0.2);border:1px solid rgba(37,99,235,0.4);color:#93c5fd;">
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h7"/>
+                    </svg>
+                    Вернуться к таблице вопросов
+                </button>
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -29,6 +29,7 @@ urlpatterns = [
     path('pages/', include('pages.urls')),
     path('lessons/', include('lessons.urls')),
     path('spetskurs/', include('spetskurs.urls')),
+    path('games/', include('games.urls')),
     path('', home_page_view, name='home'),
     path('about/', about_page_view, name='about'),
 ]

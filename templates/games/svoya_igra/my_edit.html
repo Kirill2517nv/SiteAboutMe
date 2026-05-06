@@ -1,0 +1,257 @@
+{% extends 'base.html' %}
+
+{% block title %}Редактировать тему — {{ category.title }}{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+    <div class="flex items-center gap-2 text-sm text-gray-400 dark:text-slate-500 mb-6">
+        <a href="{% url 'games:si_list' %}" class="hover:text-brand-600 dark:hover:text-cyan-400">Своя игра</a>
+        <span>/</span>
+        <a href="{% url 'games:si_my' %}" class="hover:text-brand-600 dark:hover:text-cyan-400">Мои заявки</a>
+        <span>/</span>
+        <span>Редактировать</span>
+    </div>
+
+    <h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">Редактировать тему</h1>
+    <p class="text-sm text-gray-500 dark:text-slate-400 mb-6">Внесите правки и отправьте тему на повторную проверку.</p>
+
+    <!-- Комментарий модератора -->
+    {% if category.moderator_comment %}
+    <div class="mb-6 p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+        <p class="text-sm font-medium text-red-700 dark:text-red-400 mb-1">Причина отклонения:</p>
+        <p class="text-sm text-red-600 dark:text-red-300">{{ category.moderator_comment }}</p>
+    </div>
+    {% endif %}
+
+    <!-- Форма категории + кнопка переотправки -->
+    <div class="bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 p-6 mb-6">
+        <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Информация о теме</h2>
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="resubmit" value="1">
+            <div class="space-y-4 mb-5">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
+                        Название темы <span class="text-red-500">*</span>
+                    </label>
+                    <input type="text" name="title" value="{{ category.title }}" required
+                           class="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 dark:text-white">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Описание</label>
+                    <textarea name="description" rows="3"
+                              class="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 dark:text-white">{{ category.description }}</textarea>
+                </div>
+            </div>
+            <button type="submit"
+                    class="px-6 py-2.5 bg-green-600 hover:bg-green-700 text-white font-medium rounded-xl transition-colors">
+                Отправить на повторную проверку
+            </button>
+        </form>
+    </div>
+
+    <!-- Вопросы -->
+    <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-3">Вопросы</h2>
+    <div class="space-y-3 mb-8">
+        {% for item in questions_data %}
+        {% with q=item.question q_media=item.q_media a_media=item.a_media edit_form=item.edit_form %}
+        <div x-data="{ editing: false }" class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 overflow-hidden">
+
+            <!-- Режим просмотра -->
+            <div x-show="!editing" class="p-4">
+                <div class="flex items-start gap-4">
+                    <span class="shrink-0 w-14 h-14 rounded-lg bg-blue-700 text-white flex items-center justify-center font-bold text-lg">
+                        {{ q.points }}
+                    </span>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-gray-900 dark:text-white font-medium whitespace-pre-wrap">{{ q.text }}</p>
+                        <p class="text-sm text-green-600 dark:text-green-400 mt-1">Ответ: {{ q.answer }}</p>
+
+                        {% if q_media %}
+                        <div class="mt-3">
+                            <p class="text-xs font-medium text-gray-400 dark:text-slate-500 mb-2">Медиа к вопросу</p>
+                            <div class="flex flex-wrap gap-3 items-start">
+                                {% for m in q_media %}
+                                {% if m.media_type == 'image' %}
+                                <a href="{{ m.file.url }}" target="_blank">
+                                    <img src="{{ m.file.url }}" alt="" class="h-20 w-auto rounded-lg object-cover border border-gray-200 dark:border-slate-600 hover:opacity-90 transition-opacity">
+                                </a>
+                                {% elif m.media_type == 'audio' %}
+                                <div class="bg-gray-50 dark:bg-slate-700 rounded-lg px-3 py-2">
+                                    <p class="text-xs text-gray-400 dark:text-slate-500 mb-1">Аудио</p>
+                                    <audio controls class="h-8"><source src="{{ m.file.url }}"></audio>
+                                </div>
+                                {% elif m.media_type == 'video' %}
+                                <div class="bg-gray-50 dark:bg-slate-700 rounded-lg p-2">
+                                    <p class="text-xs text-gray-400 dark:text-slate-500 mb-1">Видео</p>
+                                    <video controls class="h-24 rounded border border-gray-200 dark:border-slate-600"><source src="{{ m.file.url }}"></video>
+                                </div>
+                                {% endif %}
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        {% if a_media %}
+                        <div class="mt-3">
+                            <p class="text-xs font-medium text-green-500 dark:text-green-400 mb-2">Медиа к ответу</p>
+                            <div class="flex flex-wrap gap-3 items-start">
+                                {% for m in a_media %}
+                                {% if m.media_type == 'image' %}
+                                <a href="{{ m.file.url }}" target="_blank">
+                                    <img src="{{ m.file.url }}" alt="" class="h-20 w-auto rounded-lg object-cover border border-green-200 dark:border-green-800 hover:opacity-90 transition-opacity">
+                                </a>
+                                {% elif m.media_type == 'audio' %}
+                                <div class="bg-green-50 dark:bg-green-900/20 rounded-lg px-3 py-2">
+                                    <p class="text-xs text-green-500 dark:text-green-400 mb-1">Аудио</p>
+                                    <audio controls class="h-8"><source src="{{ m.file.url }}"></audio>
+                                </div>
+                                {% elif m.media_type == 'video' %}
+                                <div class="bg-green-50 dark:bg-green-900/20 rounded-lg p-2">
+                                    <p class="text-xs text-green-500 dark:text-green-400 mb-1">Видео</p>
+                                    <video controls class="h-24 rounded border border-green-200 dark:border-green-800"><source src="{{ m.file.url }}"></video>
+                                </div>
+                                {% endif %}
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <button @click="editing = true" type="button"
+                            class="shrink-0 text-sm text-gray-400 dark:text-slate-500 hover:text-brand-600 dark:hover:text-cyan-400 transition-colors">
+                        Изменить
+                    </button>
+                </div>
+            </div>
+
+            <!-- Режим редактирования -->
+            <div x-show="editing" class="p-4 border-t-2 border-brand-500/30 bg-brand-50/20 dark:bg-slate-800/80">
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-sm font-semibold text-brand-600 dark:text-cyan-400">Редактирование вопроса</span>
+                    <button @click="editing = false" type="button"
+                            class="text-sm text-gray-400 hover:text-gray-700 dark:hover:text-slate-200 transition-colors">
+                        Отмена
+                    </button>
+                </div>
+
+                <!-- Удаление существующих файлов (отдельные формы) -->
+                {% if q_media or a_media %}
+                <div class="mb-4 rounded-lg border border-gray-200 dark:border-slate-600 p-3 bg-white dark:bg-slate-700/50">
+                    <p class="text-xs font-medium text-gray-500 dark:text-slate-400 mb-3">Текущие медиафайлы</p>
+                    {% if q_media %}
+                    <p class="text-xs text-gray-400 dark:text-slate-500 mb-2">К вопросу:</p>
+                    <div class="flex flex-wrap gap-2 mb-3">
+                        {% for m in q_media %}
+                        <div class="flex items-center gap-1.5 bg-gray-50 dark:bg-slate-600 rounded-lg pl-2 pr-1 py-1">
+                            {% if m.media_type == 'image' %}
+                            <img src="{{ m.file.url }}" alt="" class="h-8 w-8 rounded object-cover">
+                            {% elif m.media_type == 'audio' %}
+                            <svg class="w-4 h-4 text-brand-500 shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+                            <span class="text-xs text-gray-500 dark:text-slate-300">Аудио</span>
+                            {% elif m.media_type == 'video' %}
+                            <svg class="w-4 h-4 text-brand-500 shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
+                            <span class="text-xs text-gray-500 dark:text-slate-300">Видео</span>
+                            {% endif %}
+                            <form method="post" action="{% url 'games:si_media_delete' m.id %}" class="inline"
+                                  onsubmit="return confirm('Удалить этот файл?')">
+                                {% csrf_token %}
+                                <input type="hidden" name="next" value="my_edit">
+                                <button type="submit" class="w-5 h-5 bg-red-100 hover:bg-red-500 text-red-500 hover:text-white rounded flex items-center justify-center text-xs font-bold transition-colors">×</button>
+                            </form>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                    {% if a_media %}
+                    <p class="text-xs text-green-500 dark:text-green-400 mb-2">К ответу:</p>
+                    <div class="flex flex-wrap gap-2">
+                        {% for m in a_media %}
+                        <div class="flex items-center gap-1.5 bg-green-50 dark:bg-green-900/20 rounded-lg pl-2 pr-1 py-1">
+                            {% if m.media_type == 'image' %}
+                            <img src="{{ m.file.url }}" alt="" class="h-8 w-8 rounded object-cover">
+                            {% elif m.media_type == 'audio' %}
+                            <svg class="w-4 h-4 text-green-500 shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+                            <span class="text-xs text-green-600 dark:text-green-400">Аудио</span>
+                            {% elif m.media_type == 'video' %}
+                            <svg class="w-4 h-4 text-green-500 shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
+                            <span class="text-xs text-green-600 dark:text-green-400">Видео</span>
+                            {% endif %}
+                            <form method="post" action="{% url 'games:si_media_delete' m.id %}" class="inline"
+                                  onsubmit="return confirm('Удалить этот файл?')">
+                                {% csrf_token %}
+                                <input type="hidden" name="next" value="my_edit">
+                                <button type="submit" class="w-5 h-5 bg-red-100 hover:bg-red-500 text-red-500 hover:text-white rounded flex items-center justify-center text-xs font-bold transition-colors">×</button>
+                            </form>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+
+                <!-- Форма редактирования вопроса -->
+                <form method="post" action="{% url 'games:si_question_edit' q.id %}" enctype="multipart/form-data" class="space-y-3">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="my_edit">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Стоимость</label>
+                        {{ edit_form.points }}
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Текст вопроса</label>
+                        {{ edit_form.text }}
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Ответ</label>
+                        {{ edit_form.answer }}
+                    </div>
+
+                    <div class="pt-2 border-t border-gray-100 dark:border-slate-600">
+                        <p class="text-xs font-medium text-brand-600 dark:text-cyan-400 mb-2">Добавить медиа к <span class="font-bold">вопросу</span></p>
+                        <div class="grid grid-cols-3 gap-2">
+                            <div>
+                                <label class="block text-xs text-gray-400 dark:text-slate-500 mb-1">Изображения</label>
+                                <input type="file" name="q_image" accept="image/*" multiple class="block w-full text-xs text-gray-500 dark:text-slate-400 file:mr-1 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-brand-50 dark:file:bg-slate-700 file:text-brand-700 dark:file:text-cyan-300">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 dark:text-slate-500 mb-1">Аудио</label>
+                                <input type="file" name="q_audio" accept="audio/*" multiple class="block w-full text-xs text-gray-500 dark:text-slate-400 file:mr-1 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-brand-50 dark:file:bg-slate-700 file:text-brand-700 dark:file:text-cyan-300">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 dark:text-slate-500 mb-1">Видео</label>
+                                <input type="file" name="q_video" accept="video/*" multiple class="block w-full text-xs text-gray-500 dark:text-slate-400 file:mr-1 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-brand-50 dark:file:bg-slate-700 file:text-brand-700 dark:file:text-cyan-300">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="pt-2 border-t border-gray-100 dark:border-slate-600">
+                        <p class="text-xs font-medium text-green-600 dark:text-green-400 mb-2">Добавить медиа к <span class="font-bold">ответу</span></p>
+                        <div class="grid grid-cols-3 gap-2">
+                            <div>
+                                <label class="block text-xs text-gray-400 dark:text-slate-500 mb-1">Изображения</label>
+                                <input type="file" name="a_image" accept="image/*" multiple class="block w-full text-xs text-gray-500 dark:text-slate-400 file:mr-1 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-green-50 dark:file:bg-slate-700 file:text-green-700 dark:file:text-green-300">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 dark:text-slate-500 mb-1">Аудио</label>
+                                <input type="file" name="a_audio" accept="audio/*" multiple class="block w-full text-xs text-gray-500 dark:text-slate-400 file:mr-1 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-green-50 dark:file:bg-slate-700 file:text-green-700 dark:file:text-green-300">
+                            </div>
+                            <div>
+                                <label class="block text-xs text-gray-400 dark:text-slate-500 mb-1">Видео</label>
+                                <input type="file" name="a_video" accept="video/*" multiple class="block w-full text-xs text-gray-500 dark:text-slate-400 file:mr-1 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-green-50 dark:file:bg-slate-700 file:text-green-700 dark:file:text-green-300">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex gap-2 pt-1">
+                        <button type="submit" class="px-5 py-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium rounded-lg transition-colors">Сохранить вопрос</button>
+                        <button type="button" @click="editing = false" class="px-5 py-2 text-gray-600 dark:text-slate-300 border border-gray-300 dark:border-slate-600 text-sm font-medium rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors">Отмена</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        {% endwith %}
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
