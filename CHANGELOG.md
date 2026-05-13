@@ -3,6 +3,17 @@
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.0.0/).
 Проект использует [Semantic Versioning](https://semver.org/lang/ru/).
 
+## [0.1.7] - 2026-05-13
+
+### Изменено
+
+#### Инфраструктура
+- Tailwind CSS мигрирован с CDN (`cdn.tailwindcss.com`) на локальную сборку: добавлены `tailwind.config.js`, `static/css/tailwind.input.css`, собранный `static/css/tailwind.css` (Tailwind v3.4.19, минифицирован)
+- `package.json`: добавлены скрипты `tw:build` и `tw:watch` для пересборки CSS
+- `templates/base.html`: CDN-тег `<script>` заменён на `<link>` к локальному файлу — устраняет деградацию UI на клиентских машинах без доступа к CDN (старые браузеры, файрвол)
+
+---
+
 ## [0.1.6] - 2026-05-06
 
 ### Добавлено

@@ -33,6 +33,19 @@ cd /home/admin/site
 git pull
 ```
 
+### 2а. Пересборка Tailwind CSS (при изменении шаблонов или конфига)
+
+Если в коммите менялись HTML-шаблоны или `tailwind.config.js`, CSS пересобирается локально перед деплоем и коммитится в репозиторий. На сервере дополнительных действий не требуется — `static/css/tailwind.css` уже актуален.
+
+Для локальной пересборки (на Windows-машине разработчика):
+
+```bash
+npm run tw:build
+```
+
+!!! info "Node.js"
+    Требуется Node.js с установленными зависимостями (`npm install`). Tailwind v3.4+ установлен в `devDependencies`.
+
 ### 3. Обновление зависимостей
 
 ```bash
@@ -92,6 +105,9 @@ python manage.py migrate && \
 python manage.py collectstatic --noinput && \
 sudo systemctl restart site celery celerybeat daphne
 ```
+
+!!! note "Tailwind CSS"
+    `static/css/tailwind.css` хранится в репозитории и деплоится через `git pull`. Пересборка CSS выполняется на машине разработчика командой `npm run tw:build` и коммитируется вместе с изменениями шаблонов.
 
 ---
 
