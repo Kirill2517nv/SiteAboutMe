@@ -76,7 +76,9 @@
     categories: {{ categories_json }},
     boardState: {{ board_state_json }},
     players: {{ players_json }}
-})" class="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white">
+})"
+     x-effect="document.body.style.overflow = activeQuestion ? 'hidden' : ''"
+     class="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white">
 
     <!-- ── Шапка ──────────────────────────────────────────────── -->
     <div class="flex items-center justify-between px-4 py-3 sticky top-0 z-10
@@ -320,15 +322,18 @@
         </div>
 
         <!-- Центр: текст вопроса + медиа (flex-1 чтобы занять всё пространство) -->
-        <div class="flex-1 flex flex-col items-center justify-center px-8 py-6 overflow-y-auto">
+        <div class="flex-1 overflow-y-auto">
+        <div class="flex flex-col items-center justify-center min-h-full px-8 py-6">
 
             <!-- Медиафайлы -->
             <template x-if="activeQuestion?.media?.length">
-                <div class="mb-6 flex flex-wrap gap-3 justify-center">
+                <div class="mb-4 flex flex-col items-center w-full gap-3">
                     <template x-for="(m, i) in activeQuestion.media" :key="i">
-                        <div>
+                        <div class="flex justify-center w-full">
                             <template x-if="m.type === 'image'">
-                                <img :src="m.url" class="max-h-64 rounded-2xl object-contain">
+                                <img :src="m.url"
+                                     :style="'max-height:' + (showAnswer ? '38vh' : '80vh') + ';transition:max-height 0.3s ease'"
+                                     class="w-auto max-w-full rounded-2xl object-contain">
                             </template>
                             <template x-if="m.type === 'audio'">
                                 <audio :src="m.url" controls class="w-full min-w-[300px]"></audio>
@@ -362,12 +367,12 @@
                          x-text="activeQuestion?.answer"></div>
                     <!-- Медиафайлы к ответу -->
                     <template x-if="activeQuestion?.answer_media?.length">
-                        <div class="flex flex-wrap gap-3 mt-3 pt-3"
+                        <div class="flex flex-col items-center gap-3 mt-3 pt-3 w-full"
                              style="border-top:1px solid rgba(22,163,74,0.2);">
                             <template x-for="(m, i) in activeQuestion.answer_media" :key="i">
-                                <div>
+                                <div class="flex justify-center w-full">
                                     <template x-if="m.type === 'image'">
-                                        <img :src="m.url" class="max-h-56 rounded-xl object-contain">
+                                        <img :src="m.url" style="max-height:38vh" class="w-auto max-w-full rounded-xl object-contain">
                                     </template>
                                     <template x-if="m.type === 'audio'">
                                         <audio :src="m.url" controls class="min-w-[280px]"></audio>
@@ -381,6 +386,7 @@
                     </template>
                 </div>
             </div>
+        </div>
         </div>
 
         <!-- Низ: кнопки результата -->
