@@ -3,6 +3,24 @@
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.0.0/).
 Проект использует [Semantic Versioning](https://semver.org/lang/ru/).
 
+## [0.1.8] - 2026-06-10
+
+### Добавлено
+
+#### Страница «Обо мне» (`pages`)
+- Модели `AuthorProfile`, `AuthorPhoto`, `AuthorVideo`, `AuthorEvent` для управления контентом страницы из админки
+- `AuthorEvent` поддерживает типы: образование, публикация, конференция, награда/грант; поля `year`, `month`, `is_current` (флаг «настоящее время»), `doi_or_url`
+- Admin-регистрация всех четырёх моделей с `list_editable`, `list_filter`, `search_fields` и fieldset-группировкой для `AuthorProfile`
+- Миграции `0010` (создание четырёх моделей) и `0011` (добавление поля `is_current` в `AuthorEvent`)
+
+### Изменено
+
+#### Страница «Обо мне» (`pages`)
+- `about_page_view` расширен: передаёт в шаблон `profile`, `photos`, `videos`, `education`, `publications`, `conferences`
+- Полный редизайн `templates/about.html`: hero-секция с портретом автора, галерея фото (Swiper.js), секция презентаций с нативным видеоплеером, секция хронологии событий (образование, публикации, конференции) с данными из `AuthorEvent`; секция видеозаголовок переименована в «Презентации с выступлений»
+
+---
+
 ## [0.1.7] - 2026-05-13
 
 ### Изменено
