@@ -1,152 +1,535 @@
 {% extends 'base.html' %}
 {% load static %}
 
-{% block title %}Об авторе{% endblock title %}
+{% block title %}Об авторе{% endblock %}
+
+{% block extra_css %}
+<style>
+  .author-swiper {
+    --swiper-navigation-color: #2563eb;
+    --swiper-pagination-color: #2563eb;
+  }
+  html.dark .author-swiper {
+    --swiper-navigation-color: #3b82f6;
+    --swiper-pagination-color: #3b82f6;
+  }
+  .author-swiper .swiper-button-prev,
+  .author-swiper .swiper-button-next {
+    width: 44px;
+    height: 44px;
+    background: rgba(255,255,255,0.88);
+    border-radius: 50%;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+  }
+  html.dark .author-swiper .swiper-button-prev,
+  html.dark .author-swiper .swiper-button-next {
+    background: rgba(15,23,42,0.85);
+  }
+  .author-swiper .swiper-button-prev::after,
+  .author-swiper .swiper-button-next::after {
+    font-size: 15px;
+    font-weight: 800;
+  }
+  .author-swiper .swiper-pagination-bullet-active {
+    width: 20px;
+    border-radius: 4px;
+    transition: width 0.3s ease;
+  }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
-    <!-- Заголовок страницы -->
-    <div class="text-center mb-12" data-aos="fade-down">
-        <h1 class="text-4xl font-bold text-gray-900 mb-4">Об авторе</h1>
+{# ── 1. Hero ─────────────────────────────────────────────────────────────── #}
+<section class="relative overflow-hidden bg-gradient-to-br from-brand-600 to-brand-900 text-white">
+  <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24
+              flex flex-col-reverse md:flex-row items-center gap-10">
+
+    {# Текст #}
+    <div class="flex-1 text-center md:text-left" data-aos="fade-right">
+      <p class="text-blue-200 text-sm font-semibold uppercase tracking-widest mb-3">Об авторе</p>
+      <h1 class="text-3xl sm:text-4xl lg:text-5xl font-bold leading-tight mb-4">
+        {{ profile.full_name|default:"Новоселов Кирилл Васильевич" }}
+      </h1>
+      <p class="text-blue-100 text-lg leading-relaxed mb-8 max-w-lg">
+        {{ profile.role|default:"Аспирант, Институт гидродинамики им. М.А. Лаврентьева СО РАН" }}
+      </p>
+      <div class="flex flex-wrap gap-3 justify-center md:justify-start">
+        {% if education %}
+        <a href="#education"
+           class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm font-medium transition-colors">
+          Образование
+        </a>
+        {% endif %}
+        {% if videos %}
+        <a href="#research"
+           class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm font-medium transition-colors">
+          Исследования
+        </a>
+        {% endif %}
+        {% if publications or conferences %}
+        <a href="#publications"
+           class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm font-medium transition-colors">
+          Публикации
+        </a>
+        {% endif %}
+        {% if profile %}
+          {% if profile.email or profile.telegram_url or profile.vk_url %}
+          <a href="#contacts"
+             class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm font-medium transition-colors">
+            Контакты
+          </a>
+          {% endif %}
+        {% endif %}
+      </div>
     </div>
 
-    <!-- Блоки контента -->
-    <div class="blocks-container space-y-8">
-        {% for block in blocks %}
-        <article class="content-block about-block about-block-{{ block.block_type }} {{ block.card_bg|default:'bg-white' }} rounded-xl shadow-md overflow-hidden relative"
-                 data-aos="fade-up"
-                 data-aos-delay="{{ forloop.counter0 }}00">
+    {# Портрет #}
+    {% if profile and profile.portrait %}
+    <div class="flex-shrink-0" data-aos="fade-left">
+      <div class="rounded-3xl overflow-hidden shadow-2xl"
+           style="width: 192px; height: 256px; min-width: 192px; outline: 4px solid rgba(255,255,255,0.28);">
+        <img src="{{ profile.portrait.url }}"
+             alt="{{ profile.full_name }}"
+             class="w-full h-full object-cover object-center">
+      </div>
+    </div>
+    {% endif %}
 
-            <!-- Layout: вертикальный -->
-            {% if block.layout == 'vertical' %}
-            <div class="block-content-wrapper p-6">
-                {% if block.title %}
-                <h2 class="block-title {{ block.title_font_size|default:'text-2xl' }} font-bold {{ block.title_color|default:'text-gray-900' }} mb-4" style="text-align: {{ block.text_align }};">{{ block.title }}</h2>
-                {% endif %}
+  </div>
+</section>
 
-                {% if block.block_type == 'text' or block.block_type == 'text_image' %}
-                <div class="block-text-container mb-4" style="text-align: {{ block.text_align }};">
-                    <div class="block-content prose prose-lg max-w-none {{ block.content_font_size|default:'text-base' }} {{ block.content_color|default:'text-gray-700' }}">
-                        {{ block.content|safe|linebreaks }}
-                    </div>
-                </div>
-                {% endif %}
+{# ── 2. Биография и научные интересы ─────────────────────────────────────── #}
+{% if profile %}
+  {% if profile.bio or profile.research_interests %}
+  <section class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <div class="grid md:grid-cols-2 gap-6">
 
-                {% if block.block_type == 'image' or block.block_type == 'text_image' %}
-                    {% if block.image %}
-                    <div class="block-image-container pswp-gallery"
-                         style="width: {{ block.image_width }}%; margin: 0 {% if block.image_align == 'center' %}auto{% elif block.image_align == 'right' %}0 0 auto{% else %}auto 0 0{% endif %};">
-                        <a href="{{ block.image.url }}"
-                           data-pswp-width="1200"
-                           data-pswp-height="800"
-                           target="_blank">
-                            <img src="{{ block.image.url }}"
-                                 alt="{{ block.title }}"
-                                 class="block-image rounded-lg w-full cursor-zoom-in hover:opacity-90 transition-opacity"
-                                 style="object-fit: {{ block.image_object_fit|default:'cover' }}; object-position: {{ block.image_position_x|default:50 }}% {{ block.image_position_y|default:50 }}%;">
-                        </a>
-                    </div>
-                    {% endif %}
-                {% endif %}
-            </div>
+      {% if profile.bio %}
+      <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-sm
+                  border border-gray-100 dark:border-slate-700 p-6"
+           data-aos="fade-up">
+        <h2 class="text-xl font-bold text-gray-900 dark:text-slate-100 mb-4 flex items-center gap-3">
+          <span class="w-8 h-8 bg-brand-50 dark:bg-brand-900/40 rounded-lg
+                       flex items-center justify-center flex-shrink-0">
+            <svg class="w-4 h-4 text-brand-600 dark:text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+            </svg>
+          </span>
+          О себе
+        </h2>
+        <p class="text-gray-700 dark:text-slate-300 leading-relaxed">{{ profile.bio }}</p>
+      </div>
+      {% endif %}
 
-            <!-- Layout: горизонтальный (текст слева) -->
-            {% elif block.layout == 'horizontal' %}
-            <div class="block-content-wrapper p-6 flex flex-col md:flex-row gap-6">
-                {% if block.block_type == 'text' or block.block_type == 'text_image' %}
-                <div class="block-text-container flex-1" style="text-align: {{ block.text_align }};">
-                    {% if block.title %}
-                    <h2 class="block-title {{ block.title_font_size|default:'text-2xl' }} font-bold {{ block.title_color|default:'text-gray-900' }} mb-4">{{ block.title }}</h2>
-                    {% endif %}
-                    <div class="block-content prose prose-lg max-w-none {{ block.content_font_size|default:'text-base' }} {{ block.content_color|default:'text-gray-700' }}">
-                        {{ block.content|safe|linebreaks }}
-                    </div>
-                </div>
-                {% endif %}
+      {% if profile.research_interests %}
+      <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-sm
+                  border border-gray-100 dark:border-slate-700 p-6"
+           data-aos="fade-up" data-aos-delay="100">
+        <h2 class="text-xl font-bold text-gray-900 dark:text-slate-100 mb-4 flex items-center gap-3">
+          <span class="w-8 h-8 bg-brand-50 dark:bg-brand-900/40 rounded-lg
+                       flex items-center justify-center flex-shrink-0">
+            <svg class="w-4 h-4 text-brand-600 dark:text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>
+            </svg>
+          </span>
+          Научные интересы
+        </h2>
+        <p class="text-gray-700 dark:text-slate-300 leading-relaxed">{{ profile.research_interests }}</p>
+      </div>
+      {% endif %}
 
-                {% if block.block_type == 'image' or block.block_type == 'text_image' %}
-                    {% if block.image %}
-                    <div class="block-image-container pswp-gallery flex-shrink-0"
-                         style="width: {{ block.image_width }}%;">
-                        <a href="{{ block.image.url }}"
-                           data-pswp-width="1200"
-                           data-pswp-height="800"
-                           target="_blank">
-                            <img src="{{ block.image.url }}"
-                                 alt="{{ block.title }}"
-                                 class="block-image rounded-lg w-full cursor-zoom-in hover:opacity-90 transition-opacity"
-                                 style="object-fit: {{ block.image_object_fit|default:'cover' }}; object-position: {{ block.image_position_x|default:50 }}% {{ block.image_position_y|default:50 }}%;">
-                        </a>
-                    </div>
-                    {% endif %}
-                {% endif %}
-            </div>
+    </div>
+  </section>
+  {% endif %}
+{% endif %}
 
-            <!-- Layout: горизонтальный (картинка слева) -->
-            {% elif block.layout == 'horizontal-reverse' %}
-            <div class="block-content-wrapper p-6 flex flex-col md:flex-row-reverse gap-6">
-                {% if block.block_type == 'text' or block.block_type == 'text_image' %}
-                <div class="block-text-container flex-1" style="text-align: {{ block.text_align }};">
-                    {% if block.title %}
-                    <h2 class="block-title {{ block.title_font_size|default:'text-2xl' }} font-bold {{ block.title_color|default:'text-gray-900' }} mb-4">{{ block.title }}</h2>
-                    {% endif %}
-                    <div class="block-content prose prose-lg max-w-none {{ block.content_font_size|default:'text-base' }} {{ block.content_color|default:'text-gray-700' }}">
-                        {{ block.content|safe|linebreaks }}
-                    </div>
-                </div>
-                {% endif %}
+{# ── 3. Таймлайн образования ─────────────────────────────────────────────── #}
+{% if education %}
+<section class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12" id="education">
+  <h2 class="text-2xl font-bold text-gray-900 dark:text-slate-100 mb-8" data-aos="fade-right">
+    Образование
+  </h2>
+  <div class="relative">
+    <div class="absolute left-5 top-2 bottom-2 w-0.5 bg-brand-100 dark:bg-brand-900"></div>
+    <div class="space-y-6">
+      {% for event in education %}
+      <div class="relative pl-14"
+           data-aos="fade-left"
+           data-aos-delay="{{ forloop.counter0 }}00">
+        <div class="absolute left-3.5 top-2 w-3 h-3 rounded-full
+                    bg-brand-600 dark:bg-brand-500
+                    ring-4 ring-white dark:ring-slate-900"></div>
+        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm
+                    border border-gray-100 dark:border-slate-700 p-5">
+          <p class="text-xs font-bold text-brand-600 dark:text-brand-500
+                    uppercase tracking-widest mb-1">
+            {% if event.is_current %}{{ event.year }} — н.в.{% else %}{{ event.year }}{% endif %}
+          </p>
+          <h3 class="font-semibold text-gray-900 dark:text-slate-100">{{ event.title }}</h3>
+          {% if event.subtitle %}
+          <p class="text-sm text-gray-500 dark:text-slate-400 mt-1">{{ event.subtitle }}</p>
+          {% endif %}
+          {% if event.description %}
+          <p class="text-sm text-gray-600 dark:text-slate-400 mt-2 leading-relaxed">{{ event.description }}</p>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endif %}
 
-                {% if block.block_type == 'image' or block.block_type == 'text_image' %}
-                    {% if block.image %}
-                    <div class="block-image-container pswp-gallery flex-shrink-0"
-                         style="width: {{ block.image_width }}%;">
-                        <a href="{{ block.image.url }}"
-                           data-pswp-width="1200"
-                           data-pswp-height="800"
-                           target="_blank">
-                            <img src="{{ block.image.url }}"
-                                 alt="{{ block.title }}"
-                                 class="block-image rounded-lg w-full cursor-zoom-in hover:opacity-90 transition-opacity"
-                                 style="object-fit: {{ block.image_object_fit|default:'cover' }}; object-position: {{ block.image_position_x|default:50 }}% {{ block.image_position_y|default:50 }}%;">
-                        </a>
-                    </div>
-                    {% endif %}
-                {% endif %}
-            </div>
-            {% else %}
-            <!-- Fallback для неизвестного layout -->
-            <div class="block-content-wrapper p-6">
-                {% if block.block_type == 'text' or block.block_type == 'text_image' %}
-                <div class="block-text-container" style="text-align: {{ block.text_align }};">
-                    <div class="block-content prose prose-lg max-w-none {{ block.content_font_size|default:'text-base' }} {{ block.content_color|default:'text-gray-700' }}">
-                        {{ block.content|safe|linebreaks }}
-                    </div>
-                </div>
-                {% endif %}
+{# ── 4. Видео-симуляции ──────────────────────────────────────────────────── #}
+{% if videos %}
+<section class="bg-gray-50 py-12" id="research">
+  <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+    <h2 class="text-2xl font-bold text-gray-900 dark:text-slate-100 mb-8" data-aos="fade-right">
+      Презентации с выступлений
+    </h2>
+    <div class="grid sm:grid-cols-2 gap-6">
+      {% for video in videos %}
+      <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-sm
+                  border border-gray-100 dark:border-slate-700 overflow-hidden
+                  hover:shadow-md transition-shadow duration-300"
+           data-aos="fade-up"
+           data-aos-delay="{{ forloop.counter0 }}00">
+        <div class="relative bg-black" style="aspect-ratio: 16/9;">
+          <video class="w-full h-full object-contain"
+                 controls
+                 preload="none"
+                 {% if video.poster %}poster="{{ video.poster.url }}"{% endif %}>
+            <source src="{{ video.video_file.url }}" type="video/mp4">
+          </video>
+        </div>
+        <div class="p-4">
+          <h3 class="font-semibold text-gray-900 dark:text-slate-100 text-sm leading-snug">
+            {{ video.title }}
+          </h3>
+          {% if video.description %}
+          <p class="text-xs text-gray-500 dark:text-slate-400 mt-1 leading-relaxed">
+            {{ video.description }}
+          </p>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endif %}
 
-                {% if block.block_type == 'image' or block.block_type == 'text_image' %}
-                    {% if block.image %}
-                    <div class="block-image-container mt-4" style="width: {{ block.image_width }}%;">
-                        <img src="{{ block.image.url }}" alt="{{ block.title }}" class="block-image rounded-lg w-full">
-                    </div>
-                    {% endif %}
-                {% endif %}
-            </div>
-            {% endif %}
-        </article>
-        {% empty %}
-        <div class="content-block about-block bg-white rounded-xl shadow-md p-8 text-center">
-            <div class="text-gray-400 mb-4">
-                <svg class="w-16 h-16 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+{# ── 5. Фотокарусель ─────────────────────────────────────────────────────── #}
+{% if photos %}
+<section class="py-12">
+  <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 mb-6">
+    <h2 class="text-2xl font-bold text-gray-900 dark:text-slate-100" data-aos="fade-right">
+      Фотогалерея
+    </h2>
+  </div>
+
+  <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+  <div class="swiper author-swiper rounded-2xl overflow-hidden pb-10">
+    <div class="swiper-wrapper">
+      {% for photo in photos %}
+      <div class="swiper-slide">
+        <a href="{{ photo.image.url }}"
+           target="_blank"
+           rel="noopener"
+           class="block relative overflow-hidden group bg-gray-900"
+           style="height: clamp(280px, 45vw, 520px);">
+          <img src="{{ photo.image.url }}"
+               alt="{{ photo.alt_text|default:photo.caption|default:'Фото автора' }}"
+               class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105">
+          {# Всегда видимый градиент снизу #}
+          <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/50 to-transparent h-24 pointer-events-none"></div>
+          {% if photo.caption %}
+          <div class="absolute bottom-4 left-6 right-6">
+            <p class="text-white text-sm font-medium drop-shadow">{{ photo.caption }}</p>
+          </div>
+          {% endif %}
+        </a>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="swiper-pagination" style="bottom: 14px;"></div>
+    <div class="swiper-button-prev" style="left: 16px;"></div>
+    <div class="swiper-button-next" style="right: 16px;"></div>
+  </div>
+  </div>
+</section>
+{% endif %}
+
+{# ── 6. Публикации и конференции ─────────────────────────────────────────── #}
+{% if publications or conferences %}
+<section class="bg-gray-50 py-12" id="publications">
+  <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+
+    <h2 class="text-2xl font-bold text-gray-900 dark:text-slate-100 mb-8" data-aos="fade-right">
+      Публикации и конференции
+    </h2>
+
+    {% if publications %}
+    <div class="mb-10">
+      <h3 class="text-sm font-semibold text-gray-500 dark:text-slate-400
+                 uppercase tracking-wider mb-4 flex items-center gap-2">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+        </svg>
+        Публикации
+      </h3>
+      <div class="space-y-4">
+        {% for pub in publications %}
+        <div class="bg-white dark:bg-slate-800 rounded-xl p-5 shadow-sm
+                    border border-gray-100 dark:border-slate-700
+                    hover:border-brand-100 dark:hover:border-brand-900 transition-colors"
+             data-aos="fade-up">
+          <div class="flex items-start gap-4">
+            <span class="flex-shrink-0 text-xs font-bold
+                         text-brand-600 dark:text-brand-500
+                         bg-brand-50 dark:bg-brand-900/30
+                         px-2 py-1 rounded-md mt-0.5">
+              {{ pub.year }}
+            </span>
+            <div class="flex-1 min-w-0">
+              <p class="font-semibold text-gray-900 dark:text-slate-100 leading-snug">
+                {{ pub.title }}
+              </p>
+              {% if pub.subtitle %}
+              <p class="text-sm text-gray-500 dark:text-slate-400 mt-1 italic">
+                {{ pub.subtitle }}
+              </p>
+              {% endif %}
+              {% if pub.description %}
+              <p class="text-sm text-gray-600 dark:text-slate-400 mt-2 leading-relaxed">
+                {{ pub.description }}
+              </p>
+              {% endif %}
+              {% if pub.doi_or_url %}
+              <a href="{{ pub.doi_or_url }}" target="_blank" rel="noopener noreferrer"
+                 class="inline-flex items-center gap-1 mt-2 text-xs font-medium
+                        text-brand-600 dark:text-brand-500 hover:underline">
+                <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
                 </svg>
+                DOI / Читать
+              </a>
+              {% endif %}
             </div>
-            <p class="block-content text-gray-500">
-                Информация скоро появится...
-            </p>
+          </div>
         </div>
         {% endfor %}
+      </div>
     </div>
+    {% endif %}
+
+    {% if conferences %}
+    <div>
+      <h3 class="text-sm font-semibold text-gray-500 dark:text-slate-400
+                 uppercase tracking-wider mb-4 flex items-center gap-2">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+        Конференции
+      </h3>
+      <div class="space-y-3">
+        {% for conf in conferences %}
+        <div class="flex items-start gap-4 bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm
+                    border border-gray-100 dark:border-slate-700"
+             data-aos="fade-up">
+          <span class="flex-shrink-0 text-xs font-bold
+                       text-brand-600 dark:text-brand-500
+                       bg-brand-50 dark:bg-brand-900/30
+                       px-2 py-1 rounded-md w-12 text-center">
+            {{ conf.year }}
+          </span>
+          <div class="flex-1 min-w-0">
+            <p class="font-medium text-gray-900 dark:text-slate-100 leading-snug">
+              {{ conf.title }}
+            </p>
+            {% if conf.subtitle %}
+            <p class="text-sm text-gray-500 dark:text-slate-400 mt-0.5">{{ conf.subtitle }}</p>
+            {% endif %}
+            {% if conf.doi_or_url %}
+            <a href="{{ conf.doi_or_url }}" target="_blank" rel="noopener noreferrer"
+               class="text-xs text-brand-600 dark:text-brand-500 hover:underline mt-1 inline-block">
+              Подробнее →
+            </a>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+</section>
+{% endif %}
+
+{# ── 7. Контакты ─────────────────────────────────────────────────────────── #}
+{% if profile %}
+  {% if profile.email or profile.telegram_url or profile.vk_url %}
+  <section class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12 pb-20"
+           id="contacts"
+           data-aos="fade-up">
+    <h2 class="text-2xl font-bold text-gray-900 dark:text-slate-100 mb-6">Контакты</h2>
+    <div class="flex flex-wrap gap-4">
+
+      {% if profile.email %}
+      <a href="mailto:{{ profile.email }}"
+         class="flex items-center gap-3 px-5 py-3
+                bg-white dark:bg-slate-800
+                border border-gray-200 dark:border-slate-700
+                rounded-xl shadow-sm
+                text-gray-700 dark:text-slate-300 text-sm font-medium
+                hover:border-brand-300 hover:text-brand-600
+                dark:hover:border-brand-700 dark:hover:text-brand-500
+                transition-all duration-200">
+        <svg class="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+        </svg>
+        {{ profile.email }}
+      </a>
+      {% endif %}
+
+      {% if profile.telegram_url %}
+      <a href="{{ profile.telegram_url }}" target="_blank" rel="noopener noreferrer"
+         class="flex items-center gap-3 px-5 py-3
+                bg-white dark:bg-slate-800
+                border border-gray-200 dark:border-slate-700
+                rounded-xl shadow-sm
+                text-gray-700 dark:text-slate-300 text-sm font-medium
+                hover:border-sky-300 hover:text-sky-600
+                dark:hover:border-sky-600 dark:hover:text-sky-400
+                transition-all duration-200">
+        <svg class="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
+        </svg>
+        Telegram
+      </a>
+      {% endif %}
+
+      {% if profile.vk_url %}
+      <a href="{{ profile.vk_url }}" target="_blank" rel="noopener noreferrer"
+         class="flex items-center gap-3 px-5 py-3
+                bg-white dark:bg-slate-800
+                border border-gray-200 dark:border-slate-700
+                rounded-xl shadow-sm
+                text-gray-700 dark:text-slate-300 text-sm font-medium
+                hover:border-blue-300 hover:text-blue-600
+                dark:hover:border-blue-600 dark:hover:text-blue-400
+                transition-all duration-200">
+        <svg class="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M15.684 0H8.316C1.592 0 0 1.592 0 8.316v7.368C0 22.408 1.592 24 8.316 24h7.368C22.408 24 24 22.408 24 15.684V8.316C24 1.592 22.391 0 15.684 0zm3.692 17.123h-1.744c-.66 0-.862-.525-2.049-1.714-1.033-1.01-1.49-.9-1.49.525v1.569a.594.594 0 0 1-.668.62c-2.508-.247-5.252-1.726-7.14-4.97C4.77 9.979 4.2 7.527 4.2 6.887c0-.345.138-.667.6-.667h1.744c.414 0 .571.19.73.617.779 2.207 2.082 4.142 2.624 4.142.2 0 .29-.093.29-.6V8.77c-.065-1.077-.629-1.167-.629-1.55a.358.358 0 0 1 .36-.362h2.743c.346 0 .47.185.47.589v3.175c0 .346.156.47.254.47.2 0 .363-.124.73-.5 1.126-1.266 1.932-3.213 1.932-3.213.106-.229.3-.442.714-.442h1.744c.523 0 .637.27.523.6-.217.998-2.329 3.995-2.329 3.995-.185.3-.253.44 0 .775.185.257.785.795 1.183 1.273.737.86 1.301 1.58 1.453 2.08.132.413-.09.624-.524.624z"/>
+        </svg>
+        ВКонтакте
+      </a>
+      {% endif %}
+
+    </div>
+  </section>
+  {% endif %}
+{% endif %}
+
+{# ── Fallback: устаревшие ContentBlock ───────────────────────────────────── #}
+{% if blocks %}
+<div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div class="space-y-8">
+    {% for block in blocks %}
+    <article class="{{ block.card_bg|default:'bg-white' }} rounded-xl shadow-md overflow-hidden"
+             data-aos="fade-up"
+             data-aos-delay="{{ forloop.counter0 }}00">
+      {% if block.layout == 'vertical' %}
+      <div class="p-6">
+        {% if block.title %}
+        <h2 class="{{ block.title_font_size|default:'text-2xl' }} font-bold {{ block.title_color|default:'text-gray-900' }} mb-4">{{ block.title }}</h2>
+        {% endif %}
+        {% if block.block_type == 'text' or block.block_type == 'text_image' %}
+        <div class="{{ block.content_font_size|default:'text-base' }} {{ block.content_color|default:'text-gray-700' }}">
+          {{ block.content|safe|linebreaks }}
+        </div>
+        {% endif %}
+        {% if block.image %}
+        <div class="mt-4 pswp-gallery" style="width: {{ block.image_width }}%;">
+          <a href="{{ block.image.url }}" data-pswp-width="1200" data-pswp-height="800" target="_blank">
+            <img src="{{ block.image.url }}" alt="{{ block.title }}"
+                 class="rounded-lg w-full cursor-zoom-in hover:opacity-90 transition-opacity">
+          </a>
+        </div>
+        {% endif %}
+      </div>
+      {% elif block.layout == 'horizontal' %}
+      <div class="p-6 flex flex-col md:flex-row gap-6">
+        <div class="flex-1">
+          {% if block.title %}
+          <h2 class="{{ block.title_font_size|default:'text-2xl' }} font-bold {{ block.title_color|default:'text-gray-900' }} mb-4">{{ block.title }}</h2>
+          {% endif %}
+          <div class="{{ block.content_font_size|default:'text-base' }} {{ block.content_color|default:'text-gray-700' }}">
+            {{ block.content|safe|linebreaks }}
+          </div>
+        </div>
+        {% if block.image %}
+        <div class="flex-shrink-0 pswp-gallery" style="width: {{ block.image_width }}%;">
+          <a href="{{ block.image.url }}" data-pswp-width="1200" data-pswp-height="800" target="_blank">
+            <img src="{{ block.image.url }}" alt="{{ block.title }}"
+                 class="rounded-lg w-full cursor-zoom-in hover:opacity-90 transition-opacity">
+          </a>
+        </div>
+        {% endif %}
+      </div>
+      {% else %}
+      <div class="p-6 flex flex-col md:flex-row-reverse gap-6">
+        <div class="flex-1">
+          {% if block.title %}
+          <h2 class="{{ block.title_font_size|default:'text-2xl' }} font-bold {{ block.title_color|default:'text-gray-900' }} mb-4">{{ block.title }}</h2>
+          {% endif %}
+          <div class="{{ block.content_font_size|default:'text-base' }} {{ block.content_color|default:'text-gray-700' }}">
+            {{ block.content|safe|linebreaks }}
+          </div>
+        </div>
+        {% if block.image %}
+        <div class="flex-shrink-0 pswp-gallery" style="width: {{ block.image_width }}%;">
+          <a href="{{ block.image.url }}" data-pswp-width="1200" data-pswp-height="800" target="_blank">
+            <img src="{{ block.image.url }}" alt="{{ block.title }}"
+                 class="rounded-lg w-full cursor-zoom-in hover:opacity-90 transition-opacity">
+          </a>
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
 </div>
+{% endif %}
+
 {% endblock content %}
+
+{% block extra_js %}
+{% if photos %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  new Swiper('.author-swiper', {
+    slidesPerView: 1,
+    spaceBetween: 0,
+    loop: true,
+    speed: 600,
+    autoplay: { delay: 4500, disableOnInteraction: true },
+    pagination: { el: '.swiper-pagination', clickable: true },
+    navigation: {
+      nextEl: '.swiper-button-next',
+      prevEl: '.swiper-button-prev',
+    },
+  });
+});
+</script>
+{% endif %}
+{% endblock extra_js %}

@@ -77,5 +77,22 @@ def home_page_view(request):
 
 
 def about_page_view(request):
+    from .models import AuthorProfile, AuthorPhoto, AuthorVideo, AuthorEvent
+    profile = AuthorProfile.objects.filter(is_active=True).first()
+    photos = AuthorPhoto.objects.filter(is_visible=True)
+    videos = AuthorVideo.objects.filter(is_visible=True)
+    events = AuthorEvent.objects.filter(is_visible=True)
+    education = events.filter(event_type='education')
+    publications = events.filter(event_type='publication')
+    conferences = events.filter(event_type='conference')
     blocks = ContentBlock.objects.filter(page='about').order_by('order')
-    return render(request, 'about.html', {'blocks': blocks, 'page_type': 'about'})
+    return render(request, 'about.html', {
+        'profile': profile,
+        'photos': photos,
+        'videos': videos,
+        'education': education,
+        'publications': publications,
+        'conferences': conferences,
+        'blocks': blocks,
+        'page_type': 'about',
+    })
