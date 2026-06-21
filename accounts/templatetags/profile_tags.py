@@ -1,7 +1,18 @@
 from django import template
 from datetime import timedelta
+from django.utils.html import conditional_escape
+from django.utils.safestring import mark_safe
 
 register = template.Library()
+
+
+@register.filter(is_safe=True)
+def bio_paragraphs(value):
+    """Разбивает текст по любым переносам строк в <p> теги (для красной строки каждого абзаца)."""
+    if not value:
+        return ''
+    lines = [l.strip() for l in value.splitlines() if l.strip()]
+    return mark_safe(''.join(f'<p>{conditional_escape(l)}</p>' for l in lines))
 
 
 @register.filter

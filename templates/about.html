@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load static %}
+{% load static profile_tags %}
 
 {% block title %}Об авторе{% endblock %}
 
@@ -34,6 +34,13 @@
     width: 20px;
     border-radius: 4px;
     transition: width 0.3s ease;
+  }
+  .bio-text p {
+    text-indent: 1.5em;
+    margin-bottom: 0.6em;
+  }
+  .bio-text p:last-child {
+    margin-bottom: 0;
   }
 </style>
 {% endblock %}
@@ -103,13 +110,13 @@
 {% if profile %}
   {% if profile.bio or profile.research_interests %}
   <section class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-    <div class="grid md:grid-cols-2 gap-6">
+    <div class="space-y-6">
 
       {% if profile.bio %}
       <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-sm
-                  border border-gray-100 dark:border-slate-700 p-6"
+                  border border-gray-100 dark:border-slate-700 p-6 sm:p-8"
            data-aos="fade-up">
-        <h2 class="text-xl font-bold text-gray-900 dark:text-slate-100 mb-4 flex items-center gap-3">
+        <h2 class="text-xl font-bold text-gray-900 dark:text-slate-100 mb-5 flex items-center gap-3">
           <span class="w-8 h-8 bg-brand-50 dark:bg-brand-900/40 rounded-lg
                        flex items-center justify-center flex-shrink-0">
             <svg class="w-4 h-4 text-brand-600 dark:text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -119,15 +126,17 @@
           </span>
           О себе
         </h2>
-        <p class="text-gray-700 dark:text-slate-300 leading-relaxed">{{ profile.bio }}</p>
+        <div class="bio-text text-gray-700 dark:text-slate-300 leading-relaxed text-base sm:text-[1.0625rem]">
+          {{ profile.bio|bio_paragraphs }}
+        </div>
       </div>
       {% endif %}
 
       {% if profile.research_interests %}
       <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-sm
-                  border border-gray-100 dark:border-slate-700 p-6"
+                  border border-gray-100 dark:border-slate-700 p-6 sm:p-8"
            data-aos="fade-up" data-aos-delay="100">
-        <h2 class="text-xl font-bold text-gray-900 dark:text-slate-100 mb-4 flex items-center gap-3">
+        <h2 class="text-xl font-bold text-gray-900 dark:text-slate-100 mb-5 flex items-center gap-3">
           <span class="w-8 h-8 bg-brand-50 dark:bg-brand-900/40 rounded-lg
                        flex items-center justify-center flex-shrink-0">
             <svg class="w-4 h-4 text-brand-600 dark:text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -137,7 +146,9 @@
           </span>
           Научные интересы
         </h2>
-        <p class="text-gray-700 dark:text-slate-300 leading-relaxed">{{ profile.research_interests }}</p>
+        <div class="bio-text text-gray-700 dark:text-slate-300 leading-relaxed text-base sm:text-[1.0625rem]">
+          {{ profile.research_interests|bio_paragraphs }}
+        </div>
       </div>
       {% endif %}
 
