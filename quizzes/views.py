@@ -63,9 +63,18 @@ def get_effective_quiz_settings(user, quiz):
     based on user/group assignments.
     Returns None if no assignment found for this user (unless superuser).
     """
+    # Тесты-самопроверки учебника доступны любому авторизованному ученику
+    # (доступ гейтится статьёй учебника, а не назначением на группу).
+    if getattr(quiz, 'is_self_check', False) and user.is_authenticated:
+        return {
+            'start_date': quiz.start_date,
+            'end_date': quiz.end_date,
+            'max_attempts': quiz.max_attempts,
+        }
+
     # Check for individual assignment first
     assignment = QuizAssignment.objects.filter(user=user, quiz=quiz).first()
-    
+
     # If no individual, check group
     if not assignment and hasattr(user, 'profile') and user.profile.group:
         assignment = QuizAssignment.objects.filter(group=user.profile.group, quiz=quiz).first()
@@ -133,11 +142,11 @@ def quiz_list_view(request):
                 temp_assignments[qid] = a
     
     if user.is_superuser:
-        quizzes = Quiz.objects.exclude(quiz_type='exam')
+        quizzes = Quiz.objects.exclude(quiz_type='exam').exclude(is_self_check=True)
     else:
         quizzes = []
         for qid, a in temp_assignments.items():
-            if a.quiz.quiz_type != 'exam':
+            if a.quiz.quiz_type != 'exam' and not a.quiz.is_self_check:
                 quizzes.append(a.quiz)
 
     # Process effective settings
@@ -1299,6 +1308,11 @@ def quiz_detail_view(request, quiz_id):
 
         user_result.score = total_score
         user_result.save()
+
+        # Хук учебника: отметить статью «освоено», если пройдена самопроверка
+        if quiz.is_self_check:
+            from textbook.services import update_article_mastery
+            update_article_mastery(request.user, quiz)
 
         # Получаем неудачные ответы для детального отчета
         failed_answers = UserAnswer.objects.filter(

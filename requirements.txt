@@ -19,3 +19,5 @@ channels-redis==4.2.0
 daphne==4.1.0
 Pillow==12.1.0
 whitenoise==6.11.0
+markdown==3.7
+bleach==6.2.0

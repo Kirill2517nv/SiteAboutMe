@@ -202,6 +202,11 @@ def update_user_answer_from_submission(submission):
         user_result.score = total_score
         user_result.save(update_fields=['score'])
 
+    # Хук учебника: отметить статью «освоено», если пройдена самопроверка
+    if getattr(quiz, 'is_self_check', False):
+        from textbook.services import update_article_mastery
+        update_article_mastery(user_result.user, quiz)
+
     # ExamTaskProgress обновляется в update_exam_progress_from_submission()
 
 

@@ -1,0 +1,191 @@
+/**
+ * Стили статьи учебника: типографика текста/картинок + рамка виджетов + sticky-сайдбар.
+ *
+ * Подключить ПОСЛЕ design-tokens.css (использует его переменные --color-*, --radius-*,
+ * --shadow-* — см. design_handoff_article_style/reference/colors_and_type.css /
+ * static/css/design-tokens.css в самом проекте сайта).
+ *
+ * Заменяет собой Tailwind Typography (`prose prose-lg dark:prose-invert`), который в
+ * article_detail.html ничего не делает — в сборке tailwind.input.css нет
+ * @tailwindcss/typography, поэтому markdown-контент (text-блоки) рендерился голым HTML.
+ */
+
+/* ============================================================
+   ТИПОГРАФИКА СТАТЬИ — .article-body
+   Оборачивает { % for block in blocks % } — заменяет class="prose prose-lg dark:prose-invert"
+   ============================================================ */
+
+.article-body {
+  /* Масштаб шрифта — по умолчанию "large" (крупный), одобрено в дизайн-ревью.
+     Меняйте переменные ниже (или переключайте класс .article-body--normal), а не
+     переопределяйте font-size у конкретных тегов. */
+  --fs-h1: 34px;
+  --fs-h2: 25px;
+  --fs-p: 18.5px;
+  --fs-li: 18.5px;
+  --fs-cap: 14.5px;
+  --fs-table: 16px;
+  --lh-p: 1.8; /* @kind font */
+  --lh-li: 1.75; /* @kind font */
+}
+
+/* Компактный вариант (опционально) — навесить class="article-body article-body--normal" */
+.article-body--normal {
+  --fs-h1: 28px;
+  --fs-h2: 21px;
+  --fs-p: 16px;
+  --fs-li: 16px;
+  --fs-cap: 13px;
+  --fs-table: 14.5px;
+  --lh-p: 1.75; /* @kind font */
+  --lh-li: 1.7; /* @kind font */
+}
+
+.article-body h1 { font-size: var(--fs-h1); font-weight: 700; color: var(--color-text-heading); margin: 0 0 10px; }
+.article-body h2 { font-size: var(--fs-h2); font-weight: 700; color: var(--color-text-heading); margin: 0 0 14px; }
+.article-body p { font-size: var(--fs-p); line-height: var(--lh-p); color: var(--color-text-default); margin: 0 0 16px; }
+.article-body p:last-child { margin-bottom: 0; }
+.article-body ul, .article-body ol { margin: 0 0 16px; padding-left: 22px; }
+.article-body li { font-size: var(--fs-li); line-height: var(--lh-li); color: var(--color-text-default); margin-bottom: 6px; }
+.article-body li:last-child { margin-bottom: 0; }
+.article-body strong { color: var(--color-text-heading); font-weight: 600; }
+
+/* markdownify рендерит "> **Термин** — определение" как <blockquote>. Показываем как
+   карточку-определение с лейблом, а не как обычную цитату. */
+.article-body blockquote {
+  background: var(--color-brand-50);
+  border: 1px solid var(--color-brand-100);
+  border-radius: var(--radius-md);
+  padding: 16px 20px;
+  margin: 0 0 18px;
+  font-size: var(--fs-p);
+  line-height: var(--lh-p);
+  color: var(--color-text-default);
+}
+.article-body blockquote::before {
+  content: "Определение";
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--color-brand-700);
+  margin-bottom: 6px;
+}
+.article-body blockquote p { margin: 0; }
+
+.article-body table { width: 100%; border-collapse: collapse; margin: 0 0 18px; font-size: var(--fs-table); }
+.article-body th {
+  text-align: left; padding: 10px 14px; font-weight: 600; color: var(--color-text-heading);
+  background: var(--color-bg); border-bottom: 2px solid var(--color-border-medium);
+}
+.article-body td {
+  padding: 10px 14px; border-bottom: 1px solid var(--color-border-medium);
+  color: var(--color-text-default); vertical-align: top;
+}
+.article-body tr:last-child td { border-bottom: none; }
+
+.article-body figure { text-align: center; margin: 0 0 26px; }
+.article-body figure img {
+  max-width: 100%; border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border-medium); box-shadow: var(--shadow-sm);
+}
+.article-body figcaption {
+  margin-top: 10px; font-size: var(--fs-cap); color: var(--color-text-muted); font-style: italic;
+  max-width: 560px; margin-left: auto; margin-right: auto; line-height: 1.5;
+}
+
+html.dark .article-body blockquote { background: #172554; border-color: #1e3a8a; }
+html.dark .article-body th { background: #1e293b; }
+
+/* ============================================================
+   РАМКА ВИДЖЕТА — .textbook-widget
+   Оборачивает { % elif block.block_type == 'widget' % } вместо голого div.
+   Одинаковая для ЛЮБОГО виджета (top-answers, будущие форматы, даже тёмная
+   «Своя игра» — своя палитра внутри не будет резко выбиваться из страницы).
+   ============================================================ */
+
+.textbook-widget {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-medium);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  margin-bottom: 22px;
+}
+.textbook-widget__header {
+  display: flex; align-items: center; gap: 12px; padding: 14px 20px;
+  border-bottom: 1px solid var(--color-border-medium); background: var(--color-purple-bg);
+}
+.textbook-widget__icon {
+  width: 32px; height: 32px; border-radius: 8px; background: #fff; color: var(--color-purple);
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.textbook-widget__title { font-size: 14px; font-weight: 600; color: var(--color-text-heading); }
+.textbook-widget__subtitle { font-size: 12px; color: var(--color-text-muted); margin-top: 1px; }
+.textbook-widget__counter { font-size: 12px; font-weight: 600; color: var(--color-purple); white-space: nowrap; margin-left: auto; }
+.textbook-widget__body { padding: 24px 26px; }
+/* Если виджет — целая мини-страница в iframe (напр. Своя игра), уберите padding у
+   __body и добавьте border-radius на сам iframe вместо этого. */
+
+/* ---- top-answers («100 к одному») — конкретные элементы виджета ---- */
+.tw-topanswers__question { font-size: var(--fs-p, 16px); font-weight: 600; color: var(--color-text-heading); line-height: 1.5; margin: 0 0 18px; }
+.tw-topanswers__rows { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
+.tw-topanswers__row {
+  display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+  border: 1px solid var(--color-border-medium); border-radius: var(--radius-md);
+  background: var(--color-bg); transition: background .25s ease, border-color .25s ease;
+}
+.tw-topanswers__row.is-revealed { background: var(--color-brand-50); border-color: var(--color-brand-100); }
+.tw-topanswers__rank {
+  width: 28px; height: 28px; border-radius: 999px; background: #e5e7eb; color: var(--color-text-muted);
+  display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0;
+}
+.tw-topanswers__row.is-revealed .tw-topanswers__rank { background: var(--color-brand-600); color: #fff; }
+.tw-topanswers__label { flex: 1; font-size: 14.5px; color: var(--color-text-faint); }
+.tw-topanswers__row.is-revealed .tw-topanswers__label { color: var(--color-text-heading); font-weight: 600; }
+.tw-topanswers__percent {
+  font-size: 13px; font-weight: 700; color: var(--color-brand-700); background: var(--color-brand-100);
+  padding: 3px 10px; border-radius: 999px;
+}
+.tw-topanswers__controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.tw-topanswers__input {
+  flex: 1; min-width: 180px; padding: 10px 14px; font-size: 14px; border: 1px solid var(--color-border-input);
+  border-radius: var(--radius-md); font-family: inherit; outline: none; background: var(--color-surface); color: var(--color-text-default);
+}
+.tw-topanswers__btn { padding: 10px 18px; border-radius: var(--radius-md); font-size: 13px; font-weight: 600; border: none; cursor: pointer; font-family: inherit; }
+.tw-topanswers__btn--primary { background: var(--color-brand-600); color: #fff; }
+.tw-topanswers__btn--secondary { background: #f3f4f6; color: var(--color-text-default); font-weight: 500; }
+.tw-topanswers__meta { display: flex; align-items: center; gap: 14px; margin-top: 14px; min-height: 14px; }
+.tw-topanswers__strikes { display: flex; gap: 5px; }
+.tw-topanswers__strike { width: 9px; height: 9px; border-radius: 999px; background: #e5e7eb; display: inline-block; }
+.tw-topanswers__strike.is-active { background: var(--color-error); }
+.tw-topanswers__message { font-size: 12.5px; color: var(--color-error); font-weight: 500; }
+.tw-topanswers__note { font-size: var(--fs-cap, 12px); color: var(--color-text-faint); line-height: 1.5; margin: 18px 0 0; }
+
+/* ============================================================
+   STICKY-САЙДБАР статьи (список уроков раздела слева)
+   ============================================================ */
+
+/* Колонка-обёртка (управляет шириной при сворачивании — .w-collapsed { width:0 }) */
+.article-sidebar-col {
+  flex-shrink: 0; overflow: hidden; transition: width .2s ease;
+  position: sticky; top: 56px; /* высота navbar */
+  align-self: flex-start;
+  height: calc(100vh - 56px);
+  z-index: 1;
+}
+.article-sidebar-col.w-collapsed { width: 0; }
+.article-sidebar-col:not(.w-collapsed) { width: 260px; }
+.article-sidebar-inner { width: 260px; height: 100%; overflow-y: auto; border-right: 1px solid var(--color-border-medium); padding: 20px 16px; box-sizing: border-box; }
+
+/* Кнопка-«язычок» сворачивания сайдбара — тоже sticky, чтобы быть доступной при чтении вниз страницы */
+.article-sidebar-toggle-wrap { height: 0; overflow: visible; position: sticky; top: 90px; z-index: 4; }
+.article-sidebar-toggle {
+  position: relative; left: -40px; top: 0; width: 16px; height: 44px; border-radius: 0 8px 8px 0;
+  border-left: none; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;
+  background: var(--color-surface); border: 1px solid var(--color-border-medium); box-shadow: 2px 0 6px rgba(0,0,0,.06);
+}
+.article-sidebar-toggle.is-collapsed { background: var(--color-brand-600); border: none; box-shadow: 2px 0 6px rgba(37,99,235,.35); }
+.article-sidebar-toggle svg { color: #6b7280; transition: transform .15s ease; }
+.article-sidebar-toggle.is-collapsed svg { color: #fff; transform: rotate(180deg); }

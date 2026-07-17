@@ -27,6 +27,7 @@ class Quiz(models.Model):
     quiz_type = models.CharField(max_length=10, choices=QUIZ_TYPE_CHOICES, default='standard', verbose_name="Тип теста")
     exam_mode = models.CharField(max_length=10, choices=EXAM_MODE_CHOICES, default='practice', blank=True, verbose_name="Режим ЕГЭ")
     is_public = models.BooleanField(default=False, verbose_name="Публичный доступ", help_text="Доступен всем без назначения")
+    is_self_check = models.BooleanField(default=False, verbose_name="Самопроверка учебника", help_text="Тест-самопроверка статьи учебника: доступен любому авторизованному ученику через статью, скрыт из общего списка тестов")
     slug = models.SlugField(max_length=100, blank=True, null=True, unique=True,
                             verbose_name="Slug (для медиа-путей)")
 

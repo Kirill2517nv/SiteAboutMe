@@ -30,6 +30,7 @@ urlpatterns = [
     path('lessons/', include('lessons.urls')),
     path('spetskurs/', include('spetskurs.urls')),
     path('games/', include('games.urls')),
+    path('textbook/', include('textbook.urls')),
     path('', home_page_view, name='home'),
     path('about/', about_page_view, name='about'),
 ]

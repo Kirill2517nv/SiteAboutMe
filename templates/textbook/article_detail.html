@@ -1,0 +1,219 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load textbook_tags %}
+
+{% block title %}{{ article.title }} — Учебник{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+<link rel="stylesheet" href="{% static 'css/textbook-article.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 dark:bg-slate-900 text-gray-900 dark:text-slate-100" x-data="{ sidebarOpen: true }">
+    <div class="flex">
+
+        <!-- Сайдбар: соседние статьи блока / задания ЕГЭ -->
+        <aside class="article-sidebar-col hidden md:block" :class="sidebarOpen ? '' : 'w-collapsed'">
+            <div class="article-sidebar-inner">
+                <a href="{{ back_url }}" class="inline-flex items-center gap-1.5 text-sm text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200 transition-colors mb-4">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+                    </svg>
+                    Все статьи
+                </a>
+                {% if group_title %}
+                <div class="text-[11px] font-semibold text-gray-400 dark:text-slate-500 uppercase tracking-wide mb-2">{{ group_title }}</div>
+                {% endif %}
+                <div class="flex flex-col gap-px">
+                    {% for item in sidebar_items %}
+                    <a href="{{ item.article.get_absolute_url }}"
+                       class="flex items-center gap-2 px-2.5 py-2 rounded-lg text-sm transition-colors
+                              {% if item.article.id == article.id %}bg-brand-50 dark:bg-slate-800 text-brand-700 dark:text-cyan-400 font-semibold{% else %}text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-800{% endif %}">
+                        {% if item.status == 'read' or item.status == 'mastered' %}
+                        <svg class="w-[18px] h-[18px] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="#16a34a" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path stroke-linecap="round" stroke-linejoin="round" d="M8.5 12.5l2.5 2.5 4.5-5"></path></svg>
+                        {% elif item.status == 'reading' %}
+                        <svg class="w-[18px] h-[18px] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="#2563eb" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="3" fill="#2563eb" stroke="none"></circle></svg>
+                        {% else %}
+                        <svg class="w-[18px] h-[18px] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="#d1d5db" stroke-width="2"><circle cx="12" cy="12" r="9"></circle></svg>
+                        {% endif %}
+                        <span class="truncate">{{ item.article.title }}</span>
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+        </aside>
+
+        <div class="flex-1 min-w-0 max-w-3xl relative px-6 sm:px-10 py-8 pb-16"
+             id="article-root"
+             data-read-url="{% url 'textbook:mark_read' article.slug %}"
+             data-csrf="{{ csrf_token }}"
+             data-authenticated="{% if user.is_authenticated %}1{% else %}0{% endif %}">
+
+            <!-- Кнопка сворачивания сайдбара -->
+            <div class="article-sidebar-toggle-wrap hidden md:block">
+                <button @click="sidebarOpen = !sidebarOpen" title="Показать / скрыть навигацию"
+                        class="article-sidebar-toggle" :class="sidebarOpen ? '' : 'is-collapsed'">
+                    <svg class="w-3.5 h-3.5 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Хлебная крошка -->
+            <nav class="text-sm text-gray-500 dark:text-slate-400 mb-2 md:pl-2">
+                <a href="{{ back_url }}" class="hover:text-gray-700 dark:hover:text-slate-300 transition-colors">Учебник</a>
+                {% if group_title %}<span class="text-gray-300 dark:text-slate-600">/</span> {{ group_title }}{% endif %}
+                {% if article_number %}<span class="text-gray-300 dark:text-slate-600">/</span> Статья {{ article_number }}{% endif %}
+            </nav>
+
+            <!-- Заголовок + статус прогресса -->
+            <header class="mb-10 md:pl-2">
+                {% if progress %}
+                <div class="mb-3">
+                    <span id="progress-badge"
+                          data-status="{{ progress.status }}"
+                          class="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-400">
+                        {{ progress.get_status_display }}
+                    </span>
+                </div>
+                {% endif %}
+                <h1 class="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white leading-tight">{{ article.title }}</h1>
+                {% if article.description %}
+                <p class="mt-4 text-lg text-gray-600 dark:text-slate-400">{{ article.description }}</p>
+                {% endif %}
+                {% if not blocks %}
+                <span class="inline-flex items-center mt-4 px-2.5 py-1 rounded-full bg-gray-100 dark:bg-slate-800 text-gray-500 dark:text-slate-400 text-xs font-medium">Материалы скоро появятся</span>
+                {% endif %}
+                <div class="mt-6 border-t border-gray-200 dark:border-slate-800"></div>
+            </header>
+
+            <!-- Блоки контента -->
+            <div class="space-y-8 pswp-gallery md:pl-2">
+                {% for block in blocks %}
+                <article>
+                    {% if block.title and block.block_type != 'widget' %}
+                    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">{{ block.title }}</h2>
+                    {% endif %}
+
+                    {% if block.block_type == 'text' %}
+                    <div class="article-body">
+                        {{ block.content|markdownify }}
+                    </div>
+
+                    {% elif block.block_type == 'code' %}
+                    <div class="rounded-xl overflow-hidden border border-gray-200 dark:border-slate-700">
+                        <div class="bg-gray-100 dark:bg-slate-800 px-4 py-2 border-b border-gray-200 dark:border-slate-700 flex items-center gap-2">
+                            <span class="text-xs font-mono text-gray-500 dark:text-slate-400 uppercase tracking-wider">{{ block.code_language }}</span>
+                            <span class="text-[10px] text-gray-400 dark:text-slate-500 ml-auto">только чтение</span>
+                        </div>
+                        <pre class="bg-[#282c34] m-0 p-0 rounded-none overflow-x-auto"><code class="language-{{ block.code_language }} text-sm leading-relaxed !bg-transparent">{{ block.content }}</code></pre>
+                    </div>
+
+                    {% elif block.block_type == 'formula' %}
+                    <div class="bg-gray-100 dark:bg-slate-800 rounded-xl p-6 border border-gray-200 dark:border-slate-700 overflow-x-auto">
+                        <div class="text-center text-gray-800 dark:text-slate-200 text-lg">
+                            \[ {{ block.content }} \]
+                        </div>
+                    </div>
+
+                    {% elif block.block_type == 'image' %}
+                    <div class="article-body">
+                        <figure>
+                            {% if block.image %}
+                            <a href="{{ block.image.url }}" data-pswp-width="1600" data-pswp-height="1200" target="_blank">
+                                <img src="{{ block.image.url }}" alt="{{ block.title }}">
+                            </a>
+                            {% endif %}
+                            {% if block.content %}
+                            <figcaption>{{ block.content }}</figcaption>
+                            {% endif %}
+                        </figure>
+                    </div>
+
+                    {% elif block.block_type == 'video' %}
+                    <div>
+                        {% if block.video_url %}
+                        <div class="relative w-full rounded-xl overflow-hidden border border-gray-200 dark:border-slate-700" style="padding-top:56.25%">
+                            <iframe src="{{ block.video_url }}" class="absolute inset-0 w-full h-full"
+                                    frameborder="0" allowfullscreen loading="lazy"></iframe>
+                        </div>
+                        {% endif %}
+                        {% if block.content %}
+                        <p class="mt-3 text-sm text-gray-500 dark:text-slate-500 italic text-center">{{ block.content }}</p>
+                        {% endif %}
+                    </div>
+
+                    {% elif block.block_type == 'widget' %}
+                    <div data-widget="{{ block.widget_key }}"
+                         data-title="{{ block.title }}"
+                         data-config='{{ block.widget_config|widget_config_json }}'>
+                        <noscript>Для работы интерактивного виджета включите JavaScript.</noscript>
+                    </div>
+                    {% endif %}
+                </article>
+                {% endfor %}
+            </div>
+
+            <!-- Маркер конца статьи для трекинга «прочитано» -->
+            <div id="article-end" class="h-px"></div>
+
+            <!-- Самопроверка -->
+            {% if self_checks %}
+            <section class="mt-16 pt-8 border-t border-gray-200 dark:border-slate-800 md:pl-2">
+                <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">Задачи для самопроверки</h2>
+                <p class="text-sm text-gray-500 dark:text-slate-400 mb-6">Решите задачи, чтобы закрепить тему и отметить её освоенной.</p>
+                <div class="grid gap-3">
+                    {% for sc in self_checks %}
+                    <a href="{% url 'quizzes:quiz_detail' sc.quiz.id %}"
+                       class="flex items-center justify-between p-4 bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 hover:border-brand-300 dark:hover:border-cyan-500 transition-colors">
+                        <div>
+                            {% if sc.label %}<div class="text-xs uppercase tracking-wide text-gray-400 dark:text-slate-500 mb-0.5">{{ sc.label }}</div>{% endif %}
+                            <div class="font-medium text-gray-900 dark:text-white">{{ sc.quiz.title }}</div>
+                        </div>
+                        <span class="text-sm text-brand-600 dark:text-cyan-400 font-medium">Решать →</span>
+                    </a>
+                    {% endfor %}
+                </div>
+            </section>
+            {% endif %}
+
+            <!-- Предыдущая / следующая статья -->
+            {% if prev_article or next_article %}
+            <div class="flex items-center justify-between gap-3 mt-12 pt-6 border-t border-gray-200 dark:border-slate-800 md:pl-2">
+                {% if prev_article %}
+                <a href="{{ prev_article.get_absolute_url }}"
+                   class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-200 hover:bg-gray-200 dark:hover:bg-slate-700 transition-colors">
+                    ← {{ prev_article.title }}
+                </a>
+                {% endif %}
+                {% if next_article %}
+                <a href="{{ next_article.get_absolute_url }}"
+                   class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-200 hover:bg-gray-200 dark:hover:bg-slate-700 transition-colors ml-auto">
+                    {{ next_article.title }} →
+                </a>
+                {% endif %}
+            </div>
+            {% endif %}
+
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script>
+    window.MathJax = {
+        tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+        options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre'] }
+    };
+    document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
+    });
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" defer></script>
+<script src="{% static 'js/textbook-widgets.js' %}"></script>
+<script src="{% static 'js/textbook-progress.js' %}"></script>
+{% endblock %}
