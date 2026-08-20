@@ -556,7 +556,7 @@
         input.type = 'text';
         input.value = '0,1';
         input.placeholder = '0,1';
-        input.className = 'w-32 text-center rounded-md border px-2 py-1 font-mono text-base border-gray-200 bg-white text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white';
+        input.className = 'w-64 max-w-full text-center rounded-md border px-2 py-1 font-mono text-base border-gray-200 bg-white text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white';
         input.addEventListener('change', function () {
             const v = parseValue(input.value);
             if (v === null) {

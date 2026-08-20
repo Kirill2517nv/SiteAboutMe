@@ -78,7 +78,6 @@ base.html
 | `base.html` | `{ mobileMenu }` | Мобильное меню |
 | `about.html` | — | Блоки контента (только display) |
 | `quiz_detail.html` | `quizApp()` | Прохождение теста |
-| `quiz_list.html` | `{ search }` | Фильтр тестов |
 | `ege_detail.html` | `egeApp()` | EGE-тренажёр |
 | `ege_result.html` | `{ showDetails }` | Результаты EGE |
 | `ege_results.html` | `{ tab }` | История результатов |

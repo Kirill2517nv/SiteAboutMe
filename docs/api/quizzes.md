@@ -25,7 +25,7 @@ sequenceDiagram
     V->>DB: QuizAssignment (проверка доступа)
     V->>DB: Количество попыток
     alt Попытки исчерпаны
-        V-->>B: Redirect (quiz_list)
+        V-->>B: Redirect (back_url)
     end
     alt Тест завершён (expired)
         V->>DB: Лучшие ответы ученика
@@ -76,16 +76,6 @@ sequenceDiagram
   ]
 }
 ```
-
----
-
-### GET `/quizzes/` — Список тестов
-
-**View:** `quiz_list_view`
-**Auth:** Требуется
-**Template:** `quizzes/quiz_list.html`
-
-Показывает доступные тесты для текущего пользователя с учётом назначений и времени.
 
 ---
 

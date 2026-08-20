@@ -1,0 +1,56 @@
+{% comment %}
+Аватарки учеников, остановившихся на этом уроке. Строка урока — это <a>,
+поэтому кружки неинтерактивны: имя в title, наведение раскрывает полный список.
+
+Раскрытый список раздвигает саму строку, а не всплывает поверх неё: карточка
+блока обрезает содержимое (rounded-xl overflow-hidden), и абсолютный поповер у
+нижних уроков был бы срезан.
+{% endcomment %}
+{% if users %}
+<span class="flex justify-end group/pins shrink-0">
+
+    {# Свёрнуто: пять кружков и счётчик остальных #}
+    <span class="flex -space-x-1.5 group-hover/pins:hidden">
+        {% for u in users|slice:":5" %}
+        {% with name=u.get_full_name|default:u.username %}
+        {% if u.profile.avatar %}
+        <img src="{{ u.profile.avatar.url }}" alt="{{ name }}" title="{{ name }}"
+             class="w-6 h-6 rounded-full object-cover ring-2 ring-white dark:ring-slate-800">
+        {% else %}
+        <span title="{{ name }}"
+              class="w-6 h-6 rounded-full bg-gray-200 dark:bg-slate-600 text-gray-600 dark:text-slate-200 text-[10px] font-semibold flex items-center justify-center ring-2 ring-white dark:ring-slate-800">
+            {{ u.last_name|default:u.username|make_list|first|upper }}{{ u.first_name|make_list|first|upper|default:"" }}
+        </span>
+        {% endif %}
+        {% endwith %}
+        {% endfor %}
+        {% if users|length > 5 %}
+        <span class="w-6 h-6 rounded-full bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-300 text-[10px] font-semibold flex items-center justify-center ring-2 ring-white dark:ring-slate-800">
+            +{{ users|length|add:"-5" }}
+        </span>
+        {% endif %}
+    </span>
+
+    {# Развёрнуто по наведению: до 50 человек с фамилиями, в несколько строк #}
+    <span class="hidden group-hover/pins:flex flex-wrap justify-end items-center gap-x-3 gap-y-1.5 max-w-[560px]">
+        {% for u in users|slice:":50" %}
+        <span class="flex items-center gap-1.5 whitespace-nowrap">
+            {% if u.profile.avatar %}
+            <img src="{{ u.profile.avatar.url }}" alt=""
+                 class="w-5 h-5 rounded-full object-cover">
+            {% else %}
+            <span class="w-5 h-5 rounded-full bg-gray-200 dark:bg-slate-600 text-gray-600 dark:text-slate-200 text-[9px] font-semibold flex items-center justify-center">
+                {{ u.last_name|default:u.username|make_list|first|upper }}{{ u.first_name|make_list|first|upper|default:"" }}
+            </span>
+            {% endif %}
+            <span class="text-xs text-gray-600 dark:text-slate-300">
+                {% if u.last_name %}{{ u.last_name }}{% if u.first_name %} {{ u.first_name|slice:":1" }}.{% endif %}{% else %}{{ u.username }}{% endif %}
+            </span>
+        </span>
+        {% endfor %}
+        {% if users|length > 50 %}
+        <span class="text-xs text-gray-400 dark:text-slate-500">и ещё {{ users|length|add:"-50" }}</span>
+        {% endif %}
+    </span>
+</span>
+{% endif %}

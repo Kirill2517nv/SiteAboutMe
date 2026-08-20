@@ -38,25 +38,131 @@
                 <span class="text-[13px] text-gray-500 dark:text-slate-400 whitespace-nowrap">{{ total_done }} из {{ total_lessons }} уроков пройдено</span>
             </div>
 
+            {% if student_groups %}
+            {# Учителю — выбор классов, чьи аватарки показывать. Ученик видит свой класс без выбора. #}
+            <form method="get" class="flex flex-wrap items-center gap-3 mb-5 text-sm">
+                <span class="text-gray-500 dark:text-slate-400">Показывать классы:</span>
+                {% for row in student_groups %}
+                <label class="flex items-center gap-1.5 text-gray-700 dark:text-slate-300 cursor-pointer">
+                    <input type="checkbox" name="group" value="{{ row.group.id }}"
+                           {% if row.checked %}checked{% endif %}
+                           onchange="this.form.submit()"
+                           class="rounded border-gray-300 text-brand-600">
+                    {{ row.group.name }}
+                </label>
+                {% endfor %}
+            </form>
+            {% endif %}
+
             <!-- Аккордеон разделов -->
             <div class="flex flex-col gap-2.5">
                 {% for group in material_sections %}
                 <div class="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl overflow-hidden"
                      x-data="{ open: {% if forloop.first %}true{% else %}false{% endif %} }">
                     <button type="button" @click="open = !open"
-                            class="w-full flex items-center gap-3.5 px-[18px] py-4 text-left bg-transparent">
-                        <span class="w-7 h-7 rounded-lg bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300 text-[13px] font-semibold flex items-center justify-center flex-shrink-0">{{ group.section.order }}</span>
-                        <span class="flex-1 text-base font-semibold text-gray-900 dark:text-white">{{ group.section.title }}</span>
-                        <span class="text-xs text-gray-400 dark:text-slate-500 whitespace-nowrap">{{ group.done }}/{{ group.total }}</span>
-                        <svg class="w-4 h-4 text-gray-400 flex-shrink-0 transition-transform duration-150" :class="open ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
-                        </svg>
+                            class="w-full px-[18px] py-4 text-left bg-transparent">
+                        <span class="flex items-center gap-3.5">
+                            <span class="w-7 h-7 rounded-lg bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300 text-[13px] font-semibold flex items-center justify-center flex-shrink-0">{{ group.section.order }}</span>
+                            <span class="flex-1 text-base font-semibold text-gray-900 dark:text-white">{{ group.section.title }}</span>
+
+                            {% if group.section.deadline %}
+                            <span class="shrink-0 px-3 py-1.5 rounded-lg text-center {% if group.is_closed %}bg-red-100{% else %}bg-gray-100 dark:bg-slate-700{% endif %}">
+                                <span class="block text-xs uppercase tracking-wide {% if group.is_closed %}text-red-700{% else %}text-gray-500 dark:text-slate-400{% endif %}">Дедлайн</span>
+                                <span class="block text-sm font-semibold whitespace-nowrap {% if group.is_closed %}text-red-700{% else %}text-gray-900 dark:text-white{% endif %}">
+                                    {% if group.is_closed %}прошёл{% else %}{{ group.section.deadline|date:"d E" }}{% endif %}
+                                </span>
+                            </span>
+                            {% endif %}
+
+                            {% if group.grade %}
+                            <span class="shrink-0 px-3 py-1.5 rounded-lg text-center
+                                         {% if group.grade == 5 %}bg-green-100
+                                         {% elif group.grade == 4 %}bg-brand-100
+                                         {% elif group.grade == 3 %}bg-amber-100
+                                         {% else %}bg-red-100{% endif %}">
+                                <span class="block text-xs uppercase tracking-wide
+                                             {% if group.grade == 5 %}text-green-700
+                                             {% elif group.grade == 4 %}text-brand-700
+                                             {% elif group.grade == 3 %}text-amber-700
+                                             {% else %}text-red-700{% endif %}">Оценка</span>
+                                <span class="block text-lg font-bold leading-tight
+                                             {% if group.grade == 5 %}text-green-700
+                                             {% elif group.grade == 4 %}text-brand-700
+                                             {% elif group.grade == 3 %}text-amber-700
+                                             {% else %}text-red-700{% endif %}">{{ group.grade }}</span>
+                            </span>
+                            {% endif %}
+                            <svg class="w-4 h-4 text-gray-400 flex-shrink-0 transition-transform duration-150" :class="open ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+                            </svg>
+                        </span>
                     </button>
+
+                    {# Шкалы и кнопка практикума вынесены из кнопки аккордеона: ссылка внутри неё сворачивала бы блок. #}
+                    {% if user.is_authenticated and group.practicum.total or user.is_authenticated and group.self_check.total or user.is_superuser %}
+                    <div class="px-[18px] pb-4 flex items-center gap-4">
+                        <div class="flex-1 space-y-2">
+                            {% if group.practicum.total %}
+                            <div class="flex items-center gap-3">
+                                <span class="text-sm text-gray-500 dark:text-slate-400 w-32 shrink-0">Задачи блока</span>
+                                <span class="flex-1 h-2 bg-gray-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                                    <span class="block h-full bg-brand-600 rounded-full" style="width: {{ group.practicum.pct }}%"></span>
+                                </span>
+                                <span class="text-sm tabular-nums text-gray-500 dark:text-slate-400 whitespace-nowrap w-16 text-right">{{ group.practicum.done }}/{{ group.practicum.total }}</span>
+                            </div>
+                            {% if group.grade_scale %}
+                            {# Шкала оценок: сколько задач практикума нужно решить на «3», «4», «5». #}
+                            <div class="flex flex-wrap items-center gap-3 text-xs">
+                                <span class="text-gray-500 dark:text-slate-400 w-32 shrink-0">Задач на оценку</span>
+                                {% for step in group.grade_scale %}
+                                <span class="px-2 py-0.5 rounded-md whitespace-nowrap
+                                             {% if step.reached %}bg-green-100 text-green-700{% else %}bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-slate-400{% endif %}">
+                                    {% if step.reached %}✓ {% endif %}на {{ step.grade }} — от {{ step.need }}
+                                </span>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                            {% endif %}
+                            {% if group.self_check.total %}
+                            <div class="flex items-center gap-3">
+                                <span class="text-sm text-gray-500 dark:text-slate-400 w-32 shrink-0">Самопроверки</span>
+                                <span class="flex-1 h-2 bg-gray-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                                    <span class="block h-full bg-emerald-500 rounded-full" style="width: {{ group.self_check.pct }}%"></span>
+                                </span>
+                                <span class="text-sm tabular-nums text-gray-500 dark:text-slate-400 whitespace-nowrap w-16 text-right">{{ group.self_check.done }}/{{ group.self_check.total }}</span>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% if user.is_superuser %}
+                        <a href="{% url 'textbook:section_stats' group.section.slug %}"
+                           class="shrink-0 text-sm font-medium px-4 py-2 rounded-lg whitespace-nowrap bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors">
+                            Статистика
+                        </a>
+                        {% endif %}
+                        {% if group.practicum.total %}
+                        <a href="{{ group.practicum.url }}"
+                           class="shrink-0 text-sm font-semibold px-4 py-2 rounded-lg whitespace-nowrap transition-colors
+                                  {% if group.practicum.done >= group.practicum.total %}bg-green-100 text-green-700 hover:bg-green-200{% else %}bg-brand-600 text-white hover:bg-brand-700{% endif %}">
+                            {% if group.practicum.done >= group.practicum.total %}✓ Задачи сданы{% elif group.practicum.done %}Продолжить задачи →{% else %}Решать задачи →{% endif %}
+                        </a>
+                        {% endif %}
+                    </div>
+                    {% endif %}
                     <div x-show="open" x-cloak class="border-t border-gray-200 dark:border-slate-700">
                         {% for item in group.items %}
                         <a href="{{ item.article.get_absolute_url }}"
                            class="flex items-center gap-3 px-[18px] py-[11px] border-b border-gray-50 dark:border-slate-700/60 last:border-b-0 hover:bg-gray-50 dark:hover:bg-slate-700/40 transition-colors">
-                            {% if item.is_done %}
+                            {% comment %}
+                            Цвет галочки — результат микротеста урока: он же показан бейджем
+                            в самой статье. Если тест не решался, красим по статусу чтения.
+                            {% endcomment %}
+                            {% if item.quiz_state == 'green' %}
+                            <svg class="w-[18px] h-[18px] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="#16a34a" stroke-width="2" title="Все ответы верны"><circle cx="12" cy="12" r="9"></circle><path stroke-linecap="round" stroke-linejoin="round" d="M8.5 12.5l2.5 2.5 4.5-5"></path></svg>
+                            {% elif item.quiz_state == 'yellow' %}
+                            <svg class="w-[18px] h-[18px] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="#f59e0b" stroke-width="2" title="Верна половина ответов и больше"><circle cx="12" cy="12" r="9"></circle><path stroke-linecap="round" stroke-linejoin="round" d="M8.5 12.5l2.5 2.5 4.5-5"></path></svg>
+                            {% elif item.quiz_state == 'red' %}
+                            <svg class="w-[18px] h-[18px] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="#ef4444" stroke-width="2" title="Верных ответов меньше половины"><circle cx="12" cy="12" r="9"></circle><path stroke-linecap="round" stroke-linejoin="round" d="M8.5 12.5l2.5 2.5 4.5-5"></path></svg>
+                            {% elif item.is_done %}
                             <svg class="w-[18px] h-[18px] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="#16a34a" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path stroke-linecap="round" stroke-linejoin="round" d="M8.5 12.5l2.5 2.5 4.5-5"></path></svg>
                             {% elif item.is_progress %}
                             <svg class="w-[18px] h-[18px] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="#2563eb" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="3" fill="#2563eb" stroke="none"></circle></svg>
@@ -64,6 +170,7 @@
                             <svg class="w-[18px] h-[18px] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="#d1d5db" stroke-width="2"><circle cx="12" cy="12" r="9"></circle></svg>
                             {% endif %}
                             <span class="flex-1 text-sm text-gray-700 dark:text-slate-300">{{ item.num_label }} {{ item.article.title }}</span>
+                            {% include 'textbook/_frontier_avatars.html' with users=item.frontier %}
                             <svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
                         </a>
                         {% empty %}

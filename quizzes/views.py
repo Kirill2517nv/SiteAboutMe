@@ -1,13 +1,14 @@
 from django.shortcuts import render, get_object_or_404, redirect
+from django.urls import reverse
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.utils import timezone
 from django.contrib.auth.models import User
-from django.db.models import Max, Count, Q, Sum
+from django.db.models import Max, Count, Sum
 from django.http import FileResponse, Http404, JsonResponse
 from django.conf import settings
 from django.views.decorators.http import require_POST, require_GET
 from django.views.decorators.csrf import csrf_protect
-from .models import Quiz, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, Question, CodeSubmission, HelpRequest, HelpComment, QuestionFile, ExamTaskProgress, SolutionAttachment, SolutionLike
+from .models import Quiz, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, Question, CodeSubmission, HelpRequest, HelpComment, QuestionFile, ExamTaskProgress, SolutionAttachment, SolutionLike, HintChoice
 from accounts.models import StudentGroup
 import datetime
 import os
@@ -38,9 +39,45 @@ EGE_RECOMMENDED_TIME = {
 }
 
 
+def ege_time_color(seconds, ege_number):
+    """
+    Цвет времени над задачей ЕГЭ относительно рекомендованного:
+    зелёный — уложился в норму, жёлтый — до полутора норм, красный — дольше.
+    Пустая строка — задача не решалась, красить нечего.
+
+    Одна функция на все три места, где показывается время ЕГЭ (результаты
+    варианта, отчёт по ученику, профиль): расхождение цветов между ними
+    ученик читал бы как ошибку в данных.
+    """
+    if not seconds:
+        return ''
+    rec_min = EGE_RECOMMENDED_TIME.get(ege_number or 0, 5)
+    minutes = seconds // 60
+    if minutes <= rec_min:
+        return 'green'
+    if minutes <= rec_min * 1.5:
+        return 'yellow'
+    return 'red'
+
+
 def _natural_sort_key(text):
     """Ключ для натуральной сортировки: 'Задача 2' перед 'Задача 10'."""
     return [int(part) if part.isdigit() else part.lower() for part in re.split(r'(\d+)', text)]
+
+
+def _sort_questions(quiz, questions):
+    """
+    Порядок вопросов для показа ученику.
+
+    У самопроверок учебника заголовков нет, и сортировка по get_title()
+    раскладывала вопросы по алфавиту текста — то есть в случайном для автора
+    порядке. Им нужен порядок создания. Остальным тестам (ЕГЭ) — прежняя
+    натуральная сортировка по заголовку «Задача 2, Задача 10».
+    """
+    if quiz.is_self_check:
+        questions.sort(key=lambda q: q.id)
+    else:
+        questions.sort(key=lambda q: _natural_sort_key(q.get_title()))
 
 
 def _attachment_content_disposition(filename: str) -> str:
@@ -66,6 +103,11 @@ def get_effective_quiz_settings(user, quiz):
     # Тесты-самопроверки учебника доступны любому авторизованному ученику
     # (доступ гейтится статьёй учебника, а не назначением на группу).
     if getattr(quiz, 'is_self_check', False) and user.is_authenticated:
+        # Единственный гейт для них — публикация блока: спрятанный блок не
+        # должен отдавать свои задачи по прямой ссылке /quizzes/<id>/.
+        from textbook.services import quiz_is_hidden
+        if quiz_is_hidden(quiz) and not user.is_superuser:
+            return None
         return {
             'start_date': quiz.start_date,
             'end_date': quiz.end_date,
@@ -114,151 +156,6 @@ def question_file_download_view(request, file_id):
     response["Content-Disposition"] = _attachment_content_disposition(filename)
     return response
 
-def quiz_list_view(request):
-    if not request.user.is_authenticated:
-        return render(request, 'quizzes/quiz_list.html', {'educational_tasks': [], 'assessments': [], 'archived': []})
-
-    user = request.user
-    
-    effective_assignments = {} # quiz_id -> {start, end, max}
-
-    # Get assignments for user (even if superuser, we want to see if they are assigned)
-    filters = Q(user=user)
-    if hasattr(user, 'profile') and user.profile.group:
-        filters |= Q(group=user.profile.group)
-    
-    assignments = QuizAssignment.objects.filter(filters).select_related('quiz')
-    
-    # Deduplicate, prioritizing user assignment over group
-    temp_assignments = {} # quiz_id -> assignment object
-
-    for a in assignments:
-        qid = a.quiz_id
-        if qid not in temp_assignments:
-            temp_assignments[qid] = a
-        else:
-            existing = temp_assignments[qid]
-            if existing.user is None and a.user is not None:
-                temp_assignments[qid] = a
-    
-    if user.is_superuser:
-        quizzes = Quiz.objects.exclude(quiz_type='exam').exclude(is_self_check=True)
-    else:
-        quizzes = []
-        for qid, a in temp_assignments.items():
-            if a.quiz.quiz_type != 'exam' and not a.quiz.is_self_check:
-                quizzes.append(a.quiz)
-
-    # Process effective settings
-    for quiz in quizzes:
-        a = temp_assignments.get(quiz.id)
-        if a:
-            effective_assignments[quiz.id] = {
-                'start_date': a.start_date if a.start_date else quiz.start_date,
-                'end_date': a.end_date if a.end_date else quiz.end_date,
-                'max_attempts': a.max_attempts if a.max_attempts is not None else quiz.max_attempts
-            }
-        else:
-            # Fallback for superuser viewing unassigned quizzes
-            effective_assignments[quiz.id] = {
-                'start_date': quiz.start_date,
-                'end_date': quiz.end_date,
-                'max_attempts': quiz.max_attempts
-            }
-
-    # Pre-load attempts and best scores
-    user_results = {}
-    if request.user.is_authenticated:
-        stats = UserResult.objects.filter(user=request.user).values('quiz_id').annotate(
-            count=Count('id'),
-            best_score=Max('score')
-        )
-        user_results = {item['quiz_id']: item for item in stats}
-    
-    # Pre-load question counts
-    all_quiz_ids = [q.id for q in quizzes]
-    question_counts = {}
-    if all_quiz_ids:
-        q_counts = Question.objects.filter(quiz_id__in=all_quiz_ids).values('quiz_id').annotate(count=Count('id'))
-        question_counts = {item['quiz_id']: item['count'] for item in q_counts}
-
-    educational_tasks = []
-    assessments = []
-    archived = []
-
-    now = timezone.now()
-
-    for quiz in quizzes:
-        settings = effective_assignments.get(quiz.id)
-        if not settings:
-            continue
-
-        start_date = settings['start_date']
-        end_date = settings['end_date']
-        max_attempts = settings['max_attempts']
-
-        stats = user_results.get(quiz.id, {})
-        attempts_count = stats.get('count', 0)
-        best_score = stats.get('best_score')
-        total_questions = question_counts.get(quiz.id, 0)
-
-        is_blocked = False
-        remaining_attempts = None
-        status_text = "(Открыто)"
-        status_color = "green"
-
-        if start_date and now < start_date:
-            is_blocked = True
-            status_text = "(Недоступно)"
-            status_color = "#e6b800" # Dark yellow/gold
-
-        elif end_date and now > end_date:
-            is_blocked = True
-            status_text = "(Завершился)"
-            status_color = "red"
-
-        if max_attempts > 0:
-            remaining_attempts = max_attempts - attempts_count
-            if remaining_attempts <= 0:
-                is_blocked = True
-                remaining_attempts = 0
-                # If it was open by date, but blocked by attempts -> show attempts exhausted
-                if status_text == "(Открыто)":
-                    status_text = "(Попытки исчерпаны)"
-                    status_color = "red"
-
-        item_data = {
-            'quiz': quiz,
-            'attempts_count': attempts_count,
-            'best_score': best_score,
-            'total_questions': total_questions,
-            'is_blocked': is_blocked,
-            'remaining_attempts': remaining_attempts,
-            'status_text': status_text,
-            'status_color': status_color,
-            'start_date': start_date,
-            'end_date': end_date,
-            'max_attempts': max_attempts
-        }
-
-        # Expired quizzes go to archive instead of main lists
-        if end_date and now > end_date:
-            archived.append(item_data)
-        elif max_attempts == 0:
-            educational_tasks.append(item_data)
-        else:
-            assessments.append(item_data)
-
-    # Sort archive: most recently expired first
-    archived.sort(key=lambda x: x['end_date'], reverse=True)
-
-    context = {
-        'educational_tasks': educational_tasks,
-        'assessments': assessments,
-        'archived': archived,
-    }
-    return render(request, 'quizzes/quiz_list.html', context)
-
 def get_user_ege_stats(user, quiz_ids):
     """Агрегация результатов пользователя по вариантам ЕГЭ (один запрос)."""
     stats = UserResult.objects.filter(user=user, quiz_id__in=quiz_ids).values('quiz_id').annotate(
@@ -286,7 +183,7 @@ def build_ege_results_matrix(quiz):
     # Все ответы по варианту, группируем по user
     all_answers = UserAnswer.objects.filter(
         user_result__quiz=quiz
-    ).select_related('question', 'user_result__user')
+    ).select_related('question', 'user_result__user', 'user_result__user__profile')
 
     # {user_id: {question_id: True}} — True если хоть раз верно
     user_best = defaultdict(dict)
@@ -786,21 +683,11 @@ def ege_results_view(request, quiz_id):
             for q in questions:
                 p = progress_map.get(q.id)
                 ege_num = q.ege_number or 0
-                rec_min = EGE_RECOMMENDED_TIME.get(ege_num, 5)
+                seconds = p.time_spent_seconds if p else 0
 
-                if p and p.time_spent_seconds > 0:
-                    mins = p.time_spent_seconds // 60
-                    secs = p.time_spent_seconds % 60
-                    time_mm_ss = f"{mins}:{secs:02d}"
-                    if mins <= rec_min:
-                        color = 'green'
-                    elif mins <= rec_min * 1.5:
-                        color = 'yellow'
-                    else:
-                        color = 'red'
-                else:
-                    time_mm_ss = ''
-                    color = ''
+                mins, secs = divmod(seconds, 60)
+                time_mm_ss = f"{mins}:{secs:02d}" if seconds else ''
+                color = ege_time_color(seconds, ege_num)
 
                 personal_stats.append({
                     'ege_number': ege_num,
@@ -843,21 +730,11 @@ def ege_student_stats_view(request, quiz_id, user_id):
     for q in questions:
         p = progress_map.get(q.id)
         ege_num = q.ege_number or 0
-        rec_min = EGE_RECOMMENDED_TIME.get(ege_num, 5)
+        seconds = p.time_spent_seconds if p else 0
 
-        if p and p.time_spent_seconds > 0:
-            mins = p.time_spent_seconds // 60
-            secs = p.time_spent_seconds % 60
-            time_mm_ss = f"{mins}:{secs:02d}"
-            if mins <= rec_min:
-                color = 'green'
-            elif mins <= rec_min * 1.5:
-                color = 'yellow'
-            else:
-                color = 'red'
-        else:
-            time_mm_ss = ''
-            color = ''
+        mins, secs = divmod(seconds, 60)
+        time_mm_ss = f"{mins}:{secs:02d}" if seconds else ''
+        color = ege_time_color(seconds, ege_num)
 
         stats.append({
             'ege_number': ege_num,
@@ -1100,12 +977,18 @@ def quiz_detail_view(request, quiz_id):
         ),
         id=quiz_id
     )
-    
+
+    # Из тестов учебника возвращаемся в учебник, из обычного теста — в список тестов.
+    from textbook.services import textbook_link_for_quiz
+    textbook_url, back_label, after_finish_url = textbook_link_for_quiz(quiz)
+    back_url = textbook_url or reverse('textbook:home')
+    back_label = back_label or 'Вернуться в учебник'
+
     # Check assignment/availability
     eff_settings = get_effective_quiz_settings(request.user, quiz)
     if not eff_settings:
         # Not assigned to this user
-        return redirect('quizzes:quiz_list')
+        return redirect(back_url)
 
     start_date = eff_settings['start_date']
     end_date = eff_settings['end_date']
@@ -1115,22 +998,30 @@ def quiz_detail_view(request, quiz_id):
 
     # Access checks
     read_only = False
-    if start_date and now < start_date: return redirect('quizzes:quiz_list')
+    if start_date and now < start_date: return redirect(back_url)
 
     if end_date and now > end_date:
         if request.method == 'POST':
-            return redirect('quizzes:quiz_list')
+            return redirect(back_url)
         # GET on expired quiz → read-only mode
+        read_only = True
+
+    # Дедлайн блока учебника закрывает и задачи блока, и самопроверки его уроков:
+    # решать нельзя, смотреть свои ответы — можно.
+    from textbook.services import quiz_is_locked
+    if quiz_is_locked(quiz):
+        if request.method == 'POST':
+            return redirect(back_url)
         read_only = True
 
     if not read_only and max_attempts > 0:
         attempts_count = UserResult.objects.filter(user=request.user, quiz=quiz).count()
-        if attempts_count >= max_attempts: return redirect('quizzes:quiz_list')
+        if attempts_count >= max_attempts: return redirect(back_url)
 
     # Read-only mode: show all questions with student's best answers
     if read_only:
         all_questions = list(quiz.questions.all())
-        all_questions.sort(key=lambda q: _natural_sort_key(q.get_title()))
+        _sort_questions(quiz, all_questions)
 
         # Load student's best answer per question (correct preferred, then most recent)
         student_answers = {}
@@ -1153,6 +1044,8 @@ def quiz_detail_view(request, quiz_id):
 
         return render(request, 'quizzes/quiz_detail.html', {
             'quiz': quiz,
+            'back_url': back_url,
+            'back_label': back_label,
             'questions_to_show': [],
             'all_questions': all_questions,
             'correctly_answered_ids': set(),
@@ -1244,7 +1137,9 @@ def quiz_detail_view(request, quiz_id):
             elif question.question_type == 'text':
                 text_answer = user_input
                 if user_input and question.correct_text_answer:
-                    if user_input.strip().lower() == question.correct_text_answer.strip().lower():
+                    # check_text_answer() учитывает alternative_answers и нормализацию,
+                    # инлайновое сравнение их игнорировало.
+                    if question.check_text_answer(user_input):
                         is_correct = True
                         current_attempt_score += 1
 
@@ -1314,6 +1209,11 @@ def quiz_detail_view(request, quiz_id):
             from textbook.services import update_article_mastery
             update_article_mastery(request.user, quiz)
 
+        # Тест учебника — часть урока, а не отдельный «результат теста»:
+        # возвращаем ученика туда, откуда он пришёл.
+        if after_finish_url:
+            return redirect(after_finish_url)
+
         # Получаем неудачные ответы для детального отчета
         failed_answers = UserAnswer.objects.filter(
             user_result=user_result,
@@ -1337,7 +1237,7 @@ def quiz_detail_view(request, quiz_id):
 
     # Все вопросы теста, отсортированные натурально по заголовку
     all_questions = list(quiz.questions.all())
-    all_questions.sort(key=lambda q: _natural_sort_key(q.get_title()))
+    _sort_questions(quiz, all_questions)
 
     # Данные о решённых вопросах (для просмотра удачного решения)
     solved_answers = {}
@@ -1393,6 +1293,10 @@ def quiz_detail_view(request, quiz_id):
             }
 
     # Построить tasks_data для Alpine.js (навигация по одной задаче)
+    from textbook.services import hint_states
+    from textbook.templatetags.textbook_tags import markdownify
+
+    states = hint_states(request.user, quiz, all_questions)
     tasks_data = []
     for q in all_questions:
         task = {
@@ -1403,6 +1307,13 @@ def quiz_detail_view(request, quiz_id):
             'is_solved': q.is_solved,
             'saved_answer': '',
         }
+        # Подсказки нет в задаче, пока она закрыта: ученик не должен знать даже
+        # о её существовании (hint_state вернёт None).
+        state = states.get(q.id)
+        if state:
+            task['hint_state'] = state
+            if state == 'taken':
+                task['hint_html'] = str(markdownify(q.hint))
         if q.question_type == 'choice' and q.is_solved and q.solved_answer:
             task['saved_answer'] = str(q.solved_answer.selected_choice_id or '')
         elif q.question_type == 'text' and q.is_solved and q.solved_answer:
@@ -1418,6 +1329,8 @@ def quiz_detail_view(request, quiz_id):
 
     return render(request, 'quizzes/quiz_detail.html', {
         'quiz': quiz,
+        'back_url': back_url,
+        'back_label': back_label,
         'questions_to_show': questions_to_show,
         'all_questions': all_questions,
         'correctly_answered_ids': set(correctly_answered_question_ids),
@@ -1429,6 +1342,47 @@ def quiz_detail_view(request, quiz_id):
         'last_submissions_json': json.dumps(last_submissions),
         'total_points': sum(q.points for q in all_questions),
     })
+
+@login_required
+@csrf_protect
+def question_hint_view(request, question_id):
+    """Подсказка к задаче.
+
+    GET отдаёт только состояние: пока ученик не нажал «показать», текста в
+    ответе нет — иначе подсказку можно было бы вычитать из сети, не делая
+    выбора. POST с action=take|decline фиксирует выбор (учителю в статистику).
+    """
+    from textbook.services import hint_state
+
+    question = get_object_or_404(Question.objects.select_related('quiz'), id=question_id)
+    # Тот же гейт, что и у страницы теста: без него перебор question_id отдаёт
+    # подсказки к задачам чужой группы или спрятанного блока — блочные условия
+    # открытия (рубильник, близкий дедлайн) не зависят от назначения теста.
+    # Ответ такой же, как у закрытой подсказки: её существование не палим.
+    if not get_effective_quiz_settings(request.user, question.quiz):
+        return JsonResponse({'state': None})
+
+    state = hint_state(request.user, question)
+    if state is None:
+        return JsonResponse({'state': None})
+
+    if request.method == 'POST':
+        try:
+            action = json.loads(request.body or '{}').get('action')
+        except json.JSONDecodeError:
+            action = None
+        accepted = action == 'take'
+        HintChoice.objects.update_or_create(
+            user=request.user, question=question, defaults={'accepted': accepted}
+        )
+        state = 'taken' if accepted else 'declined'
+
+    payload = {'state': state}
+    if state == 'taken':
+        from textbook.templatetags.textbook_tags import markdownify
+        payload['hint'] = str(markdownify(question.hint))
+    return JsonResponse(payload)
+
 
 # --- СТАТИСТИКА (без изменений) ---
 @user_passes_test(lambda u: u.is_superuser)
@@ -1469,6 +1423,7 @@ def quiz_stats_view(request, quiz_id):
         'quiz': quiz,
         'total_questions': total_questions,
         'stats_by_group': stats_by_group,
+        'quiz_has_hints': quiz.questions.exclude(hint='').exists(),
     })
 
 def _score_color_class(score, total):
@@ -1497,7 +1452,15 @@ def get_user_stats(user, quiz, total_questions):
 
     is_ege = hasattr(user, 'profile') and user.profile.is_ege
 
+    # Что ученик выбрал, когда ему предложили подсказку. Ему самому это нигде
+    # не показывается — колонка только для учителя.
+    hints = HintChoice.objects.filter(user=user, question__quiz=quiz).select_related('question')
+    hints_taken = [h.question.get_title() for h in hints if h.accepted]
+    hints_declined = [h.question.get_title() for h in hints if not h.accepted]
+
     return {
+        'hints_taken': hints_taken,
+        'hints_declined': hints_declined,
         'user': user,
         'full_name': full_name,
         'is_ege': is_ege,
@@ -1554,6 +1517,11 @@ def submit_code_view(request, quiz_id, question_id):
     """
     quiz = get_object_or_404(Quiz, id=quiz_id)
     question = get_object_or_404(Question, id=question_id, quiz=quiz)
+
+    from textbook.services import quiz_is_locked
+    if quiz_is_locked(quiz):
+        return JsonResponse({'error': 'Дедлайн блока прошёл — решения больше не принимаются'},
+                            status=403)
 
     # Публичные ЕГЭ — пропускаем проверку назначения
     if not quiz.is_public:
@@ -1675,6 +1643,13 @@ def finish_quiz_view(request, quiz_id):
     """
     quiz = get_object_or_404(Quiz, id=quiz_id)
 
+    from textbook.services import quiz_is_locked, textbook_link_for_quiz
+    _, _, after_finish_url = textbook_link_for_quiz(quiz)
+
+    if quiz_is_locked(quiz):
+        return JsonResponse({'error': 'Дедлайн блока прошёл — решения больше не принимаются'},
+                            status=403)
+
     # Check assignment/availability
     eff_settings = get_effective_quiz_settings(request.user, quiz)
     if not eff_settings:
@@ -1768,7 +1743,8 @@ def finish_quiz_view(request, quiz_id):
         elif question.question_type == 'text':
             text_answer = user_input
             if user_input and question.correct_text_answer:
-                if user_input.strip().lower() == question.correct_text_answer.strip().lower():
+                # check_text_answer() учитывает alternative_answers и нормализацию.
+                if question.check_text_answer(user_input):
                     is_correct = True
                     current_attempt_score += 1
 
@@ -1868,7 +1844,8 @@ def finish_quiz_view(request, quiz_id):
         'total': total_questions,
         'failed_questions': failed_questions,
         'pending_checks': pending_checks,
-        'redirect_url': '/quizzes/'
+        # Тест учебника закрываем возвратом в учебник, там итог показан бейджем.
+        'redirect_url': after_finish_url or '/quizzes/'
     })
 
 

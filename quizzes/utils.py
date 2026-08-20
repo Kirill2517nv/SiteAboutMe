@@ -141,10 +141,14 @@ def run_code_in_docker(code, input_data, extra_files=None):
             working_dir="/app"
         )
 
-        # 2. Подготавливаем файлы: solution.py + runner.py + extra
+        # 2. Подготавливаем файлы: solution.py + runner.py + stdin + extra.
+        # Входные данные кладём файлом, а не подставляем в командную строку:
+        # printf принимал за опцию данные, начинающиеся с «-» (например,
+        # отрицательное число), а также толковал %, $ и обратные слэши.
         files_to_send = {
             'solution.py': code,
             'runner.py': RUNNER_PY,
+            'stdin.txt': input_data or '',
         }
         if extra_files:
             files_to_send.update(extra_files)
@@ -154,8 +158,7 @@ def run_code_in_docker(code, input_data, extra_files=None):
         container.put_archive("/app/", tar_stream)
 
         # 4. Запускаем через runner.py (demux=True для раздельного stdout/stderr)
-        safe_input = input_data.replace('\\', '\\\\').replace('"', '\\"')
-        command = f'sh -c "printf \\"{safe_input}\\" | python runner.py"'
+        command = 'sh -c "python runner.py < stdin.txt"'
 
         exec_result = container.exec_run(command, demux=True)
         exit_code = exec_result.exit_code

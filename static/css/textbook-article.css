@@ -15,10 +15,27 @@
    Оборачивает { % for block in blocks % } — заменяет class="prose prose-lg dark:prose-invert"
    ============================================================ */
 
-.article-body {
-  /* Масштаб шрифта — по умолчанию "large" (крупный), одобрено в дизайн-ревью.
-     Меняйте переменные ниже (или переключайте класс .article-body--normal), а не
-     переопределяйте font-size у конкретных тегов. */
+/* ============================================================
+   КОЛОНКА СТАТЬИ — .article-column
+   Ширина 80% доступного места (после сайдбара) с центрированием: на широких
+   экранах статья перестаёт висеть у левого края. На мобильных — во всю ширину
+   с обычными полями, иначе 80% дают слишком узкую колонку.
+   ============================================================ */
+.article-column {
+  max-width: 80%;
+  margin-left: auto;
+  margin-right: auto;
+}
+@media (max-width: 767px) {
+  .article-column { max-width: 100%; padding-left: 24px; padding-right: 24px; }
+}
+
+/* Шкала шрифта объявлена на колонке, а не на .article-body: так H1 статьи,
+   H2 блоков, таблицы и подписи к картинкам масштабируются заодно с markdown-
+   текстом. По умолчанию "large" (крупный), одобрено в дизайн-ревью. Меняйте
+   переменные ниже (или переключайте класс .article-column--normal), а не
+   переопределяйте font-size у конкретных тегов. */
+.article-column {
   --fs-h1: 34px;
   --fs-h2: 25px;
   --fs-p: 18.5px;
@@ -29,8 +46,8 @@
   --lh-li: 1.75; /* @kind font */
 }
 
-/* Компактный вариант (опционально) — навесить class="article-body article-body--normal" */
-.article-body--normal {
+/* Компактный вариант (опционально) — навесить class="article-column article-column--normal" */
+.article-column--normal {
   --fs-h1: 28px;
   --fs-h2: 21px;
   --fs-p: 16px;
@@ -41,14 +58,48 @@
   --lh-li: 1.7; /* @kind font */
 }
 
+/* Заголовок статьи и заголовки блоков — та же шкала, что и текст внутри. */
+.article-title {
+  font-size: var(--fs-h1); font-weight: 700; line-height: 1.2;
+  color: var(--color-text-heading);
+}
+.article-block-title {
+  font-size: var(--fs-h2); font-weight: 700; margin: 0 0 14px;
+  color: var(--color-text-heading);
+}
+
 .article-body h1 { font-size: var(--fs-h1); font-weight: 700; color: var(--color-text-heading); margin: 0 0 10px; }
 .article-body h2 { font-size: var(--fs-h2); font-weight: 700; color: var(--color-text-heading); margin: 0 0 14px; }
 .article-body p { font-size: var(--fs-p); line-height: var(--lh-p); color: var(--color-text-default); margin: 0 0 16px; }
 .article-body p:last-child { margin-bottom: 0; }
-.article-body ul, .article-body ol { margin: 0 0 16px; padding-left: 22px; }
-.article-body li { font-size: var(--fs-li); line-height: var(--lh-li); color: var(--color-text-default); margin-bottom: 6px; }
-.article-body li:last-child { margin-bottom: 0; }
+/* list-style обязателен: Tailwind Preflight глушит маркеры у всех ul/ol
+   правилом `ol, ul, menu { list-style: none }`, и без этой строки список
+   выводится без точек. Вводный блок (.article-lead__text) рендерится тем же
+   markdownify, поэтому списки в нём стилизуются здесь же — иначе «О чём этот
+   урок» показывает пункты сплошным текстом. Карточки «Коротко» и «Что нас
+   ждёт» намеренно не входят сюда: у них свои маркеры через li::before. */
+:is(.article-body, .article-lead__text) :is(ul, ol) { margin: 0 0 16px; padding-left: 22px; }
+:is(.article-body, .article-lead__text) ul { list-style: disc; }
+:is(.article-body, .article-lead__text) ol { list-style: decimal; }
+:is(.article-body, .article-lead__text) li::marker { color: var(--color-brand-600); }
+:is(.article-body, .article-lead__text) li { font-size: var(--fs-li); line-height: var(--lh-li); color: var(--color-text-default); margin-bottom: 6px; }
+:is(.article-body, .article-lead__text) li:last-child { margin-bottom: 0; }
 .article-body strong { color: var(--color-text-heading); font-weight: 600; }
+
+/* Ссылок в текстах уроков раньше не было, поэтому и стиля не было: Tailwind
+   Preflight оставляет <a> цветом обычного текста, и ссылка не читалась как
+   ссылка. Внешние ссылки открываются в новой вкладке (target проставляется
+   в markdownify), подчёркивание — со смещением, чтобы не резать кириллицу. */
+.article-body a {
+  color: var(--color-brand-600);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+  transition: color .15s;
+}
+.article-body a:hover { color: var(--color-brand-700); }
+html.dark .article-body a { color: #60a5fa; }
+html.dark .article-body a:hover { color: var(--color-dark-accent); }
 
 /* markdownify рендерит "> **Термин** — определение" как <blockquote>. Показываем как
    карточку-определение с лейблом, а не как обычную цитату. */
@@ -74,29 +125,162 @@
 }
 .article-body blockquote p { margin: 0; }
 
-.article-body table { width: 100%; border-collapse: collapse; margin: 0 0 18px; font-size: var(--fs-table); }
-.article-body th {
+/* Таблицы бывают и в markdown-карточках («Коротко», вводка, «Что нас
+   ждёт»), которые рисуются вне .article-body, — поэтому селекторы
+   таблиц перечисляют все markdown-контейнеры сразу. */
+/* border-collapse: separate — иначе скругление рамки не работает; двойных линий
+   не будет, так как границы ячеек заданы только снизу и справа. */
+:is(.article-body, .article-summary-card__body, .article-lead__text, .article-outlook-panel__body) table {
+  width: 100%; margin: 0 0 18px; font-size: var(--fs-table);
+  border-collapse: separate; border-spacing: 0;
+  border: 1px solid var(--color-border-medium);
+  border-radius: var(--radius-md); overflow: hidden;
+}
+:is(.article-body, .article-summary-card__body, .article-lead__text, .article-outlook-panel__body) th {
   text-align: left; padding: 10px 14px; font-weight: 600; color: var(--color-text-heading);
   background: var(--color-bg); border-bottom: 2px solid var(--color-border-medium);
+  border-right: 1px solid var(--color-border-medium);
 }
-.article-body td {
+:is(.article-body, .article-summary-card__body, .article-lead__text, .article-outlook-panel__body) td {
   padding: 10px 14px; border-bottom: 1px solid var(--color-border-medium);
+  border-right: 1px solid var(--color-border-medium);
   color: var(--color-text-default); vertical-align: top;
 }
-.article-body tr:last-child td { border-bottom: none; }
+/* Первый столбец — «ключ» строки, поэтому выделен как заголовок. */
+:is(.article-body, .article-summary-card__body, .article-lead__text, .article-outlook-panel__body) td:first-child { color: var(--color-text-heading); font-weight: 600; }
+:is(.article-body, .article-summary-card__body, .article-lead__text, .article-outlook-panel__body) :is(th, td):last-child { border-right: none; }
+:is(.article-body, .article-summary-card__body, .article-lead__text, .article-outlook-panel__body) tr:last-child td { border-bottom: none; }
 
 .article-body figure { text-align: center; margin: 0 0 26px; }
+/* Единый бокс 4:3 для всех иллюстраций. aspect-ratio, а не height: 600px:
+   на узком экране max-width ужимает ширину, и фиксированная высота заставила бы
+   object-fit обрезать картинку по бокам тем сильнее, чем уже экран. */
 .article-body figure img {
-  max-width: 100%; border-radius: var(--radius-lg);
+  width: 800px; max-width: 100%;
+  aspect-ratio: 4 / 3; height: auto; object-fit: cover;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--color-border-medium); box-shadow: var(--shadow-sm);
 }
+
+/* ============================================================
+   ПОВТОРЯЮЩИЕСЯ БЛОКИ СТАТЬИ
+   Три текстовых блока есть почти в каждом уроке, и шаблон узнаёт их
+   по заголовку («Коротко», «Что нас ждёт в этом блоке») либо по позиции
+   (первый блок — вводка). Содержимое приходит из markdownify, поэтому классы
+   навешены на обёртки, а вложенные ul/li/p стилизуются потомками.
+   ============================================================ */
+
+/* ---- Вводка: первый текстовый блок урока (медальон-номер, вариант 3c) ---- */
+.article-lead { background: var(--color-brand-50); border-radius: 16px; padding: 28px 30px; margin: 0 0 18px; }
+.article-lead__head { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
+.article-lead__medal {
+  flex-shrink: 0; width: 44px; height: 44px; border-radius: 12px;
+  background: var(--color-brand-600); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px;
+}
+.article-lead__text { min-width: 0; }
+.article-lead__text p {
+  font-size: var(--fs-p); line-height: var(--lh-p);
+  color: var(--color-text-default); margin: 0 0 12px;
+}
+.article-lead__text p:last-child { margin-bottom: 0; }
+.article-lead__text strong { color: var(--color-text-heading); font-weight: 700; }
+
+/* ---- «Коротко»: карточка-стикер с цветной шапкой (стиль 1b) ---- */
+.article-summary-card {
+  border: 1px solid var(--color-border-medium);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  margin: 0 0 18px;
+}
+.article-summary-card__head {
+  background: var(--color-brand-600); padding: 12px 20px;
+  display: flex; align-items: center; gap: 8px;
+}
+.article-summary-card__head span { font-size: 13px; font-weight: 700; color: #fff; }
+.article-summary-card__body { padding: 18px 20px; background: var(--color-surface); }
+.article-summary-card__body ul {
+  margin: 0; padding: 0; list-style: none;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.article-summary-card__body li {
+  font-size: var(--fs-li); line-height: var(--lh-li); color: var(--color-text-default);
+  padding-left: 16px; position: relative; margin: 0;
+}
+.article-summary-card__body li::before {
+  content: ""; position: absolute; left: 0; top: 9px;
+  width: 5px; height: 5px; border-radius: 50%; background: var(--color-brand-600);
+}
+.article-summary-card__body p { font-size: var(--fs-p); line-height: var(--lh-p); color: var(--color-text-default); margin: 0 0 10px; }
+.article-summary-card__body p:last-child { margin-bottom: 0; }
+.article-summary-card__body strong { color: var(--color-text-heading); font-weight: 600; }
+
+/* ---- «Что нас ждёт в этом блоке»: панель с шапкой-вывеской (стиль 5a) ---- */
+.article-outlook-panel {
+  border: 1.5px solid var(--color-brand-100);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin: 0 0 18px;
+}
+.article-outlook-panel__head {
+  background: var(--color-brand-50); padding: 14px 24px;
+  display: flex; align-items: center; gap: 10px;
+}
+.article-outlook-panel__head span { font-size: 15px; font-weight: 700; color: var(--color-text-heading); }
+.article-outlook-panel__body { padding: 18px 24px 20px; background: var(--color-surface); }
+.article-outlook-panel__body p {
+  font-size: var(--fs-p); line-height: var(--lh-p);
+  color: var(--color-text-default); margin: 0 0 10px;
+}
+.article-outlook-panel__body p:last-child { margin-bottom: 0; }
+.article-outlook-panel__body ul {
+  margin: 0 0 12px; padding: 0; list-style: none;
+  display: flex; flex-direction: column; gap: 7px;
+}
+.article-outlook-panel__body li {
+  font-size: var(--fs-li); line-height: var(--lh-li); color: var(--color-text-default);
+  padding-left: 24px; position: relative; margin: 0;
+}
+/* Галочка псевдоэлементом: SVG-иконку из markdown-контента не вставить. */
+.article-outlook-panel__body li::before {
+  content: "✓"; position: absolute; left: 2px; top: 0;
+  color: var(--color-brand-600); font-weight: 700;
+}
+.article-outlook-panel__body strong { color: var(--color-text-heading); font-weight: 600; }
 .article-body figcaption {
   margin-top: 10px; font-size: var(--fs-cap); color: var(--color-text-muted); font-style: italic;
   max-width: 560px; margin-left: auto; margin-right: auto; line-height: 1.5;
 }
 
-html.dark .article-body blockquote { background: #172554; border-color: #1e3a8a; }
-html.dark .article-body th { background: #1e293b; }
+/* ============================================================
+   ТЁМНАЯ ТЕМА — переопределяем сами токены на контейнере статьи.
+   base.html перекрашивает только Tailwind-классы (.text-gray-700 и т.п.), а вся
+   типографика статьи написана на var(--color-*) — без этой карты текст остаётся
+   тёмно-серым на тёмном фоне. Значения — из набора --color-dark-* дизайн-системы.
+   Переменные наследуются, поэтому чинится всё поддерево разом: текст, таблицы,
+   карточки-определения, подписи и виджеты.
+   ============================================================ */
+html.dark .article-column {
+  --color-bg:            #0f172a;
+  --color-surface:       #1e293b;
+  --color-border:        #1e293b;
+  --color-border-medium: #334155;
+  --color-border-input:  #475569;
+
+  --color-text-heading:  #f1f5f9;
+  --color-text-default:  #cbd5e1;
+  --color-text-body:     #94a3b8;
+  --color-text-muted:    #94a3b8;
+  --color-text-faint:    #64748b;
+
+  /* Карточка-определение (blockquote) и подсветка угаданных строк виджета */
+  --color-brand-50:  #172554;
+  --color-brand-100: #1e3a8a;
+  --color-purple-bg: #2e1065;
+}
+/* Шапка таблицы должна отличаться от фона страницы, а он в тёмной теме тоже --color-bg. */
+html.dark :is(.article-body, .article-summary-card__body, .article-lead__text, .article-outlook-panel__body) th { background: #1e293b; }
 
 /* ============================================================
    РАМКА ВИДЖЕТА — .textbook-widget
@@ -179,13 +363,51 @@ html.dark .article-body th { background: #1e293b; }
 .article-sidebar-col:not(.w-collapsed) { width: 260px; }
 .article-sidebar-inner { width: 260px; height: 100%; overflow-y: auto; border-right: 1px solid var(--color-border-medium); padding: 20px 16px; box-sizing: border-box; }
 
-/* Кнопка-«язычок» сворачивания сайдбара — тоже sticky, чтобы быть доступной при чтении вниз страницы */
+/* Кнопка-«язычок» сворачивания сайдбара — тоже sticky, чтобы быть доступной при
+   чтении вниз страницы. Лежит в области справа от сайдбара (не в колонке текста,
+   та центрирована), поэтому left:0 — это ровно линия разделения. */
 .article-sidebar-toggle-wrap { height: 0; overflow: visible; position: sticky; top: 90px; z-index: 4; }
 .article-sidebar-toggle {
-  position: relative; left: -40px; top: 0; width: 16px; height: 44px; border-radius: 0 8px 8px 0;
+  position: relative; left: 0; top: 32px; width: 16px; height: 44px; border-radius: 0 8px 8px 0;
   border-left: none; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;
   background: var(--color-surface); border: 1px solid var(--color-border-medium); box-shadow: 2px 0 6px rgba(0,0,0,.06);
 }
 .article-sidebar-toggle.is-collapsed { background: var(--color-brand-600); border: none; box-shadow: 2px 0 6px rgba(37,99,235,.35); }
 .article-sidebar-toggle svg { color: #6b7280; transition: transform .15s ease; }
 .article-sidebar-toggle.is-collapsed svg { color: #fff; transform: rotate(180deg); }
+
+/* ============================================================
+   БЛОКИ КОДА — .code-block (обёртку строит decorateCodeBlocks() в article_detail.html)
+   Общая для block_type='code' и для ```-фенсов внутри markdown.
+   ============================================================ */
+.code-block {
+  margin: 0 0 18px;
+  border: 1px solid var(--color-border-medium);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.code-block__head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 14px;
+  background: #f3f4f6;
+  border-bottom: 1px solid var(--color-border-medium);
+}
+.code-block__lang {
+  font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .08em; text-transform: uppercase; color: #6b7280;
+}
+.code-block__copy {
+  margin-left: auto; cursor: pointer;
+  padding: 4px 10px; border-radius: 6px;
+  border: 1px solid var(--color-border-medium);
+  background: transparent; color: #6b7280;
+  font-size: 12px; line-height: 1.2;
+  transition: color .15s ease, background .15s ease;
+}
+.code-block__copy:hover { color: var(--color-brand-600); background: var(--color-brand-50); }
+.code-block pre { margin: 0; border-radius: 0; overflow-x: auto; background: #282c34; }
+.code-block pre code { font-size: 14px; line-height: 1.6; background: transparent; }
+
+html.dark .code-block__head { background: #1e293b; }
+html.dark .code-block__lang, html.dark .code-block__copy { color: #94a3b8; }
+html.dark .code-block__copy:hover { color: #fff; background: #334155; }

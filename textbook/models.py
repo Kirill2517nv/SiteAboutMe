@@ -21,6 +21,65 @@ class Section(models.Model):
     )
     order = models.PositiveIntegerField(default=0, verbose_name="Порядок")
     is_published = models.BooleanField(default=False, verbose_name="Опубликовано")
+    practicum_quiz = models.ForeignKey(
+        'quizzes.Quiz', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+', verbose_name="Практикум блока",
+        help_text="Обязательные задачи блока: отдельная страница задач, "
+                  "не статья. Определяет, пройден ли блок."
+    )
+    deadline = models.DateTimeField(
+        null=True, blank=True, verbose_name="Дедлайн",
+        help_text="После этого момента задачи блока и самопроверки уроков "
+                  "переходят в режим просмотра: решения больше не принимаются. "
+                  "Пусто — без ограничения по времени."
+    )
+    hints_open = models.BooleanField(
+        default=False, verbose_name="Открыть подсказки блока",
+        help_text="Аварийный рубильник: подсказки ко всем задачам блока "
+                  "предлагаются сразу, не дожидаясь трёх неудачных попыток "
+                  "и последних трёх дней до дедлайна."
+    )
+    # Пороги оценки — число решённых задач практикума. Пусто у любого из полей
+    # означает «оценку за этот блок не выставляем».
+    grade_5_from = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="Оценка 5 — от скольких задач"
+    )
+    grade_4_from = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="Оценка 4 — от скольких задач"
+    )
+    grade_3_from = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="Оценка 3 — от скольких задач"
+    )
+
+    def grade_for(self, solved_tasks):
+        """Оценка за блок по числу решённых задач практикума (None — не выставляется)."""
+        if self.grade_3_from is None:
+            return None
+        if self.grade_5_from is not None and solved_tasks >= self.grade_5_from:
+            return 5
+        if self.grade_4_from is not None and solved_tasks >= self.grade_4_from:
+            return 4
+        if solved_tasks >= self.grade_3_from:
+            return 3
+        return 2
+
+    def grade_scale(self, solved_tasks=0):
+        """Пороги оценок с отметкой достигнутых и остатком задач до каждой.
+
+        Ученику мало итоговой оценки: ему нужно видеть, сколько задач требует
+        каждая. Пустой список — за блок оценку не выставляем.
+        """
+        thresholds = [(5, self.grade_5_from), (4, self.grade_4_from), (3, self.grade_3_from)]
+        return [
+            {'grade': grade, 'need': need, 'reached': solved_tasks >= need}
+            for grade, need in thresholds if need is not None
+        ] if self.grade_3_from is not None else []
+
+    @property
+    def is_closed(self):
+        """Прошёл ли дедлайн блока."""
+        from django.utils import timezone
+        return bool(self.deadline and timezone.now() > self.deadline)
 
     class Meta:
         ordering = ['order', 'title']
@@ -206,6 +265,10 @@ class ArticleProgress(models.Model):
     status = models.CharField(
         max_length=20, choices=STATUS_CHOICES, default='reading',
         verbose_name="Статус"
+    )
+    time_spent_seconds = models.PositiveIntegerField(
+        default=0, verbose_name="Время чтения (секунды)",
+        help_text="Суммарное время с открытой и активной вкладкой статьи"
     )
     first_opened_at = models.DateTimeField(auto_now_add=True, verbose_name="Впервые открыто")
     read_at = models.DateTimeField(null=True, blank=True, verbose_name="Прочитано (долистано)")

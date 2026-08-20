@@ -18,7 +18,7 @@ flowchart TD
     PUB -->|Да| USE_QUIZ[Использовать\nнастройки Quiz]
     PUB -->|Нет| SU{Пользователь\nsuperuser?}
     SU -->|Да| USE_QUIZ
-    SU -->|Нет| DENY[Доступ запрещён\nredirect → quiz_list]
+    SU -->|Нет| DENY[Доступ запрещён\nredirect → back_url]
 
     USE_IND --> MERGE[Объединить настройки]
     USE_GRP --> MERGE
@@ -36,7 +36,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     REQ[GET /quizzes/id/] --> SETTINGS{get_effective_quiz_settings}
-    SETTINGS -->|None| DENY[redirect → quiz_list]
+    SETTINGS -->|None| DENY[redirect → back_url]
     SETTINGS -->|OK| TIME_START{now < start_date?}
     TIME_START -->|Да| NOT_STARTED[redirect: тест ещё не начался]
     TIME_START -->|Нет| TIME_END{now > end_date?}

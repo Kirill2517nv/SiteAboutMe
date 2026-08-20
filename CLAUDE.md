@@ -15,6 +15,8 @@ python manage.py makemigrations          # Create migrations after model changes
 python manage.py migrate                 # Apply migrations
 python manage.py createsuperuser         # Create admin user
 python manage.py collectstatic           # Collect static files for production
+npm run tw:build                         # ОБЯЗАТЕЛЬНО после новых Tailwind-классов в шаблонах
+npm run tw:watch                         # Пересборка CSS на лету во время вёрстки
 python manage.py load_quiz <file.json>   # Import quiz from JSON fixture
 gunicorn config.wsgi:application         # Production server (HTTP)
 daphne config.asgi:application           # ASGI server (WebSocket)
@@ -34,7 +36,7 @@ To test async code execution locally, run these in separate terminals:
 
 Four apps, each with standard Django structure (models, views, urls, admin, forms):
 
-- **accounts** — User auth, `Profile` (extends User with group assignment, `is_ege` flag), `StudentGroup` for organizing students into classes. `ProfileView` aggregates activity metrics (time spent, question type stats, best quiz scores, EGE progress, help requests, likes). `templatetags/profile_tags.py` provides `duration_display` and `duration_short` filters for timedelta formatting in profile templates.
+- **accounts** — User auth, `Profile` (extends User with group assignment, `is_ege` flag), `StudentGroup` for organizing students into classes. `ProfileView` shows two stat blocks: **Учебник** (per-`Section` grades, lessons read, practicum tasks, reading time, «что подтянуть» — via `textbook.services.profile_textbook_stats`) and **ЕГЭ** (trainer progress by EGE task number 1–27, variants, theory articles — via `accounts.views._ege_stats`). Superusers open any student's profile at `accounts:student_profile` (`profile/<user_id>/`); students get 403 on foreign profiles. `templatetags/profile_tags.py` provides the `duration_display` filter for timedelta formatting.
 - **pages** — Home/about pages built from `ContentBlock` models with rich styling (fonts, colors, image crop/positioning)
 - **lessons** — `Section` → `Lesson` → `LessonAttachment` / `LessonBlock` hierarchy. `LessonAttachment` stores multiple downloadable files per lesson. `Lesson` supports Slidev presentations (`presentation_url`, `presentation_title`, `presentation_pdf`) and video URLs. All file uploads use a unified path `media/lessons/{safe_title}/`. File downloads use Nginx X-Accel-Redirect in production. Dev server serves media with `index.html` fallback for Slidev SPA.
 - **quizzes** — `Quiz` with time-based access windows, `Question` (multiple choice, free text, Python code execution with `TestCase` validation, `title` field), `QuizAssignment` (to groups or individuals), `UserResult`/`UserAnswer` for tracking. Attempt limiting with override support. `CodeSubmission` for async code execution results. `HelpRequest`/`HelpComment` for teacher-student dialogue with inline line comments.
@@ -60,6 +62,7 @@ Four apps, each with standard Django structure (models, views, urls, admin, form
 - Celery: configured in `config/celery.py`, tasks in `quizzes/tasks.py`
 - Channels: configured in `config/asgi.py`, routing in `quizzes/routing.py`
 - Timezone: Asia/Novosibirsk
+- **Tailwind CSS is precompiled**, not a CDN build: `static/css/tailwind.css` is generated from `static/css/tailwind.input.css` by `npm run tw:build` (config: `tailwind.config.js`, scans `templates/**/*.html` and `static/js/**/*.js`). A class that no template used before simply does not exist in the CSS until you rebuild — the browser silently ignores it and the layout looks unchanged. Always run `npm run tw:build` after adding new utility classes.
 - Media files: `media/` (`lessons/{safe_title}/` for lesson files/presentations, `question_files/` for quiz files, `content/` for pages)
 - Static assets: `static/js/` (quiz-async, help-requests, notifications, ege-timer)
 - Templates: `templates/` directory with subdirectories per app

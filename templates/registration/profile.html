@@ -1,258 +1,413 @@
 {% extends 'base.html' %}
-{% load profile_tags %}
+{% load static profile_tags textbook_tags %}
 
-{% block title %}Мой профиль{% endblock title %}
+{% block title %}{% if is_own %}Мой профиль{% else %}Профиль: {{ profile_user.get_full_name|default:profile_user.username }}{% endif %}{% endblock title %}
 
 {% block content %}
 <div class="max-w-6xl mx-auto px-4 py-12">
 
-    <!-- ===== Баннер с персональными данными ===== -->
-    <div class="bg-gradient-to-r from-brand-600 to-brand-700 rounded-2xl p-8 mb-8 text-white" data-aos="fade-up">
-        <div class="flex items-center gap-6">
-            <!-- Инициалы -->
-            <div class="w-20 h-20 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
-                <span class="text-3xl font-bold text-white">
-                    {{ profile_user.first_name|default:profile_user.username|make_list|first|upper }}{{ profile_user.last_name|make_list|first|upper|default:"" }}
-                </span>
+    <!-- ===== Панель учителя ===== -->
+    {% if students %}
+    {# z-30 нужен самому контейнеру: data-aos вешает transform, а он создаёт stacking context #}
+    <div class="relative z-30 mb-6 flex flex-wrap items-center gap-3" data-aos="fade-up">
+        <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 text-sm font-medium">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+            Режим учителя
+        </span>
+        <details class="relative">
+            <summary class="cursor-pointer list-none px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-gray-700 dark:text-slate-300 hover:border-brand-400">
+                Открыть профиль ученика ▾
+            </summary>
+            <div class="absolute z-30 mt-2 w-72 max-h-96 overflow-y-auto rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-lg p-2">
+                {# Сначала группа, потом ученик: групп мало, а учеников много #}
+                {% regroup students by profile.group as grouped_students %}
+                {% for group_entry in grouped_students %}
+                <details class="rounded-lg" {% if group_entry.grouper == group %}open{% endif %}>
+                    {# Маркер нативный: сам поворачивается. display:flex его бы скрыл #}
+                    <summary class="cursor-pointer px-2 py-1.5 rounded-lg text-sm font-medium text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 marker:text-gray-400">
+                        {{ group_entry.grouper|default:"Без группы" }}
+                        <span class="text-xs font-normal text-gray-400 dark:text-slate-500">· {{ group_entry.list|length }}</span>
+                    </summary>
+                    <div class="pl-2 border-l border-gray-200 dark:border-slate-600 ml-2 mt-1 mb-1">
+                        {% for student in group_entry.list %}
+                        <a href="{% url 'accounts:student_profile' student.id %}"
+                           class="block px-2 py-1.5 rounded-lg text-sm text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-700 {% if student.id == profile_user.id %}bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-300 font-medium{% endif %}">
+                            {{ student.get_full_name|default:student.username }}
+                        </a>
+                        {% endfor %}
+                    </div>
+                </details>
+                {% endfor %}
             </div>
-            <!-- Имя и мета -->
-            <div>
-                <h1 class="text-2xl font-bold text-white">
-                    {% if profile_user.first_name or profile_user.last_name %}
-                        {{ profile_user.first_name }} {{ profile_user.last_name }}
+        </details>
+        {% if not is_own %}
+        <a href="{% url 'accounts:profile' %}" class="text-sm text-gray-500 dark:text-slate-400 hover:text-brand-600">← к своему профилю</a>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- ===== Баннер ===== -->
+    <div class="bg-gradient-to-r from-brand-600 to-brand-700 rounded-2xl p-6 sm:p-8 mb-8 text-white" data-aos="fade-up">
+        <div class="flex flex-col sm:flex-row items-center sm:items-start gap-6">
+
+            <!-- Слева: аватар -->
+            <div class="flex-shrink-0">
+                <div class="relative w-32 h-32">
+                    {% if profile.avatar %}
+                        <img src="{{ profile.avatar.url }}" alt="Аватар"
+                             class="w-32 h-32 rounded-full object-cover ring-4 ring-white/30">
                     {% else %}
-                        {{ profile_user.username }}
+                        <div class="w-32 h-32 rounded-full bg-white/20 ring-4 ring-white/30 flex items-center justify-center">
+                            <span class="text-4xl font-bold text-white">
+                                {{ profile_user.first_name|default:profile_user.username|make_list|first|upper }}{{ profile_user.last_name|make_list|first|upper|default:"" }}
+                            </span>
+                        </div>
                     {% endif %}
+                    {% if is_own %}
+                    {# Форма-обёртка только вокруг кнопки: сам аватар рисуется один раз для всех #}
+                    <form method="post" enctype="multipart/form-data">
+                        {% csrf_token %}
+                        <label title="Загрузить фото"
+                               class="absolute bottom-0 right-0 w-10 h-10 rounded-full bg-white text-brand-700 shadow-lg flex items-center justify-center cursor-pointer hover:bg-blue-50 transition-colors">
+                            {# Выбор файла открывает кроп; форму сабмитит уже avatar-crop.js #}
+                            <input type="file" name="avatar" accept="image/*" class="sr-only" id="avatar-input">
+                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                        </label>
+                    </form>
+                    {% endif %}
+                </div>
+                {% if avatar_error %}
+                <p class="mt-2 w-32 text-xs text-red-100 bg-red-500/40 rounded-lg px-2 py-1">{{ avatar_error }}</p>
+                {% endif %}
+            </div>
+
+            <!-- Справа: имя и плашки в три столбика -->
+            <div class="flex-1 min-w-0 w-full text-center sm:text-left">
+                <h1 class="text-2xl font-bold text-white">
+                    {{ profile_user.get_full_name|default:profile_user.username }}
                 </h1>
-                <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-sm text-blue-100">
-                    <span>@{{ profile_user.username }}</span>
-                    {% if group %}
-                        <span class="inline-flex items-center gap-1">
-                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                            {{ group.name }}
-                        </span>
-                    {% endif %}
-                    {% if is_ege %}
-                        <span class="inline-flex items-center gap-1 font-medium">
-                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/></svg>
-                            ЕГЭ 2026
-                        </span>
-                    {% endif %}
+                {% if is_ege %}
+                <div class="mt-1 mb-4 text-sm text-blue-100">
+                    <span class="inline-flex items-center gap-1 font-medium">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/></svg>
+                        ЕГЭ 2026
+                    </span>
+                </div>
+                {% else %}
+                <div class="mb-4"></div>
+                {% endif %}
+
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-3 text-left">
+                    <div class="rounded-xl bg-white/10 px-4 py-3">
+                        <div class="text-[11px] uppercase tracking-wide text-blue-100">Фамилия</div>
+                        <div class="font-semibold truncate mt-0.5">{{ profile_user.last_name|default:"—" }}</div>
+                    </div>
+                    <div class="rounded-xl bg-white/10 px-4 py-3">
+                        <div class="text-[11px] uppercase tracking-wide text-blue-100">Имя</div>
+                        <div class="font-semibold truncate mt-0.5">{{ profile_user.first_name|default:"—" }}</div>
+                    </div>
+                    <div class="rounded-xl bg-white/10 px-4 py-3">
+                        <div class="text-[11px] uppercase tracking-wide text-blue-100">Группа</div>
+                        <div class="font-semibold truncate mt-0.5">{{ group.name|default:"—" }}</div>
+                    </div>
+                    <div class="rounded-xl bg-white/10 px-4 py-3">
+                        <div class="text-[11px] uppercase tracking-wide text-blue-100">Логин</div>
+                        <div class="font-semibold truncate mt-0.5">{{ profile_user.username }}</div>
+                    </div>
+                    <div class="rounded-xl bg-white/10 px-4 py-3">
+                        <div class="text-[11px] uppercase tracking-wide text-blue-100">Пароль</div>
+                        {# Кнопка только в своём профиле: PasswordChangeView меняет пароль request.user, а не хозяину профиля #}
+                        {% if is_own %}
+                        <a href="{% url 'password_change' %}"
+                           class="inline-flex items-center gap-1.5 mt-1 px-2.5 py-1 rounded-lg bg-white/20 hover:bg-white/30 text-sm font-medium transition-colors">
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                            Сменить
+                        </a>
+                        {% else %}
+                        <div class="font-semibold mt-0.5 tracking-widest">••••••</div>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- ===== Мини-карточки метрик ===== -->
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8" data-aos="fade-up" data-aos-delay="100">
-        <!-- Тесты -->
-        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 p-4">
-            <div class="w-10 h-10 bg-brand-100 dark:bg-brand-900/40 rounded-lg flex items-center justify-center mb-3">
-                <svg class="w-5 h-5 text-brand-600 dark:text-brand-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
-                </svg>
+    <!-- ===== Сводка ===== -->
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-10" data-aos="fade-up" data-aos-delay="100">
+        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 px-4 py-3.5">
+            <div class="text-[11px] uppercase tracking-wide text-gray-500 dark:text-slate-400">Средний балл</div>
+            <div class="text-xl lg:text-2xl font-bold leading-tight mt-0.5 {% if textbook.avg_grade %}text-gray-900 dark:text-white{% else %}text-gray-300 dark:text-slate-600{% endif %}">
+                {{ textbook.avg_grade|default:"—" }}
             </div>
-            <div class="text-2xl font-bold text-gray-900 dark:text-white">{{ unique_quizzes }}</div>
-            <div class="text-xs text-gray-500 dark:text-slate-400 mt-1">Тестов пройдено</div>
+            <div class="text-[11px] text-gray-400 dark:text-slate-500">
+                {% if textbook.graded_count %}по {{ textbook.graded_count }} блок{{ textbook.graded_count|pluralize:"у,ам,ам" }}{% else %}оценок нет{% endif %}
+            </div>
         </div>
-        <!-- Верных ответов -->
-        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 p-4">
-            <div class="w-10 h-10 bg-green-100 dark:bg-green-900/40 rounded-lg flex items-center justify-center mb-3">
-                <svg class="w-5 h-5 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
+        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 px-4 py-3.5">
+            <div class="text-[11px] uppercase tracking-wide text-gray-500 dark:text-slate-400">Уроки</div>
+            <div class="text-xl lg:text-2xl font-bold leading-tight mt-0.5 text-gray-900 dark:text-white tabular-nums">
+                {{ textbook.lessons_done }}<span class="text-base text-gray-400">/{{ textbook.lessons_total }}</span>
             </div>
-            {% if likes_received > 0 %}
-            <div class="text-2xl font-bold text-pink-500">{{ likes_received }}</div>
-            <div class="text-xs text-gray-500 dark:text-slate-400 mt-1">Лайков получено</div>
-            {% else %}
-            <div class="text-2xl font-bold text-gray-900 dark:text-white">{{ correct_answers }}<span class="text-base text-gray-400">/{{ total_answers }}</span></div>
-            <div class="text-xs text-gray-500 dark:text-slate-400 mt-1">Верных ответов</div>
-            {% endif %}
+            <div class="text-[11px] text-gray-400 dark:text-slate-500">прочитано</div>
         </div>
-        <!-- Время -->
-        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 p-4">
-            <div class="w-10 h-10 bg-purple-100 dark:bg-purple-900/40 rounded-lg flex items-center justify-center mb-3">
-                <svg class="w-5 h-5 text-purple-600 dark:text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
+        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 px-4 py-3.5">
+            <div class="text-[11px] uppercase tracking-wide text-gray-500 dark:text-slate-400">Практикум</div>
+            <div class="text-xl lg:text-2xl font-bold leading-tight mt-0.5 text-gray-900 dark:text-white tabular-nums">
+                {{ textbook.practicum_done }}<span class="text-base text-gray-400">/{{ textbook.practicum_total }}</span>
             </div>
-            <div class="text-2xl font-bold text-gray-900 dark:text-white">{% if total_time %}{{ total_time|duration_short }}{% else %}—{% endif %}</div>
-            <div class="text-xs text-gray-500 dark:text-slate-400 mt-1">Общее время</div>
+            <div class="text-[11px] text-gray-400 dark:text-slate-500">задач решено</div>
         </div>
-        <!-- Попытки -->
-        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 p-4">
-            <div class="w-10 h-10 bg-amber-100 dark:bg-amber-900/40 rounded-lg flex items-center justify-center mb-3">
-                <svg class="w-5 h-5 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
-            </div>
-            <div class="text-2xl font-bold text-gray-900 dark:text-white">{{ total_attempts }}</div>
-            <div class="text-xs text-gray-500 dark:text-slate-400 mt-1">Попыток</div>
+        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 px-4 py-3.5">
+            <div class="text-[11px] uppercase tracking-wide text-gray-500 dark:text-slate-400">Чтение</div>
+            <div class="text-xl lg:text-2xl font-bold leading-tight mt-0.5 text-gray-900 dark:text-white whitespace-nowrap">{{ textbook.read_seconds|time_short }}</div>
+            <div class="text-[11px] text-gray-400 dark:text-slate-500">время над статьями</div>
+        </div>
+        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 px-4 py-3.5">
+            <div class="text-[11px] uppercase tracking-wide text-gray-500 dark:text-slate-400">Решение</div>
+            <div class="text-xl lg:text-2xl font-bold leading-tight mt-0.5 text-gray-900 dark:text-white whitespace-nowrap">{{ textbook.solve_seconds|time_short }}</div>
+            <div class="text-[11px] text-gray-400 dark:text-slate-500">время над задачами</div>
         </div>
     </div>
 
-    <!-- ===== Средний ряд: По типам + ЕГЭ/Код/Помощь ===== -->
-    <div class="grid md:grid-cols-2 gap-6 mb-8">
-
-        <!-- По типам вопросов -->
-        {% if type_stats %}
-        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 p-6" data-aos="fade-up" data-aos-delay="150">
-            <h2 class="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                <svg class="w-5 h-5 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
-                По типам вопросов
+    <!-- ===================== БЛОК: УЧЕБНИК ===================== -->
+    <section class="mb-12" data-aos="fade-up" data-aos-delay="150">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <svg class="w-6 h-6 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+                Учебник
             </h2>
-            <div class="space-y-4">
-                {% if type_stats.choice %}
-                <div>
-                    <div class="flex justify-between text-sm mb-1">
-                        <span class="text-gray-600">Выбор ответа</span>
-                        <span class="font-medium text-gray-900">{{ type_stats.choice.correct }}/{{ type_stats.choice.total }} ({{ type_stats.choice.pct }}%)</span>
-                    </div>
-                    <div class="w-full bg-gray-200 rounded-full h-2">
-                        <div class="bg-blue-500 h-2 rounded-full transition-all duration-500" style="width: {{ type_stats.choice.pct }}%"></div>
-                    </div>
-                </div>
-                {% endif %}
-                {% if type_stats.text %}
-                <div>
-                    <div class="flex justify-between text-sm mb-1">
-                        <span class="text-gray-600">Свободный ответ</span>
-                        <span class="font-medium text-gray-900">{{ type_stats.text.correct }}/{{ type_stats.text.total }} ({{ type_stats.text.pct }}%)</span>
-                    </div>
-                    <div class="w-full bg-gray-200 rounded-full h-2">
-                        <div class="bg-emerald-500 h-2 rounded-full transition-all duration-500" style="width: {{ type_stats.text.pct }}%"></div>
-                    </div>
-                </div>
-                {% endif %}
-                {% if type_stats.code %}
-                <div>
-                    <div class="flex justify-between text-sm mb-1">
-                        <span class="text-gray-600">Код (Python)</span>
-                        <span class="font-medium text-gray-900">{{ type_stats.code.correct }}/{{ type_stats.code.total }} ({{ type_stats.code.pct }}%)</span>
-                    </div>
-                    <div class="w-full bg-gray-200 rounded-full h-2">
-                        <div class="bg-violet-500 h-2 rounded-full transition-all duration-500" style="width: {{ type_stats.code.pct }}%"></div>
-                    </div>
-                </div>
-                {% endif %}
+            <div class="text-sm text-gray-500 dark:text-slate-400">
+                Уроки {{ textbook.lessons_pct }}% · Практикум {{ textbook.practicum_pct }}%
             </div>
+        </div>
+
+        <!-- Что подтянуть -->
+        {% if textbook.focus %}
+        <div class="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 rounded-xl p-5 mb-4">
+            <h3 class="text-sm font-semibold text-amber-900 dark:text-amber-200 mb-3">Что подтянуть</h3>
+            <ul class="space-y-2">
+                {% for item in textbook.focus %}
+                <li class="flex flex-wrap items-baseline gap-x-2 text-sm">
+                    <a href="{{ item.practicum_url|default:'#' }}" class="font-medium text-gray-900 dark:text-white hover:text-brand-600">{{ item.section.title }}</a>
+                    <span class="text-gray-600 dark:text-slate-400">
+                        решено {{ item.practicum_done }} из {{ item.practicum_total }}{% if item.next_step %},
+                        до «{{ item.next_step.grade }}» — {{ item.next_step.left }} задач{{ item.next_step.left|pluralize:"а,и," }}{% endif %}
+                    </span>
+                    {% if item.section.deadline %}
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 text-xs font-medium">
+                        до {{ item.section.deadline|date:"d.m" }}
+                    </span>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
         </div>
         {% endif %}
 
-        <!-- ЕГЭ прогресс -->
-        {% if is_ege and ege_stats.total > 0 %}
-        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 p-6" data-aos="fade-up" data-aos-delay="200">
-            <h2 class="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                <svg class="w-5 h-5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/></svg>
-                Прогресс ЕГЭ
-            </h2>
-            <div class="flex items-center gap-6">
-                <!-- Кольцевой прогресс (SVG) -->
+        <!-- Блоки -->
+        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="bg-gray-50 dark:bg-slate-700/60 border-b border-gray-100 dark:border-slate-600 text-left text-xs uppercase tracking-wider text-gray-500 dark:text-slate-400">
+                            <th class="px-5 py-3 font-semibold">Блок</th>
+                            <th class="px-3 py-3 font-semibold text-center">Уроки</th>
+                            <th class="px-3 py-3 font-semibold text-center">Практикум</th>
+                            <th class="px-3 py-3 font-semibold text-center">Самопроверки</th>
+                            <th class="px-3 py-3 font-semibold text-center">Дедлайн</th>
+                            <th class="px-3 py-3 font-semibold text-center">Оценка</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100 dark:divide-slate-700">
+                        {% for item in textbook.sections %}
+                        <tr class="hover:bg-gray-50 dark:hover:bg-slate-700/40 transition-colors {% if not item.started %}opacity-60{% endif %}">
+                            <td class="px-5 py-3">
+                                <span class="font-medium text-gray-900 dark:text-white">{{ item.section.order }}. {{ item.section.title }}</span>
+                                {% if item.is_closed %}<span class="ml-2 text-xs text-gray-400 dark:text-slate-500">закрыт</span>{% endif %}
+                            </td>
+                            <td class="px-3 py-3 text-center">
+                                <div class="tabular-nums text-gray-700 dark:text-slate-300">{{ item.lessons_done }}/{{ item.lessons_total }}</div>
+                                <div class="w-16 mx-auto mt-1 bg-gray-200 dark:bg-slate-600 rounded-full h-1.5">
+                                    <div class="bg-brand-500 h-1.5 rounded-full" style="width: {{ item.lessons_pct }}%"></div>
+                                </div>
+                            </td>
+                            <td class="px-3 py-3 text-center tabular-nums">
+                                {% if item.practicum_total %}
+                                    <a href="{{ item.practicum_url }}" class="text-gray-700 dark:text-slate-300 hover:text-brand-600">{{ item.practicum_done }}/{{ item.practicum_total }}</a>
+                                {% else %}
+                                    <span class="text-gray-300 dark:text-slate-600">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-3 py-3 text-center tabular-nums text-gray-500 dark:text-slate-400">
+                                {% if item.self_check_total %}{{ item.self_check_done }}/{{ item.self_check_total }}{% else %}—{% endif %}
+                            </td>
+                            <td class="px-3 py-3 text-center text-xs {% if item.is_closed %}text-red-500{% else %}text-gray-500 dark:text-slate-400{% endif %}">
+                                {% if item.section.deadline %}{{ item.section.deadline|date:"d.m.Y" }}{% else %}—{% endif %}
+                            </td>
+                            <td class="px-3 py-3 text-center">
+                                {% include 'textbook/_grade_badge.html' with grade=item.grade %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="6" class="px-5 py-6 text-center text-gray-400 dark:text-slate-500">Блоки ещё не опубликованы</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===================== БЛОК: ЕГЭ ===================== -->
+    {% if is_ege or ege.has_data %}
+    <section class="mb-12" data-aos="fade-up" data-aos-delay="200">
+        <h2 class="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-4">
+            <svg class="w-6 h-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/></svg>
+            ЕГЭ
+        </h2>
+
+        <div class="grid md:grid-cols-3 gap-6 mb-4">
+            <!-- Общий прогресс тренажёра -->
+            <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 p-6 flex items-center gap-5">
                 <div class="relative w-24 h-24 flex-shrink-0">
                     <svg class="w-24 h-24 transform -rotate-90" viewBox="0 0 36 36">
-                        <path class="text-gray-200" stroke="currentColor" stroke-width="3" fill="none" d="M18 2.0845a 15.9155 15.9155 0 0 1 0 31.831 15.9155 15.9155 0 0 1 0 -31.831"/>
-                        <path class="text-indigo-500" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-dasharray="{{ ege_stats.pct }}, 100" d="M18 2.0845a 15.9155 15.9155 0 0 1 0 31.831 15.9155 15.9155 0 0 1 0 -31.831"/>
+                        <path class="text-gray-200 dark:text-slate-700" stroke="currentColor" stroke-width="3" fill="none" d="M18 2.0845a 15.9155 15.9155 0 0 1 0 31.831 15.9155 15.9155 0 0 1 0 -31.831"/>
+                        <path class="text-indigo-500" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-dasharray="{{ ege.pct }}, 100" d="M18 2.0845a 15.9155 15.9155 0 0 1 0 31.831 15.9155 15.9155 0 0 1 0 -31.831"/>
                     </svg>
                     <div class="absolute inset-0 flex items-center justify-center">
-                        <span class="text-lg font-bold text-gray-900">{{ ege_stats.pct }}%</span>
+                        <span class="text-lg font-bold text-gray-900 dark:text-white">{{ ege.pct }}%</span>
                     </div>
                 </div>
-                <div class="space-y-2">
-                    <div class="text-sm text-gray-600">Решено: <span class="font-bold text-gray-900">{{ ege_stats.solved }}</span> из {{ ege_stats.total }}</div>
-                    <div class="text-sm text-gray-600">Время: <span class="font-bold text-gray-900">{{ ege_stats.time|duration_display }}</span></div>
+                <div class="space-y-1 text-sm">
+                    <div class="text-gray-600 dark:text-slate-400">Задач решено: <span class="font-bold text-gray-900 dark:text-white">{{ ege.solved }}</span> из {{ ege.total }}</div>
+                    <div class="text-gray-600 dark:text-slate-400">Время в тренажёре: <span class="font-bold text-gray-900 dark:text-white">{{ ege.time|duration_display }}</span></div>
+                </div>
+            </div>
+
+            <!-- Варианты -->
+            <div class="md:col-span-2 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 p-6">
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-3">Варианты</h3>
+                <div class="space-y-3">
+                    {% for variant in ege.variants %}
+                    <div>
+                        <div class="flex justify-between text-sm mb-1">
+                            <a href="{% url 'ege:ege_detail' variant.id %}" class="text-gray-700 dark:text-slate-300 hover:text-indigo-600 truncate mr-2">{{ variant.title }}</a>
+                            <span class="flex-shrink-0 tabular-nums text-gray-900 dark:text-white font-medium">
+                                {% if variant.attempts %}{{ variant.best_score }}/{{ variant.num_questions }}{% endif %}
+                                {% if variant.spent_seconds %}
+                                    <span class="ml-2 font-normal text-gray-500 dark:text-slate-400 whitespace-nowrap">{{ variant.spent_seconds|time_short }}</span>
+                                {% endif %}
+                                {% if not variant.attempts and not variant.spent_seconds %}
+                                    <span class="text-gray-400 font-normal">не начат</span>
+                                {% endif %}
+                            </span>
+                        </div>
+                        {% if variant.attempts %}
+                        <div class="w-full bg-gray-200 dark:bg-slate-600 rounded-full h-1.5">
+                            <div class="bg-indigo-500 h-1.5 rounded-full" style="width: {% widthratio variant.best_score variant.num_questions 100 %}%"></div>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% empty %}
+                    <p class="text-sm text-gray-400 dark:text-slate-500">Вариантов пока нет</p>
+                    {% endfor %}
                 </div>
             </div>
         </div>
-        {% endif %}
 
-        <!-- Результаты по тестам -->
-        {% if quiz_stats %}
-        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 p-6" data-aos="fade-up" data-aos-delay="250">
-            <h2 class="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                <svg class="w-5 h-5 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
-                Результаты по тестам
-            </h2>
-            <div class="space-y-4">
-                {% for qs in quiz_stats %}
-                <div>
-                    <div class="flex justify-between text-sm mb-1">
-                        <span class="text-gray-600 truncate mr-2">{{ qs.quiz__title }}</span>
-                        <span class="font-medium text-gray-900 flex-shrink-0">{{ qs.best_score }}/{{ qs.total }}{% if qs.attempts > 1 %} <span class="text-gray-400 text-xs">({{ qs.attempts }} попыт.)</span>{% endif %}</span>
+        <!-- По номерам заданий -->
+        {% if ege.by_number %}
+        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 p-6 mb-4">
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-1">По номерам заданий</h3>
+            <p class="text-xs text-gray-400 dark:text-slate-500 mb-4">
+                Под номером — <span class="font-medium text-gray-500 dark:text-slate-400">ваше среднее время</span>,
+                ниже — <span class="font-medium text-gray-500 dark:text-slate-400">цель</span>, к которой стоит стремиться.
+                Зелёный — уложились в цель, жёлтый — до полутора целей, красный — дольше, серый — задача ещё не решена.
+            </p>
+            <div class="flex flex-wrap gap-2">
+                {% for task in ege.by_number %}
+                <div class="w-16 text-center"
+                     title="Задание {{ task.number }}: решено {{ task.solved }} из {{ task.total }}{% if task.avg_mm_ss %}, ваше среднее время {{ task.avg_mm_ss }}{% endif %}, цель — {{ task.recommended_min }} мин">
+                    <div class="h-9 rounded-lg flex items-center justify-center text-sm font-semibold
+                        {% if task.color == 'green' %}bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300
+                        {% elif task.color == 'yellow' %}bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300
+                        {% elif task.color == 'red' %}bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300
+                        {% else %}bg-gray-100 text-gray-400 dark:bg-slate-700 dark:text-slate-500{% endif %}">
+                        {{ task.number }}
                     </div>
-                    <div class="w-full bg-gray-200 rounded-full h-2">
-                        <div class="h-2 rounded-full transition-all duration-500 {% if qs.pct >= 80 %}bg-green-500{% elif qs.pct >= 50 %}bg-yellow-500{% else %}bg-red-400{% endif %}" style="width: {{ qs.pct }}%"></div>
+                    <div class="text-xs font-semibold tabular-nums mt-1 leading-tight
+                        {% if task.color == 'green' %}text-green-600 dark:text-green-400
+                        {% elif task.color == 'yellow' %}text-amber-600 dark:text-amber-400
+                        {% elif task.color == 'red' %}text-red-600 dark:text-red-400
+                        {% else %}text-gray-300 dark:text-slate-600{% endif %}">
+                        {{ task.avg_mm_ss|default:"—" }}
                     </div>
+                    <div class="text-[10px] text-gray-400 dark:text-slate-500 leading-tight whitespace-nowrap">цель {{ task.recommended_min }} мин</div>
+                    <div class="text-[10px] text-gray-400 dark:text-slate-500 tabular-nums leading-tight">{{ task.solved }}/{{ task.total }}</div>
                 </div>
                 {% endfor %}
             </div>
         </div>
         {% endif %}
 
-        <!-- Помощь -->
-        {% if help_total > 0 %}
-        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 p-6" data-aos="fade-up" data-aos-delay="300">
-            <h2 class="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                <svg class="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                Помощь
-            </h2>
-            <div class="space-y-3">
-                <div class="flex justify-between text-sm">
-                    <span class="text-gray-600">Вопросов задано</span>
-                    <span class="font-medium text-gray-900">{{ help_total }}</span>
-                </div>
-                <div class="flex justify-between text-sm">
-                    <span class="text-gray-600">Решено</span>
-                    <span class="font-medium text-gray-900">{{ help_resolved }}</span>
-                </div>
+        <!-- Теория ЕГЭ (появится вместе со статьями вкладки) -->
+        {% if ege.theory_total %}
+        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 p-6">
+            <div class="flex justify-between text-sm mb-2">
+                <h3 class="font-semibold text-gray-900 dark:text-white">Теория ЕГЭ</h3>
+                <span class="tabular-nums text-gray-700 dark:text-slate-300">{{ ege.theory_read }}/{{ ege.theory_total }} прочитано</span>
+            </div>
+            <div class="w-full bg-gray-200 dark:bg-slate-600 rounded-full h-2">
+                <div class="bg-indigo-500 h-2 rounded-full" style="width: {{ ege.theory_pct }}%"></div>
             </div>
         </div>
         {% endif %}
-    </div>
+    </section>
+    {% endif %}
 
-    <!-- ===== Последняя активность ===== -->
-    {% if recent_results %}
-    <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden mb-8" data-aos="fade-up" data-aos-delay="350">
-        <div class="px-6 py-4 border-b border-gray-100 dark:border-slate-700">
-            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Последняя активность</h2>
+    <!-- ===== Помощь и последняя активность ===== -->
+    <div class="grid md:grid-cols-3 gap-6 mb-8">
+        {% if help_open or help_unread %}
+        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 p-6" data-aos="fade-up" data-aos-delay="250">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-white mb-3">Помощь</h2>
+            {% if help_unread %}
+            <p class="text-sm text-amber-700 dark:text-amber-300 font-medium mb-2">
+                Новых ответов учителя: {{ help_unread }}
+            </p>
+            {% endif %}
+            <p class="text-sm text-gray-600 dark:text-slate-400">Открытых вопросов: {{ help_open }}</p>
         </div>
-        <div class="overflow-x-auto">
-            <table class="w-full">
-                <thead>
-                    <tr class="bg-gray-50 dark:bg-slate-700 border-b border-gray-100 dark:border-slate-600">
-                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Тест</th>
-                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Тип</th>
-                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Результат</th>
-                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Дата</th>
-                    </tr>
-                </thead>
+        {% endif %}
+
+        {% if recent_results %}
+        <div class="{% if help_open or help_unread %}md:col-span-2{% else %}md:col-span-3{% endif %} bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden" data-aos="fade-up" data-aos-delay="300">
+            <div class="px-6 py-4 border-b border-gray-100 dark:border-slate-700">
+                <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Последняя активность</h2>
+            </div>
+            <table class="w-full text-sm">
                 <tbody class="divide-y divide-gray-100 dark:divide-slate-700">
                     {% for r in recent_results %}
-                    <tr class="hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors">
-                        <td class="px-6 py-4 text-sm font-medium text-gray-900 dark:text-white max-w-[200px] truncate">{{ r.quiz.title }}</td>
-                        <td class="px-6 py-4 text-sm text-gray-500 dark:text-slate-400">
-                            {% if r.quiz.quiz_type == 'exam' %}ЕГЭ{% else %}Задача{% endif %}
-                        </td>
-                        <td class="px-6 py-4 text-sm font-semibold {% if r.score == r.max_score %}text-green-600 dark:text-green-400{% else %}text-gray-900 dark:text-white{% endif %}">
-                            {{ r.score }}/{{ r.max_score }}
-                        </td>
-                        <td class="px-6 py-4 text-sm text-gray-500 dark:text-slate-400">{{ r.date_completed|date:"d.m.Y" }}</td>
+                    <tr class="hover:bg-gray-50 dark:hover:bg-slate-700/40 transition-colors">
+                        <td class="px-6 py-3 font-medium text-gray-900 dark:text-white max-w-[260px] truncate">{{ r.quiz.title }}</td>
+                        <td class="px-3 py-3 text-gray-500 dark:text-slate-400">{% if r.quiz.quiz_type == 'exam' %}ЕГЭ{% else %}Учебник{% endif %}</td>
+                        <td class="px-3 py-3 font-semibold tabular-nums {% if r.score == r.max_score %}text-green-600 dark:text-green-400{% else %}text-gray-900 dark:text-white{% endif %}">{{ r.score }}/{{ r.max_score }}</td>
+                        <td class="px-6 py-3 text-gray-500 dark:text-slate-400">{{ r.date_completed|date:"d.m.Y" }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
+        {% endif %}
     </div>
-    {% endif %}
 
     <!-- ===== Кнопки ===== -->
-    <div class="flex flex-wrap items-center justify-center gap-4" data-aos="fade-up" data-aos-delay="400">
-        <a href="{% url 'quizzes:quiz_list' %}"
+    {% if is_own %}
+    <div class="flex flex-wrap items-center justify-center gap-4" data-aos="fade-up" data-aos-delay="350">
+        <a href="{% url 'textbook:home' %}"
            class="inline-flex items-center px-6 py-3 bg-brand-600 text-white font-medium rounded-lg hover:bg-brand-700 transition-colors">
             <svg class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
             </svg>
-            Перейти к задачам
+            Перейти к учебнику
         </a>
         <a href="{% url 'ege:ege_list' %}"
            class="inline-flex items-center px-6 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors">
@@ -262,5 +417,43 @@
             Тренажёр ЕГЭ
         </a>
     </div>
+    {% endif %}
+
+{% if is_own %}
+{# Модалка вне блоков с data-aos: AOS вешает transform, а он ломает position: fixed #}
+<div id="avatar-crop" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 p-4">
+    <div class="w-full max-w-sm bg-white dark:bg-slate-800 rounded-2xl shadow-2xl p-6">
+        <h3 class="text-lg font-bold text-gray-900 dark:text-white">Выберите фрагмент</h3>
+        <p class="text-sm text-gray-500 dark:text-slate-400 mb-4">Перетащите фото и подберите масштаб</p>
+
+        <div id="avatar-crop-stage"
+             class="relative mx-auto w-64 h-64 rounded-full overflow-hidden bg-gray-100 dark:bg-slate-900 ring-4 ring-brand-500/30 cursor-move touch-none select-none">
+            <img id="avatar-crop-img" alt="" class="absolute max-w-none pointer-events-none">
+        </div>
+
+        <div class="flex items-center gap-3 mt-4 text-gray-400 dark:text-slate-500">
+            <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            <input id="avatar-crop-zoom" type="range" min="1" max="4" step="0.01" value="1"
+                   class="flex-1 accent-brand-600 cursor-pointer">
+            <svg class="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        </div>
+
+        <div class="flex gap-3 mt-5">
+            <button type="button" id="avatar-crop-cancel"
+                    class="flex-1 py-2.5 rounded-lg border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-slate-300 font-medium hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors">
+                Отмена
+            </button>
+            <button type="button" id="avatar-crop-save"
+                    class="flex-1 py-2.5 rounded-lg bg-brand-600 text-white font-medium hover:bg-brand-700 transition-colors">
+                Поставить
+            </button>
+        </div>
+    </div>
+</div>
+{% endif %}
 </div>
 {% endblock content %}
+
+{% block extra_js %}
+{% if is_own %}<script src="{% static 'js/avatar-crop.js' %}"></script>{% endif %}
+{% endblock extra_js %}

@@ -66,6 +66,7 @@ htmlcov/
 .pytest_cache/
 
 # Backup & temp
+backups/
 *.bak
 *.tmp
 *.orig
@@ -74,3 +75,7 @@ htmlcov/
 
 # MkDocs build output
 site/
+
+# Вспомогательная кухня: макеты дизайна и одноразовые скрипты отрисовки
+design_handoff/
+tools/

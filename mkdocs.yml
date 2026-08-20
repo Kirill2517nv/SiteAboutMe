@@ -67,6 +67,10 @@ nav:
     - "Выполнение кода": flows/code-execution.md
     - "Система помощи": flows/help-system.md
     - "EGE Тренажёр": flows/ege-trainer.md
+  - "Учебник":
+    - "Структура курса": textbook-structure.md
+    - "Бриф: урок": textbook-lesson-brief.md
+    - "Ревизия блока": textbook-block-revision.md
   - "Уроки":
     - "Slidev-презентации": slidev-guide.md
   - "Фронтенд":

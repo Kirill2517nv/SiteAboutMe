@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.http import HttpResponseRedirect
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
-from .models import Quiz, Question, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, HelpRequest, HelpComment, QuestionImage, QuestionFile, ExamTaskProgress, SolutionAttachment, SolutionLike, CodeSubmission
+from .models import Quiz, Question, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, HelpRequest, HelpComment, QuestionImage, QuestionFile, ExamTaskProgress, SolutionAttachment, SolutionLike, CodeSubmission, HintChoice
 from .forms import BulkQuizAssignmentForm
 
 class ChoiceInline(admin.TabularInline):
@@ -29,6 +29,12 @@ class QuestionAdmin(admin.ModelAdmin):
     fieldsets = (
         (None, {
             'fields': ('quiz', 'title', 'text', 'question_type')
+        }),
+        ('Подсказка', {
+            'fields': ('hint',),
+            'description': 'Ученик не видит подсказку и не знает о её существовании, '
+                           'пока она не откроется: три неудачные попытки, меньше трёх '
+                           'дней до дедлайна блока или рубильник «Открыть подсказки блока».'
         }),
         ('Для свободных ответов', {
             'fields': ('correct_text_answer', 'alternative_answers'),
@@ -208,3 +214,14 @@ admin.site.register(ExamTaskProgress, ExamTaskProgressAdmin)
 admin.site.register(SolutionAttachment, SolutionAttachmentAdmin)
 admin.site.register(CodeSubmission, CodeSubmissionAdmin)
 admin.site.register(SolutionLike, SolutionLikeAdmin)
+
+@admin.register(HintChoice)
+class HintChoiceAdmin(admin.ModelAdmin):
+    """Только чтение: что ученик выбрал, когда ему предложили подсказку."""
+    list_display = ('user', 'question', 'accepted', 'decided_at')
+    list_filter = ('accepted', 'question__quiz')
+    search_fields = ('user__username', 'user__last_name', 'question__title')
+    readonly_fields = ('user', 'question', 'accepted', 'offered_at', 'decided_at')
+
+    def has_add_permission(self, request):
+        return False

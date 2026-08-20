@@ -38,7 +38,7 @@ def check_code_task(self, submission_id):
 
     question = submission.question
     code = submission.code
-    any_test_passed = False
+    all_tests_passed = False
     error_log = None
     passed_cpu_time = None
     passed_memory_kb = None
@@ -63,35 +63,39 @@ def check_code_task(self, submission_id):
                     break
 
             if files_ok:
-                # Run tests — задача засчитана если хотя бы один тест прошёл
-                first_error_log = None
+                # Задача засчитана, только если пройдены ВСЕ тесты: первый же
+                # провал прекращает проверку и попадает в сообщение об ошибке.
+                all_tests_passed = True
                 for i, test_case in enumerate(test_cases, 1):
                     output, error, cpu_time_ms, memory_kb = run_code_in_docker(code, test_case.input_data, extra_files)
 
                     if error:
-                        if first_error_log is None:
-                            first_error_log = error
-                        continue
-
-                    if normalize_output(output) == normalize_output(test_case.output_data):
-                        any_test_passed = True
-                        passed_cpu_time = cpu_time_ms
-                        passed_memory_kb = memory_kb
+                        all_tests_passed = False
+                        error_log = error
                         break
-                    else:
-                        if first_error_log is None:
-                            first_error_log = (
-                                f"Неверный ответ на тесте #{i}.\n"
-                                f"Входные данные: {test_case.input_data}\n"
-                                f"Ваш ответ: {output}"
-                            )
 
-                if not any_test_passed:
-                    error_log = first_error_log
+                    if normalize_output(output) != normalize_output(test_case.output_data):
+                        all_tests_passed = False
+                        error_log = (
+                            f"Неверный ответ на тесте #{i}.\n"
+                            f"Входные данные: {test_case.input_data}\n"
+                            f"Ваш ответ: {output}"
+                        )
+                        break
+
+                    # Метрики берём по худшему из пройденных тестов — так честнее
+                    # оценивать решение, чем по одному удачному запуску.
+                    if cpu_time_ms is not None:
+                        passed_cpu_time = max(passed_cpu_time or 0, cpu_time_ms)
+                    if memory_kb is not None:
+                        passed_memory_kb = max(passed_memory_kb or 0, memory_kb)
+
+                if not all_tests_passed:
+                    passed_cpu_time = passed_memory_kb = None
 
         # Update submission with result and metrics
-        submission.is_correct = any_test_passed
-        submission.status = 'success' if any_test_passed else 'failed'
+        submission.is_correct = all_tests_passed
+        submission.status = 'success' if all_tests_passed else 'failed'
         submission.error_log = error_log
         submission.completed_at = timezone.now()
         submission.cpu_time_ms = passed_cpu_time if passed_cpu_time is not None else None
@@ -109,7 +113,7 @@ def check_code_task(self, submission_id):
 
         return {
             'submission_id': submission_id,
-            'is_correct': any_test_passed,
+            'is_correct': all_tests_passed,
             'status': submission.status,
             'error_log': error_log,
         }

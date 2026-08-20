@@ -7,14 +7,13 @@
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from quizzes.models import Choice, Question, Quiz
+from quizzes.models import Choice, Question, Quiz, UserAnswer
 from textbook.models import Article, ArticleBlock, ArticleQuiz
 
 
-def _replace_blocks(article, blocks):
-    article.blocks.all().delete()
-    for b in blocks:
-        ArticleBlock.objects.create(article=article, **b)
+from textbook.services import replace_blocks as _replace_blocks
+from textbook.services import shuffle_choices as _shuffle_choices
+from textbook.services import sync_question_texts as _sync_question_texts
 
 
 def _self_check(slug, title, description, questions):
@@ -33,6 +32,11 @@ def _self_check(slug, title, description, questions):
         quiz.is_self_check = True
         quiz.save(update_fields=['is_self_check'])
 
+    # Тест ещё никто не решал — пересоздаём вопросы, чтобы до базы доехали
+    # и правки формулировок, и перемешанный порядок вариантов ответа.
+    if quiz.questions.exists() and not UserAnswer.objects.filter(question__quiz=quiz).exists():
+        quiz.questions.all().delete()
+
     if quiz.questions.count() == 0:
         for q in questions:
             question = Question.objects.create(
@@ -42,8 +46,11 @@ def _self_check(slug, title, description, questions):
                 correct_text_answer=q.get('correct_text_answer', ''),
                 points=1,
             )
-            for choice_text, is_correct in q.get('choices', []):
+            for choice_text, is_correct in _shuffle_choices(q['text'], q.get('choices', [])):
                 Choice.objects.create(question=question, text=choice_text, is_correct=is_correct)
+    # Правки формулировок должны доезжать и до тестов, которые уже решали:
+    # пересоздать вопросы там нельзя — каскад унёс бы ответы учеников.
+    _sync_question_texts(quiz, questions)
     return quiz
 
 
@@ -1541,7 +1548,7 @@ class Command(BaseCommand):
             questions=[
                 dict(
                     type='choice',
-                    text="s = 'Привет'. Что вернёт s[-2]?",
+                    text="`s = 'Привет'`. Что вернёт `s[-2]`?",
                     choices=[
                         ("'е' — второй символ с конца", True),
                         ("'т' — последний символ", False),
@@ -1565,8 +1572,8 @@ class Command(BaseCommand):
                 dict(
                     type='text',
                     text=(
-                        "s = '2026-08-01'. Сколько символов в срезе s[5:7]? "
-                        'Впишите только число.'
+                        "`s = '2026-08-01'`. Сколько символов в срезе "
+                        '`s[5:7]`? Впишите только число.'
                     ),
                     correct_text_answer='2',
                 ),
@@ -2214,9 +2221,11 @@ class Command(BaseCommand):
                     type='choice',
                     text=(
                         "Программа выполняет две строки:\n\n"
+                        '```python\n'
                         "s = 'привет'\n"
                         "s.replace('и', 'ы')\n"
-                        "print(s)\n\n"
+                        "print(s)\n"
+                        '```\n\n'
                         "Что она напечатает?"
                     ),
                     choices=[
@@ -2229,7 +2238,7 @@ class Command(BaseCommand):
                 ),
                 dict(
                     type='choice',
-                    text="Что вернёт выражение 'ааа'.count('аа')?",
+                    text="Что вернёт выражение `'ааа'.count('аа')`?",
                     choices=[
                         ('1 — вхождения считаются непересекающимися: найдя кусок '
                          'на позициях 0–1, count продолжает с позиции 2', True),
@@ -2297,7 +2306,7 @@ class Command(BaseCommand):
                 'препинания переезжают в результат как есть — у них просто нет '
                 'регистра;\n'
                 '- **русские буквы работают наравне с латинскими**, включая '
-                '`ё` ↔ `Ё`. И вот это уже не само собой разумеется.\n\n'
+                r'`ё` $\leftrightarrow$ `Ё`. И вот это уже не само собой разумеется.' '\n\n'
                 'В уроке 8.1 мы «поднимали» букву вручную: '
                 '`chr(ord(c) - 32)`. Приём держится на устройстве таблицы — у '
                 'латиницы заглавная и строчная стоят ровно через 32 позиции, у '
@@ -2578,9 +2587,11 @@ class Command(BaseCommand):
                     type='choice',
                     text=(
                         "Программа выполняет три строки:\n\n"
+                        '```python\n'
                         "s = ' Да '\n"
                         "s.strip()\n"
-                        "print(s == 'Да')\n\n"
+                        "print(s == 'Да')\n"
+                        '```\n\n'
                         "Что она напечатает?"
                     ),
                     choices=[
@@ -2983,7 +2994,7 @@ class Command(BaseCommand):
             questions=[
                 dict(
                     type='choice',
-                    text="Что вернёт выражение 'a,,b'.split(',')?",
+                    text="Что вернёт выражение `'a,,b'.split(',')`?",
                     choices=[
                         ("['a', '', 'b'] — три элемента: между двумя запятыми "
                          'подряд оказался пустой кусок', True),
@@ -2996,8 +3007,10 @@ class Command(BaseCommand):
                     type='choice',
                     text=(
                         'Программа выполняет две строки:\n\n'
+                        '```python\n'
                         "parts = ['2026', '08', '01']\n"
-                        "print(parts.join('-'))\n\n"
+                        "print(parts.join('-'))\n"
+                        '```\n\n'
                         'Что произойдёт?'
                     ),
                     choices=[
@@ -3012,7 +3025,7 @@ class Command(BaseCommand):
                 dict(
                     type='text',
                     text=(
-                        "Сколько элементов будет в списке '2026-08-01'.split('-')? "
+                        "Сколько элементов будет в списке `'2026-08-01'.split('-')`? "
                         'Впишите только число.'
                     ),
                     correct_text_answer='3',

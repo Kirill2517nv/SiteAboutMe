@@ -30,25 +30,65 @@
                     <a href="{{ item.article.get_absolute_url }}"
                        class="flex items-center gap-2 px-2.5 py-2 rounded-lg text-sm transition-colors
                               {% if item.article.id == article.id %}bg-brand-50 dark:bg-slate-800 text-brand-700 dark:text-cyan-400 font-semibold{% else %}text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-800{% endif %}">
-                        {% if item.status == 'read' or item.status == 'mastered' %}
+                        {% comment %}
+                        Цвет галочки — результат микротеста урока, тот же, что у бейджа
+                        «Проверь себя». Если тест не решался, красим по статусу чтения.
+                        {% endcomment %}
+                        {% if item.quiz_state == 'green' %}
+                        <svg class="w-[18px] h-[18px] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="#16a34a" stroke-width="2" title="Все ответы верны"><circle cx="12" cy="12" r="9"></circle><path stroke-linecap="round" stroke-linejoin="round" d="M8.5 12.5l2.5 2.5 4.5-5"></path></svg>
+                        {% elif item.quiz_state == 'yellow' %}
+                        <svg class="w-[18px] h-[18px] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="#f59e0b" stroke-width="2" title="Верна половина ответов и больше"><circle cx="12" cy="12" r="9"></circle><path stroke-linecap="round" stroke-linejoin="round" d="M8.5 12.5l2.5 2.5 4.5-5"></path></svg>
+                        {% elif item.quiz_state == 'red' %}
+                        <svg class="w-[18px] h-[18px] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="#ef4444" stroke-width="2" title="Верных ответов меньше половины"><circle cx="12" cy="12" r="9"></circle><path stroke-linecap="round" stroke-linejoin="round" d="M8.5 12.5l2.5 2.5 4.5-5"></path></svg>
+                        {% elif item.status == 'read' or item.status == 'mastered' %}
                         <svg class="w-[18px] h-[18px] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="#16a34a" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path stroke-linecap="round" stroke-linejoin="round" d="M8.5 12.5l2.5 2.5 4.5-5"></path></svg>
                         {% elif item.status == 'reading' %}
                         <svg class="w-[18px] h-[18px] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="#2563eb" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="3" fill="#2563eb" stroke="none"></circle></svg>
                         {% else %}
                         <svg class="w-[18px] h-[18px] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="#d1d5db" stroke-width="2"><circle cx="12" cy="12" r="9"></circle></svg>
                         {% endif %}
-                        <span class="truncate">{{ item.article.title }}</span>
+                        <span class="truncate">{% if item.num_label %}<span class="tabular-nums text-gray-400 dark:text-slate-500 mr-1">{{ item.num_label }}</span>{% endif %}{{ item.article.title }}</span>
                     </a>
                     {% endfor %}
+
+                    {# Практикум блока — не статья, а страница задач: отдельная карточка под списком уроков. #}
+                    {% if practicum %}
+                    <a href="{{ practicum.url }}" class="block mt-3 pt-3 border-t border-gray-200 dark:border-slate-700">
+                        <span class="block p-3 rounded-lg border bg-brand-50 dark:bg-slate-800 border-brand-500 dark:border-slate-700 transition-colors hover:bg-brand-100">
+                            <span class="flex items-center gap-2 text-sm font-semibold text-brand-700 dark:text-cyan-400">
+                                <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                                Задачи блока
+                            </span>
+                            {% if practicum.total %}
+                            <span class="block mt-2 text-xs text-gray-500 dark:text-slate-400">Решено {{ practicum.done }} из {{ practicum.total }}</span>
+                            <span class="block mt-1 h-2 rounded-full overflow-hidden bg-gray-200 dark:bg-slate-700">
+                                <span class="block h-full rounded-full bg-brand-600" style="width: {{ practicum.pct }}%"></span>
+                            </span>
+                            {% if practicum.grade_scale %}
+                            {# Сколько задач нужно решить на каждую оценку — тот же расчёт, что на главной. #}
+                            <span class="flex flex-wrap gap-1 mt-2 text-[11px]">
+                                {% for step in practicum.grade_scale %}
+                                <span class="px-1.5 py-0.5 rounded whitespace-nowrap
+                                             {% if step.reached %}bg-green-100 text-green-700{% else %}bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-slate-400{% endif %}">
+                                    {% if step.reached %}✓ {% endif %}{{ step.grade }} — от {{ step.need }}
+                                </span>
+                                {% endfor %}
+                            </span>
+                            {% endif %}
+                            {% endif %}
+                        </span>
+                    </a>
+                    {% endif %}
                 </div>
             </div>
         </aside>
 
-        <div class="flex-1 min-w-0 max-w-3xl relative px-6 sm:px-10 py-8 pb-16"
-             id="article-root"
-             data-read-url="{% url 'textbook:mark_read' article.slug %}"
-             data-csrf="{{ csrf_token }}"
-             data-authenticated="{% if user.is_authenticated %}1{% else %}0{% endif %}">
+        <!-- Область справа от сайдбара. Кнопка-язычок висит здесь, а не в колонке
+             текста: колонка центрирована, её левый край «плавает», а язычок должен
+             сидеть ровно на линии сайдбара. -->
+        <div class="flex-1 min-w-0 relative">
 
             <!-- Кнопка сворачивания сайдбара -->
             <div class="article-sidebar-toggle-wrap hidden md:block">
@@ -59,6 +99,13 @@
                     </svg>
                 </button>
             </div>
+
+        <div class="article-column py-8 pb-16"
+             id="article-root"
+             data-read-url="{% url 'textbook:mark_read' article.slug %}"
+             data-time-url="{% url 'textbook:track_time' article.slug %}"
+             data-csrf="{{ csrf_token }}"
+             data-authenticated="{% if user.is_authenticated %}1{% else %}0{% endif %}">
 
             <!-- Хлебная крошка -->
             <nav class="text-sm text-gray-500 dark:text-slate-400 mb-2 md:pl-2">
@@ -78,10 +125,8 @@
                     </span>
                 </div>
                 {% endif %}
-                <h1 class="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white leading-tight">{{ article.title }}</h1>
-                {% if article.description %}
-                <p class="mt-4 text-lg text-gray-600 dark:text-slate-400">{{ article.description }}</p>
-                {% endif %}
+                <h1 class="article-title">{{ article.title }}</h1>
+                {# description на странице не показываем — краткое содержание дублировало вводку статьи. #}
                 {% if not blocks %}
                 <span class="inline-flex items-center mt-4 px-2.5 py-1 rounded-full bg-gray-100 dark:bg-slate-800 text-gray-500 dark:text-slate-400 text-xs font-medium">Материалы скоро появятся</span>
                 {% endif %}
@@ -92,23 +137,65 @@
             <div class="space-y-8 pswp-gallery md:pl-2">
                 {% for block in blocks %}
                 <article>
-                    {% if block.title and block.block_type != 'widget' %}
-                    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">{{ block.title }}</h2>
+                    {% comment %}
+                    Три текстовых блока повторяются почти в каждом уроке и рисуются
+                    по-особому: вводка (первый блок), «Коротко» и «Что нас ждёт в
+                    этом блоке». У них свой заголовок внутри карточки, поэтому общий
+                    h2 для них не выводим.
+                    {% endcomment %}
+                    {% if block.block_type == 'text' and forloop.first %}
+                    {# вводка — свой заголовок в шапке карточки, рядом с медальоном-номером #}
+                    {% elif block.title and block.block_type != 'widget' and block.title != 'Коротко' and block.title != 'Что нас ждёт в этом блоке' %}
+                    <h2 class="article-block-title">{{ block.title }}</h2>
                     {% endif %}
 
-                    {% if block.block_type == 'text' %}
+                    {% if block.block_type == 'text' and block.title == 'Коротко' %}
+                    <div class="article-summary-card">
+                        <div class="article-summary-card__head">
+                            <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6M9 8h6M5 4h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5a1 1 0 011-1z"/>
+                            </svg>
+                            <span>{{ block.title }}</span>
+                        </div>
+                        <div class="article-summary-card__body">
+                            {{ block.content|markdownify }}
+                        </div>
+                    </div>
+
+                    {% elif block.block_type == 'text' and block.title == 'Что нас ждёт в этом блоке' %}
+                    <div class="article-outlook-panel">
+                        <div class="article-outlook-panel__head">
+                            <svg class="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color: var(--color-brand-700)">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6l4 2M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            <span>{{ block.title }}</span>
+                        </div>
+                        <div class="article-outlook-panel__body">
+                            {{ block.content|markdownify }}
+                        </div>
+                    </div>
+
+                    {% elif block.block_type == 'text' and forloop.first %}
+                    <div class="article-lead">
+                        {% if block.title %}
+                        <div class="article-lead__head">
+                            {% if article_number %}<div class="article-lead__medal">{{ article_number }}</div>{% endif %}
+                            <h2 class="article-block-title" style="margin:0">{{ block.title }}</h2>
+                        </div>
+                        {% endif %}
+                        <div class="article-lead__text">
+                            {{ block.content|markdownify }}
+                        </div>
+                    </div>
+
+                    {% elif block.block_type == 'text' %}
                     <div class="article-body">
                         {{ block.content|markdownify }}
                     </div>
 
                     {% elif block.block_type == 'code' %}
-                    <div class="rounded-xl overflow-hidden border border-gray-200 dark:border-slate-700">
-                        <div class="bg-gray-100 dark:bg-slate-800 px-4 py-2 border-b border-gray-200 dark:border-slate-700 flex items-center gap-2">
-                            <span class="text-xs font-mono text-gray-500 dark:text-slate-400 uppercase tracking-wider">{{ block.code_language }}</span>
-                            <span class="text-[10px] text-gray-400 dark:text-slate-500 ml-auto">только чтение</span>
-                        </div>
-                        <pre class="bg-[#282c34] m-0 p-0 rounded-none overflow-x-auto"><code class="language-{{ block.code_language }} text-sm leading-relaxed !bg-transparent">{{ block.content }}</code></pre>
-                    </div>
+                    {# Обёртку с заголовком и кнопкой «копировать» навешивает decorateCodeBlocks() ниже #}
+                    <pre><code class="language-{{ block.code_language }}">{{ block.content }}</code></pre>
 
                     {% elif block.block_type == 'formula' %}
                     <div class="bg-gray-100 dark:bg-slate-800 rounded-xl p-6 border border-gray-200 dark:border-slate-700 overflow-x-auto">
@@ -160,18 +247,34 @@
 
             <!-- Самопроверка -->
             {% if self_checks %}
-            <section class="mt-16 pt-8 border-t border-gray-200 dark:border-slate-800 md:pl-2">
-                <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">Задачи для самопроверки</h2>
-                <p class="text-sm text-gray-500 dark:text-slate-400 mb-6">Решите задачи, чтобы закрепить тему и отметить её освоенной.</p>
+            <section id="self-check" class="mt-16 pt-8 border-t border-gray-200 dark:border-slate-800 md:pl-2">
+                <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">Проверь себя</h2>
+                <p class="text-sm text-gray-500 dark:text-slate-400 mb-6">Короткие вопросы по теме урока. Попыток сколько угодно, на прохождение блока они не влияют — это проверка для себя.</p>
                 <div class="grid gap-3">
-                    {% for sc in self_checks %}
-                    <a href="{% url 'quizzes:quiz_detail' sc.quiz.id %}"
-                       class="flex items-center justify-between p-4 bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 hover:border-brand-300 dark:hover:border-cyan-500 transition-colors">
-                        <div>
-                            {% if sc.label %}<div class="text-xs uppercase tracking-wide text-gray-400 dark:text-slate-500 mb-0.5">{{ sc.label }}</div>{% endif %}
-                            <div class="font-medium text-gray-900 dark:text-white">{{ sc.quiz.title }}</div>
+                    {% for item in self_checks %}
+                    <a href="{% url 'quizzes:quiz_detail' item.link.quiz.id %}"
+                       class="flex items-center gap-3 p-4 rounded-xl border transition-colors
+                              {% if item.state == 'green' %}bg-green-50 dark:bg-green-950/30 border-green-300 dark:border-green-800
+                              {% elif item.state == 'yellow' %}bg-amber-50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-800
+                              {% elif item.state == 'red' %}bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-800
+                              {% else %}bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 hover:border-brand-300 dark:hover:border-cyan-500{% endif %}">
+                        <div class="min-w-0">
+                            {% if item.link.label %}<div class="text-xs uppercase tracking-wide text-gray-400 dark:text-slate-500 mb-0.5">{{ item.link.label }}</div>{% endif %}
+                            <div class="font-medium text-gray-900 dark:text-white">{{ item.link.quiz.title }}</div>
                         </div>
-                        <span class="text-sm text-brand-600 dark:text-cyan-400 font-medium">Решать →</span>
+                        {% if item.state %}
+                        <span class="ml-auto text-xs font-semibold px-2 py-1 rounded-full whitespace-nowrap
+                                     {% if item.state == 'green' %}bg-green-600 text-white
+                                     {% elif item.state == 'yellow' %}bg-amber-500 text-white
+                                     {% else %}bg-red-400 text-white{% endif %}">
+                            Верно {{ item.done }} из {{ item.total }}
+                        </span>
+                        <span class="text-sm text-brand-600 dark:text-cyan-400 font-medium whitespace-nowrap">
+                            {% if item.state == 'green' %}Посмотреть →{% else %}Дорешать →{% endif %}
+                        </span>
+                        {% else %}
+                        <span class="ml-auto text-sm text-brand-600 dark:text-cyan-400 font-medium whitespace-nowrap">Решать →</span>
+                        {% endif %}
                     </a>
                     {% endfor %}
                 </div>
@@ -196,7 +299,8 @@
             </div>
             {% endif %}
 
-        </div>
+        </div>{# /.article-column #}
+        </div>{# /область справа от сайдбара #}
     </div>
 </div>
 {% endblock %}
@@ -209,8 +313,39 @@
         tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
         options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre'] }
     };
+    // Единое оформление для всех блоков кода: и для block_type='code',
+    // и для ``` -фенсов внутри markdown-текста (оба дают <pre><code>).
+    function decorateCodeBlocks() {
+        document.querySelectorAll('pre > code').forEach(code => {
+            const pre = code.parentElement;
+            if (pre.closest('.code-block')) return;
+
+            const lang = (code.className.match(/language-([\w+-]+)/) || [, 'код'])[1];
+            const wrap = document.createElement('div');
+            wrap.className = 'code-block';
+            wrap.innerHTML = '<div class="code-block__head">'
+                + '<span class="code-block__lang"></span>'
+                + '<button type="button" class="code-block__copy">Копировать</button></div>';
+            wrap.querySelector('.code-block__lang').textContent = lang;
+            pre.replaceWith(wrap);
+            wrap.appendChild(pre);
+
+            wrap.querySelector('.code-block__copy').addEventListener('click', async (e) => {
+                const btn = e.currentTarget;
+                try {
+                    await navigator.clipboard.writeText(code.textContent);
+                    btn.textContent = 'Скопировано';
+                } catch {
+                    btn.textContent = 'Не вышло';
+                }
+                setTimeout(() => { btn.textContent = 'Копировать'; }, 1500);
+            });
+        });
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
+        decorateCodeBlocks();
     });
 </script>
 <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" defer></script>

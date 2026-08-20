@@ -15,6 +15,7 @@ class Profile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile', verbose_name="Пользователь")
     group = models.ForeignKey(StudentGroup, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Класс", related_name='students')
     is_ege = models.BooleanField(default=False, verbose_name="Сдаёт ЕГЭ")
+    avatar = models.ImageField(upload_to='avatars/', blank=True, verbose_name="Аватар")
 
     class Meta:
         verbose_name = "Профиль ученика"

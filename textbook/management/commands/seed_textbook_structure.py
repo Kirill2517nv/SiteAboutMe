@@ -7,6 +7,7 @@ import re
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
+from django.db.models import Count
 
 from textbook.models import Article, Section
 
@@ -29,6 +30,11 @@ def slugify_ru(text, maxlen=120):
     s = re.sub(r'[^a-z0-9]+', '-', s).strip('-')
     return s[:maxlen].strip('-')
 
+
+# Блоки выше этого номера создаются скрытыми: контент в базе есть, но на сайте
+# блок не появится, пока учитель не поставит галку «Опубликовано» в админке.
+# Действует только при создании — уже существующим блокам публикацию не меняем.
+PUBLISHED_UPTO = 6
 
 # Уже существующие статьи с контентом — сохраняем их slug (не пересоздаём).
 _KEEP_SLUG = {
@@ -242,11 +248,13 @@ class Command(BaseCommand):
     @transaction.atomic
     def handle(self, *args, **options):
         sections_created = articles_created = articles_updated = 0
+        expected_slugs = []
 
         for block_no, section_title, article_titles in STRUCTURE:
             section, sec_created = Section.objects.get_or_create(
                 slug=f'blok-{block_no}',
-                defaults={'title': section_title, 'order': block_no, 'is_published': True},
+                defaults={'title': section_title, 'order': block_no,
+                          'is_published': block_no <= PUBLISHED_UPTO},
             )
             if sec_created:
                 sections_created += 1
@@ -259,6 +267,7 @@ class Command(BaseCommand):
 
             for idx, art_title in enumerate(article_titles, start=1):
                 slug = _KEEP_SLUG.get((block_no, idx)) or slugify_ru(f'{block_no}-{idx}-{art_title}')
+                expected_slugs.append(slug)
                 art, created = Article.objects.get_or_create(
                     slug=slug,
                     defaults={
@@ -285,6 +294,25 @@ class Command(BaseCommand):
                         art.save(update_fields=fields)
                         articles_updated += 1
 
+        # Подчищаем сирот: статьи учебных блоков, которых больше нет в STRUCTURE
+        # (тему переименовали, объединили или выкинули). Удаляем только полностью
+        # пустые — с контентом, самопроверкой или прогрессом ученика не трогаем,
+        # чтобы правка STRUCTURE никогда не стирала чью-то работу.
+        orphans = Article.objects.filter(
+            track='material',
+            section__slug__in=[f'blok-{no}' for no, _, _ in STRUCTURE],
+        ).exclude(slug__in=expected_slugs).annotate(
+            n_blocks=Count('blocks', distinct=True),
+            n_quizzes=Count('self_check_quizzes', distinct=True),
+            n_progress=Count('progress', distinct=True),
+        ).filter(n_blocks=0, n_quizzes=0, n_progress=0)
+        orphan_slugs = list(orphans.values_list('slug', flat=True))
+        if orphan_slugs:
+            Article.objects.filter(slug__in=orphan_slugs).delete()
+            self.stdout.write(self.style.WARNING(
+                'Удалены пустые статьи вне STRUCTURE: ' + ', '.join(orphan_slugs)
+            ))
+
         # Удаляем старую демо-секцию, если её статьи переехали в blok-5
         legacy = Section.objects.filter(slug='predstavlenie-chisel').first()
         if legacy and not legacy.articles.exists():
@@ -292,6 +320,7 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS(
             f'Готово. Блоков создано: {sections_created}, '
-            f'статей создано: {articles_created}, обновлено: {articles_updated}. '
+            f'статей создано: {articles_created}, обновлено: {articles_updated}, '
+            f'сирот удалено: {len(orphan_slugs)}. '
             f'Всего блоков: {Section.objects.count()}, статей: {Article.objects.count()}.'
         ))

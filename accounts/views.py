@@ -1,127 +1,195 @@
-from django.views import generic
-from django.contrib.auth.mixins import LoginRequiredMixin
-from django.db.models import Sum, Max, Count, Q
 from datetime import timedelta
-from quizzes.models import (
-    UserResult, UserAnswer, Quiz,
-    ExamTaskProgress, HelpRequest, SolutionLike,
-)
+
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.contrib.auth.models import User
+from django.core.exceptions import PermissionDenied
+from django.db.models import Avg, Count, Max, Q, Sum
+from django.shortcuts import get_object_or_404, redirect
+from django.views import generic
+from django import forms
+
+from quizzes.models import ExamTaskProgress, HelpRequest, Question, Quiz, UserResult
+from quizzes.views import EGE_RECOMMENDED_TIME, ege_time_color
+from textbook.models import Article, ArticleProgress
+from textbook.services import profile_textbook_stats
+
+from .models import Profile
+
+
+class AvatarForm(forms.ModelForm):
+    """
+    Загрузка аватара. Именно ModelForm, а не присваивание `request.FILES`
+    напрямую: только форма прогоняет файл через Pillow и отсекает «картинку»,
+    которая на деле картинкой не является.
+    """
+    class Meta:
+        model = Profile
+        fields = ['avatar']
+
+    def clean_avatar(self):
+        avatar = self.cleaned_data['avatar']
+        if avatar and avatar.size > 2 * 1024 * 1024:
+            raise forms.ValidationError('Файл больше 2 МБ — уменьшите картинку.')
+        return avatar
+
+
+def _ege_stats(user):
+    """
+    Сводка по ЕГЭ: тренажёр вариантов + теория ЕГЭ (вкладка учебника).
+
+    Разбивка по номерам заданий 1–27 — единственная метрика, которая прямо
+    показывает пробелы: `Question.topic` в базе почти не заполнен, а
+    `ege_number` есть у каждой задачи варианта.
+    """
+    variant_ids = list(
+        Quiz.objects.filter(quiz_type='exam', is_public=True).values_list('id', flat=True)
+    )
+
+    # {номер задания: [решено, всего]} — «всего» по опубликованным вариантам,
+    # чтобы прочерк у нерешённых номеров отличался от «такого задания нет».
+    by_number = {}
+    for number, total in (
+        Question.objects
+        .filter(quiz_id__in=variant_ids, ege_number__isnull=False)
+        .values_list('ege_number').annotate(n=Count('id')).order_by('ege_number')
+    ):
+        by_number[number] = {
+            'number': number, 'solved': 0, 'total': total,
+            'avg_seconds': 0, 'avg_mm_ss': '', 'color': '',
+            # Ориентир показываем всегда, даже пока задача не решена: ученику
+            # нужно знать, к какому времени стремиться, до первой попытки.
+            'recommended_min': EGE_RECOMMENDED_TIME.get(number, 5),
+        }
+
+    progress = ExamTaskProgress.objects.filter(user=user, quiz_id__in=variant_ids)
+    # Среднее время — только по решённым задачам с засечённым временем: нули от
+    # задач, где таймер не сработал, занизили бы среднее и покрасили бы номер
+    # зелёным на пустом месте.
+    for row in (
+        progress.filter(is_solved=True, question__ege_number__isnull=False)
+        .values('question__ege_number')
+        .annotate(
+            n=Count('id'),
+            t=Avg('time_spent_seconds', filter=Q(time_spent_seconds__gt=0)),
+        )
+    ):
+        item = by_number.get(row['question__ege_number'])
+        if item is None:
+            continue
+        item['solved'] = min(row['n'], item['total'])
+        seconds = int(row['t'] or 0)
+        minutes, secs = divmod(seconds, 60)
+        item['avg_seconds'] = seconds
+        item['avg_mm_ss'] = f'{minutes}:{secs:02d}' if seconds else ''
+        item['color'] = ege_time_color(seconds, item['number'])
+
+    agg = progress.aggregate(started=Count('id'), seconds=Sum('time_spent_seconds'))
+    total_tasks = sum(item['total'] for item in by_number.values())
+    solved_tasks = sum(item['solved'] for item in by_number.values())
+
+    variants = list(
+        Quiz.objects.filter(id__in=variant_ids)
+        .annotate(
+            num_questions=Count('questions', distinct=True),
+            best_score=Max('userresult__score', filter=Q(userresult__user=user)),
+            attempts=Count('userresult', distinct=True, filter=Q(userresult__user=user)),
+        )
+        .order_by('title')
+    )
+    # Время по варианту — отдельным запросом: ещё один JOIN в annotate выше
+    # размножил бы строки и испортил Max/Count.
+    spent_by_variant = dict(
+        progress.values('quiz_id').annotate(t=Sum('time_spent_seconds'))
+        .values_list('quiz_id', 't')
+    )
+    for variant in variants:
+        variant.spent_seconds = spent_by_variant.get(variant.id) or 0
+
+    # Теория ЕГЭ появится позже — блок сам покажется, когда статьи опубликуют.
+    theory_total = Article.objects.filter(track='ege', is_published=True).count()
+    theory_read = ArticleProgress.objects.filter(
+        user=user, article__track='ege', article__is_published=True,
+        status__in=('read', 'mastered'),
+    ).count()
+
+    return {
+        'has_data': bool(agg['started'] or theory_total),
+        'solved': solved_tasks,
+        'total': total_tasks,
+        'pct': round(solved_tasks / total_tasks * 100) if total_tasks else 0,
+        'time': timedelta(seconds=agg['seconds'] or 0),
+        'by_number': sorted(by_number.values(), key=lambda item: item['number']),
+        'variants': variants,
+        'theory_total': theory_total,
+        'theory_read': theory_read,
+        'theory_pct': round(theory_read / theory_total * 100) if theory_total else 0,
+    }
 
 
 class ProfileView(LoginRequiredMixin, generic.TemplateView):
     template_name = 'registration/profile.html'
 
+    def get_profile_user(self):
+        """
+        Чей профиль показываем. Чужой доступен только суперпользователю —
+        тот же критерий «учителя», что и у отчётов по блокам учебника.
+        """
+        user_id = self.kwargs.get('user_id')
+        if user_id is None or user_id == self.request.user.id:
+            return self.request.user
+        if not self.request.user.is_superuser:
+            raise PermissionDenied
+        return get_object_or_404(User, id=user_id)
+
+    def post(self, request, *args, **kwargs):
+        """Смена аватара. Только в своём профиле: учитель чужой не трогает."""
+        if self.get_profile_user() != request.user:
+            raise PermissionDenied
+        profile, _ = Profile.objects.get_or_create(user=request.user)
+        old_avatar = profile.avatar.name
+        form = AvatarForm(request.POST, request.FILES, instance=profile)
+        if form.is_valid():
+            form.save()
+            # Django файлы при замене не удаляет (откат транзакции оставил бы битую
+            # ссылку), поэтому чистим сами — уже после успешного save().
+            if old_avatar and old_avatar != profile.avatar.name:
+                profile.avatar.storage.delete(old_avatar)
+            return redirect('accounts:profile')
+        return self.render_to_response(self.get_context_data(
+            avatar_error=form.errors.get('avatar', ['Не удалось загрузить файл'])[0]
+        ))
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        user = self.request.user
+        user = self.get_profile_user()
+        is_own = user == self.request.user
 
         profile = getattr(user, 'profile', None)
-        group = profile.group if profile else None
-
-        # === Базовая статистика ===
-        results = UserResult.objects.filter(user=user)
-        total_attempts = results.count()
-        unique_quizzes = results.values('quiz').distinct().count()
-
-        answers = UserAnswer.objects.filter(user_result__user=user)
-        total_answers = answers.values('question').distinct().count()
-        correct_answers = answers.filter(is_correct=True).values('question').distinct().count()
-
-        # Суммарное время
-        total_time = results.aggregate(t=Sum('duration'))['t']
-
-        # === Статистика по типам вопросов (уникальные вопросы) ===
-        type_stats_qs = (
-            answers
-            .values('question__question_type')
-            .annotate(
-                total=Count('question', distinct=True),
-                correct=Count('question', distinct=True, filter=Q(is_correct=True)),
-            )
-        )
-        type_stats = {}
-        for row in type_stats_qs:
-            qtype = row['question__question_type']
-            total = row['total']
-            correct = row['correct']
-            pct = round(correct / total * 100) if total > 0 else 0
-            type_stats[qtype] = {'total': total, 'correct': correct, 'pct': pct}
-
-        # === Статистика по тестам (лучший результат на каждый квиз) ===
-        quiz_stats = list(
-            results
-            .values('quiz__id', 'quiz__title')
-            .annotate(
-                best_score=Max('score'),
-                attempts=Count('id'),
-            )
-            .order_by('-best_score')
-        )
-        # Добавляем total вопросов для каждого квиза
-        quiz_ids = [qs['quiz__id'] for qs in quiz_stats]
-        quiz_totals = dict(
-            Quiz.objects.filter(id__in=quiz_ids)
-            .annotate(q_count=Count('questions'))
-            .values_list('id', 'q_count')
-        )
-        for qs in quiz_stats:
-            total_q = quiz_totals.get(qs['quiz__id'], 0)
-            qs['total'] = total_q
-            qs['pct'] = round(qs['best_score'] / total_q * 100) if total_q > 0 else 0
-
-        # === ЕГЭ прогресс ===
-        is_ege = profile.is_ege if profile else False
-        ege_stats = {}
-        if is_ege:
-            ege_qs = ExamTaskProgress.objects.filter(user=user)
-            ege_agg = ege_qs.aggregate(
-                total=Count('id'),
-                solved=Count('id', filter=Q(is_solved=True)),
-                time_sec=Sum('time_spent_seconds'),
-            )
-            ege_stats = {
-                'total': ege_agg['total'] or 0,
-                'solved': ege_agg['solved'] or 0,
-                'time': timedelta(seconds=ege_agg['time_sec'] or 0),
-                'pct': round(ege_agg['solved'] / ege_agg['total'] * 100) if ege_agg['total'] else 0,
-            }
-
-        # === Последние результаты ===
-        # annotate max_score через Count чтобы избежать N+1 запросов
-        recent_results = list(
-            results
-            .select_related('quiz')
-            .annotate(max_score=Count('quiz__questions', distinct=True))
-            .order_by('-date_completed')[:5]
-        )
-
-        # === Помощь ===
         help_qs = HelpRequest.objects.filter(student=user)
-        help_total = help_qs.count()
-        help_resolved = help_qs.filter(status='resolved').count() if help_total else 0
-
-        # === Лайки ===
-        likes_received = SolutionLike.objects.filter(
-            answer__user_result__user=user
-        ).count()
 
         context.update({
             'profile_user': user,
-            'group': group,
             'profile': profile,
-            'total_attempts': total_attempts,
-            'unique_quizzes': unique_quizzes,
-            'total_answers': total_answers,
-            'correct_answers': correct_answers,
-            'total_time': total_time,
-            'type_stats': type_stats,
-            'quiz_stats': quiz_stats,
-            'is_ege': is_ege,
-            'ege_stats': ege_stats,
-            'recent_results': recent_results,
-            'help_total': help_total,
-            'help_resolved': help_resolved,
-            'likes_received': likes_received,
+            'group': profile.group if profile else None,
+            'is_own': is_own,
+            'is_ege': profile.is_ege if profile else False,
+            'textbook': profile_textbook_stats(user),
+            'ege': _ege_stats(user),
+            'help_open': help_qs.exclude(status='resolved').count(),
+            'help_unread': help_qs.filter(has_unread_for_student=True).count(),
+            'recent_results': list(
+                UserResult.objects.filter(user=user).select_related('quiz')
+                .annotate(max_score=Count('quiz__questions', distinct=True))
+                .order_by('-date_completed')[:5]
+            ),
         })
+
+        # Учителю — переключение между учениками прямо из профиля.
+        if self.request.user.is_superuser:
+            context['students'] = (
+                User.objects.filter(is_superuser=False)
+                .select_related('profile__group')
+                .order_by('profile__group__name', 'last_name', 'username')
+            )
 
         return context

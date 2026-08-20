@@ -9,14 +9,13 @@ from copy import deepcopy
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from quizzes.models import Choice, Question, Quiz
+from quizzes.models import Choice, Question, Quiz, UserAnswer
 from textbook.models import Article, ArticleBlock, ArticleQuiz
 
 
-def _replace_blocks(article, blocks):
-    article.blocks.all().delete()
-    for b in blocks:
-        ArticleBlock.objects.create(article=article, **b)
+from textbook.services import replace_blocks as _replace_blocks
+from textbook.services import shuffle_choices as _shuffle_choices
+from textbook.services import sync_question_texts as _sync_question_texts
 
 
 def _self_check(slug, title, description, questions):
@@ -35,6 +34,11 @@ def _self_check(slug, title, description, questions):
         quiz.is_self_check = True
         quiz.save(update_fields=['is_self_check'])
 
+    # Тест ещё никто не решал — пересоздаём вопросы, чтобы до базы доехали
+    # и правки формулировок, и перемешанный порядок вариантов ответа.
+    if quiz.questions.exists() and not UserAnswer.objects.filter(question__quiz=quiz).exists():
+        quiz.questions.all().delete()
+
     if quiz.questions.count() == 0:
         for q in questions:
             question = Question.objects.create(
@@ -44,8 +48,11 @@ def _self_check(slug, title, description, questions):
                 correct_text_answer=q.get('correct_text_answer', ''),
                 points=1,
             )
-            for choice_text, is_correct in q.get('choices', []):
+            for choice_text, is_correct in _shuffle_choices(q['text'], q.get('choices', [])):
                 Choice.objects.create(question=question, text=choice_text, is_correct=is_correct)
+    # Правки формулировок должны доезжать и до тестов, которые уже решали:
+    # пересоздать вопросы там нельзя — каскад унёс бы ответы учеников.
+    _sync_question_texts(quiz, questions)
     return quiz
 
 
@@ -757,7 +764,7 @@ class Command(BaseCommand):
             dict(order=3, block_type='image', title='', content=(
                 'Элементы массива лежат в памяти вплотную и одинакового '
                 'размера, поэтому адрес любого из них вычисляется сразу: '
-                'начало + номер × размер. Перебирать предыдущие элементы не '
+                'начало + номер $\\times$ размер. Перебирать предыдущие элементы не '
                 'нужно.'
             )),
             dict(order=4, block_type='text', title='list в Python: массив, только гибче', content=(
@@ -1048,8 +1055,8 @@ class Command(BaseCommand):
                 dict(
                     type='choice',
                     text=(
-                        'Выполнили a = [1, 2, 3], затем b = a, затем a[0] = 99. '
-                        'Что напечатает print(b)?'
+                        'Выполнили `a = [1, 2, 3]`, затем `b = a`, затем '
+                        '`a[0] = 99`. Что напечатает `print(b)`?'
                     ),
                     choices=[
                         ('[99, 2, 3] — a и b это два имени одного и того же списка', True),
@@ -1073,8 +1080,8 @@ class Command(BaseCommand):
                 dict(
                     type='text',
                     text=(
-                        'Дан список marks = [5, 4, 3, 5, 4]. Что напечатает '
-                        'print(marks[-2])? Впишите только число.'
+                        'Дан список `marks = [5, 4, 3, 5, 4]`. Что напечатает '
+                        '`print(marks[-2])`? Впишите только число.'
                     ),
                     correct_text_answer='5',
                 ),
@@ -1450,8 +1457,8 @@ class Command(BaseCommand):
                 dict(
                     type='choice',
                     text=(
-                        'Выполнили a = [1, 2, 3], затем b = a.append(4). '
-                        'Что напечатает print(b)?'
+                        'Выполнили `a = [1, 2, 3]`, затем `b = a.append(4)`. '
+                        'Что напечатает `print(b)`?'
                     ),
                     choices=[
                         ('None — метод изменил сам список a, а возвращать ему нечего', True),
@@ -1463,8 +1470,8 @@ class Command(BaseCommand):
                 dict(
                     type='choice',
                     text=(
-                        'Список a = [1, 2]. Чем a.append([3, 4]) отличается от '
-                        'a.extend([3, 4])?'
+                        'Список `a = [1, 2]`. Чем `a.append([3, 4])` '
+                        'отличается от `a.extend([3, 4])`?'
                     ),
                     choices=[
                         ('После append длина станет 3, а последним элементом '
@@ -1828,8 +1835,8 @@ class Command(BaseCommand):
                 '| Запись | Что делает | Длина результата |\n'
                 '|---|---|---|\n'
                 '| `[выр for x in a]` | преобразует каждый элемент | как у `a` |\n'
-                '| `[x for x in a if усл]` | отбирает подходящие | ≤ длины `a` |\n'
-                '| `[выр for x in a if усл]` | отбирает, потом преобразует | ≤ длины `a` |\n'
+                r'| `[x for x in a if усл]` | отбирает подходящие | $\le$ длины `a` |' '\n'
+                r'| `[выр for x in a if усл]` | отбирает, потом преобразует | $\le$ длины `a` |' '\n'
                 '| `[A if усл else B for x in a]` | выбирает одно из двух значений | как у `a` |\n\n'
                 '`if` без `else` — в конце. `if` с `else` — в начале. Результат '
                 'всегда новый список.'
@@ -1867,7 +1874,7 @@ class Command(BaseCommand):
             questions=[
                 dict(
                     type='choice',
-                    text='Что напечатает print([x * 2 for x in [1, 2, 3, 4] if x > 2])?',
+                    text='Что напечатает `print([x * 2 for x in [1, 2, 3, 4] if x > 2])`?',
                     choices=[
                         ('[6, 8] — сначала отбираются элементы больше 2, потом '
                          'каждый удваивается', True),
@@ -1895,7 +1902,7 @@ class Command(BaseCommand):
                     type='text',
                     text=(
                         'Сколько элементов будет в списке '
-                        '[x for x in range(10) if x % 3 == 0]? Впишите только число.'
+                        '`[x for x in range(10) if x % 3 == 0]`? Впишите только число.'
                     ),
                     correct_text_answer='4',
                 ),
@@ -2318,8 +2325,9 @@ class Command(BaseCommand):
                 dict(
                     type='choice',
                     text=(
-                        'После фильтрации список data оказался пустым. Что '
-                        'произойдёт со строками len(data), sum(data) и max(data)?'
+                        'После фильтрации список `data` оказался пустым. Что '
+                        'произойдёт со строками `len(data)`, `sum(data)` и '
+                        '`max(data)`?'
                     ),
                     choices=[
                         ('len даст 0, sum даст 0, а max завершится ошибкой — '
@@ -2333,7 +2341,7 @@ class Command(BaseCommand):
                 dict(
                     type='text',
                     text=(
-                        'Чему равно sum([x for x in range(1, 11) if x % 2 == 0])? '
+                        'Чему равно `sum([x for x in range(1, 11) if x % 2 == 0])`? '
                         'Впишите только число.'
                     ),
                     correct_text_answer='30',
@@ -2701,7 +2709,7 @@ class Command(BaseCommand):
                 dict(
                     type='choice',
                     text=(
-                        'В списке a = [4, 1, 7] выполняют a.index(9). '
+                        'В списке `a = [4, 1, 7]` выполняют `a.index(9)`. '
                         'Что произойдёт?'
                     ),
                     choices=[
@@ -2730,9 +2738,9 @@ class Command(BaseCommand):
                 dict(
                     type='text',
                     text=(
-                        'temps = [-3, 0, 5, -8, 2, 7, -1]. Каким будет индекс '
-                        'первого элемента, который больше 5? Впишите только '
-                        'число.'
+                        '`temps = [-3, 0, 5, -8, 2, 7, -1]`. Каким будет '
+                        'индекс первого элемента, который больше 5? Впишите '
+                        'только число.'
                     ),
                     correct_text_answer='5',
                 ),
@@ -3119,7 +3127,7 @@ class Command(BaseCommand):
             questions=[
                 dict(
                     type='choice',
-                    text='a = [[1, 2, 3], [4, 5, 6]]. Что вернёт a[1][0]?',
+                    text='`a = [[1, 2, 3], [4, 5, 6]]`. Что вернёт `a[1][0]`?',
                     choices=[
                         ('4 — первый индекс выбирает строку, второй элемент '
                          'в ней', True),
@@ -3144,7 +3152,7 @@ class Command(BaseCommand):
                 dict(
                     type='text',
                     text=(
-                        'Поле создано как field = [[0] * 5 for _ in range(3)]. '
+                        'Поле создано как `field = [[0] * 5 for _ in range(3)]`. '
                         'Сколько всего клеток в нём? Впишите только число.'
                     ),
                     correct_text_answer='15',
@@ -3498,8 +3506,8 @@ class Command(BaseCommand):
                 dict(
                     type='choice',
                     text=(
-                        'field = [[0] * 3] * 3, затем field[0][0] = 1. '
-                        'Что напечатает print(field)?'
+                        '`field = [[0] * 3] * 3`, затем `field[0][0] = 1`. '
+                        'Что напечатает `print(field)`?'
                     ),
                     choices=[
                         ('[[1, 0, 0], [1, 0, 0], [1, 0, 0]] — в списке лежит '
@@ -3514,8 +3522,8 @@ class Command(BaseCommand):
                 dict(
                     type='choice',
                     text=(
-                        'a = [[1, 2], [3, 4]], затем b = a[:] и b[0][0] = 99. '
-                        'Что напечатает print(a[0][0])?'
+                        '`a = [[1, 2], [3, 4]]`, затем `b = a[:]` и '
+                        '`b[0][0] = 99`. Что напечатает `print(a[0][0])`?'
                     ),
                     choices=[
                         ('99 — срез скопировал только внешнюю ленту, строки у '

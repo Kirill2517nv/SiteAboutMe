@@ -103,9 +103,13 @@
                         <td class="sticky left-0 z-10 bg-white px-4 py-3 font-medium text-gray-900 whitespace-nowrap">
                             {% if user.is_superuser %}
                             <a href="{% url 'ege:ege_student_stats' quiz_id=quiz.id user_id=row.user_id %}"
-                               class="hover:text-brand-600 transition-colors">{{ row.full_name }}</a>
+                               class="flex items-center gap-3 hover:text-brand-600 transition-colors">
+                                {% include 'quizzes/_participant_cell.html' with row=row %}
+                            </a>
                             {% else %}
-                            {{ row.full_name }}
+                            <span class="flex items-center gap-3">
+                                {% include 'quizzes/_participant_cell.html' with row=row %}
+                            </span>
                             {% endif %}
                         </td>
 

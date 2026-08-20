@@ -1,6 +1,5 @@
 from django.urls import path
 from .views import (
-    quiz_list_view,
     quiz_detail_view,
     quiz_stats_view,
     user_attempts_view,
@@ -16,12 +15,12 @@ from .views import (
     help_request_resolve_view,
     help_unread_count_view,
     help_my_notifications_view,
+    question_hint_view,
 )
 
 app_name = 'quizzes'
 
 urlpatterns = [
-    path('', quiz_list_view, name='quiz_list'),
     path('<int:quiz_id>/', quiz_detail_view, name='quiz_detail'),
     path('question-file/<int:file_id>/download/', question_file_download_view, name='question_file_download'),
 
@@ -29,6 +28,9 @@ urlpatterns = [
     path('<int:quiz_id>/question/<int:question_id>/submit/', submit_code_view, name='submit_code'),
     path('submission/<int:submission_id>/status/', submission_status_view, name='submission_status'),
     path('<int:quiz_id>/finish/', finish_quiz_view, name='finish_quiz'),
+
+    # Подсказка к задаче (открывается по правилам, см. textbook.services.hint_state)
+    path('question/<int:question_id>/hint/', question_hint_view, name='question_hint'),
 
     # Статистика
     path('<int:quiz_id>/stats/', quiz_stats_view, name='quiz_stats'),

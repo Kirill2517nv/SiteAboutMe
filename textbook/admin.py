@@ -31,10 +31,27 @@ class ArticleQuizInline(admin.TabularInline):
 
 @admin.register(Section)
 class SectionAdmin(admin.ModelAdmin):
-    list_display = ('title', 'order', 'is_published')
+    list_display = ('title', 'order', 'is_published', 'deadline', 'grades_summary')
     list_filter = ('is_published',)
     list_editable = ('order', 'is_published')
     prepopulated_fields = {'slug': ('title',)}
+    autocomplete_fields = ('practicum_quiz',)
+    fieldsets = (
+        (None, {'fields': ('title', 'slug', 'description', 'thumbnail', 'order', 'is_published')}),
+        ('Задачи блока', {'fields': ('practicum_quiz', 'deadline', 'hints_open')}),
+        ('Оценка за блок', {
+            'fields': ('grade_5_from', 'grade_4_from', 'grade_3_from'),
+            'description': 'Сколько задач практикума нужно решить на каждую оценку. '
+                           'Если «Оценка 3» не заполнена, оценка за блок не выставляется. '
+                           'Всё, что ниже порога тройки, считается двойкой.',
+        }),
+    )
+
+    @admin.display(description='Оценки')
+    def grades_summary(self, obj):
+        if obj.grade_3_from is None:
+            return '—'
+        return f'5: от {obj.grade_5_from} · 4: от {obj.grade_4_from} · 3: от {obj.grade_3_from}'
 
 
 @admin.register(EgeTask)

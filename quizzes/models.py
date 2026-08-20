@@ -79,6 +79,12 @@ class Question(models.Model):
     topic = models.CharField(max_length=200, blank=True, default='', verbose_name="Тема")
     points = models.PositiveIntegerField(default=1, verbose_name="Баллы")
     alternative_answers = models.JSONField(null=True, blank=True, verbose_name="Альтернативные ответы", help_text='Список строк, например: ["42", "42.0"]')
+    hint = models.TextField(
+        blank=True, default='', verbose_name="Подсказка",
+        help_text="Markdown. Ученик не видит ни текста, ни самого факта наличия "
+                  "подсказки, пока она не откроется: три неудачные попытки, "
+                  "меньше трёх дней до дедлайна блока или рубильник в блоке."
+    )
 
     class Meta:
         verbose_name = "Вопрос"
@@ -208,6 +214,10 @@ class Choice(models.Model):
     is_correct = models.BooleanField(default=False, verbose_name="Правильный ответ")
     
     class Meta:
+        # Порядок вариантов = порядок создания. Без явной сортировки Postgres
+        # отдаёт строки в физическом порядке, а он после пересоздания вопросов
+        # сидами меняется — ученик видел бы варианты каждый раз по-новому.
+        ordering = ['id']
         verbose_name = "Вариант ответа"
         verbose_name_plural = "Варианты ответа"
 
@@ -411,3 +421,27 @@ class SolutionLike(models.Model):
 
     def __str__(self):
         return f"{self.user.username} -> answer #{self.answer_id}"
+
+
+class HintChoice(models.Model):
+    """Что ученик выбрал, когда ему предложили подсказку: взял или отказался.
+
+    Ученику эта запись нигде не показывается и на баллы не влияет — она нужна
+    учителю в статистике теста.
+    """
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='hint_choices', verbose_name="Ученик")
+    question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name='hint_choices', verbose_name="Задача")
+    accepted = models.BooleanField(default=False, verbose_name="Взял подсказку")
+    offered_at = models.DateTimeField(auto_now_add=True, verbose_name="Предложена")
+    decided_at = models.DateTimeField(auto_now=True, verbose_name="Последний выбор")
+
+    class Meta:
+        verbose_name = "Выбор по подсказке"
+        verbose_name_plural = "Выборы по подсказкам"
+        constraints = [
+            models.UniqueConstraint(fields=['user', 'question'], name='unique_hint_choice'),
+        ]
+
+    def __str__(self):
+        verdict = "взял" if self.accepted else "отказался"
+        return f"{self.user.username} — задача {self.question_id}: {verdict}"

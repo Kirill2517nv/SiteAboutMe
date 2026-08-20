@@ -16,14 +16,13 @@
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from quizzes.models import Choice, Question, Quiz
+from quizzes.models import Choice, Question, Quiz, UserAnswer
 from textbook.models import Article, ArticleBlock, ArticleQuiz
 
 
-def _replace_blocks(article, blocks):
-    article.blocks.all().delete()
-    for b in blocks:
-        ArticleBlock.objects.create(article=article, **b)
+from textbook.services import replace_blocks as _replace_blocks
+from textbook.services import shuffle_choices as _shuffle_choices
+from textbook.services import sync_question_texts as _sync_question_texts
 
 
 def _self_check(slug, title, description, questions):
@@ -42,6 +41,11 @@ def _self_check(slug, title, description, questions):
         quiz.is_self_check = True
         quiz.save(update_fields=['is_self_check'])
 
+    # Тест ещё никто не решал — пересоздаём вопросы, чтобы до базы доехали
+    # и правки формулировок, и перемешанный порядок вариантов ответа.
+    if quiz.questions.exists() and not UserAnswer.objects.filter(question__quiz=quiz).exists():
+        quiz.questions.all().delete()
+
     if quiz.questions.count() == 0:
         for q in questions:
             question = Question.objects.create(
@@ -51,8 +55,11 @@ def _self_check(slug, title, description, questions):
                 correct_text_answer=q.get('correct_text_answer', ''),
                 points=1,
             )
-            for choice_text, is_correct in q.get('choices', []):
+            for choice_text, is_correct in _shuffle_choices(q['text'], q.get('choices', [])):
                 Choice.objects.create(question=question, text=choice_text, is_correct=is_correct)
+    # Правки формулировок должны доезжать и до тестов, которые уже решали:
+    # пересоздать вопросы там нельзя — каскад унёс бы ответы учеников.
+    _sync_question_texts(quiz, questions)
     return quiz
 
 
@@ -293,15 +300,15 @@ def _factorial_frames(start=4):
                  top_state='base', top_ret=1)
             stack.pop()
             return 1
-        stack[-1][1] = '{} · ? = ?'.format(n)
+        stack[-1][1] = '{} $\\cdot$ ? = ?'.format(n)
         snap(4, 'Чтобы умножить, нужен второй сомножитель — за ним уходим в '
                 'factorial({}). Карточка остаётся в стопке с незаконченным '
                 'умножением и ждёт.'.format(n - 1))
         inner = walk(n - 1)
         result = n * inner
-        stack[-1][1] = '{} · {} = {}'.format(n, inner, result)
+        stack[-1][1] = '{} $\\cdot$ {} = {}'.format(n, inner, result)
         snap(4, 'Карточка снизу закрылась и отдала {}. Это число встало на место '
-                '«?»: {} · {} = {}. Теперь и этот вызов закончен.'.format(
+                '«?»: {} $\\cdot$ {} = {}. Теперь и этот вызов закончен.'.format(
                     inner, n, inner, result),
              top_ret=result,
              returned={'value': inner,
@@ -2127,8 +2134,8 @@ class Command(BaseCommand):
                 'считали не только время, но и память, — и вот случай, где '
                 'память решает.\n\n'
                 'Спуск глубиной N держит на стеке N кадров одновременно: '
-                'память O(N). У цикла кадр один, сколько бы итераций он ни '
-                'сделал: память O(1).\n\n'
+                'память $O(N)$. У цикла кадр один, сколько бы итераций он ни '
+                'сделал: память $O(1)$.\n\n'
                 'Это не придирка и не теория. Две записи одного и того же '
                 'алгоритма ведут себя по-разному ровно потому, что одна '
                 'платит за красоту памятью, а другая нет.'
@@ -2257,7 +2264,7 @@ class Command(BaseCommand):
                 '| предел глубины | 1000 по умолчанию, `sys.getrecursionlimit()` |\n'
                 '| `RecursionError` | предел превышен: место в стопке кончилось |\n'
                 '| `sys.setrecursionlimit(N)` | сменить предел; последнее средство, а не первое |\n'
-                '| память рекурсии | O(N) кадров против O(1) у цикла |\n\n'
+                '| память рекурсии | $O(N)$ кадров против $O(1)$ у цикла |\n\n'
                 '`RecursionError` — чаще всего сообщение не о пределе, а о '
                 'вашей рекурсии.'
             )),
@@ -2271,7 +2278,7 @@ class Command(BaseCommand):
                 '`RecursionError`; это предохранитель, а не поломка;\n'
                 '- предел считает всю цепочку вызовов, а не только '
                 'рекурсивные;\n'
-                '- память рекурсии — O(N) против O(1) у цикла: это настоящая '
+                '- память рекурсии — $O(N)$ против $O(1)$ у цикла: это настоящая '
                 'цена красивой записи;\n'
                 '- упёрлись — сначала проверьте три вопроса, потом подумайте о '
                 'цикле, и только потом поднимайте предел.\n\n'
@@ -2548,7 +2555,7 @@ class Command(BaseCommand):
                 'что с ней происходит дальше.'
             )),
             dict(
-                order=18, block_type='widget', title='Цена ветвления: 2ᴺ против N',
+                order=18, block_type='widget', title='Цена ветвления: $2^N$ против N',
                 content='',
                 widget_key='growth-curves',
                 widget_config={
@@ -2621,7 +2628,7 @@ class Command(BaseCommand):
                 '| время | `O(2ᴺ)` | `O(N)` |\n'
                 '| память | `O(N)` кадров | `O(1)` — две переменные |\n'
                 '| вызовов при `n = 35` | 29 860 703 | 1 |\n'
-                '| замер при `n = 35` | ≈ 1 с | ≈ 0,000004 с |\n'
+                r'| замер при `n = 35` | $\approx 1$ с | $\approx 0{,}000004$ с |' '\n'
                 '| читается как | определение из учебника | инструкция «как посчитать» |\n\n'
                 'Последняя строка — не в пользу цикла, и это честно: '
                 'рекурсивная запись действительно понятнее. Урок ровно про '
@@ -2650,7 +2657,7 @@ class Command(BaseCommand):
                 '| Что видите | В чём дело |\n'
                 '|---|---|\n'
                 '| `fib(40)` считается минутами, хотя `fib(10)` мгновенно | наивная рекурсия: работа растёт как `O(2ᴺ)`, +5 к `n` — в одиннадцать раз дольше |\n'
-                '| «долго считает — сейчас будет `RecursionError`» | нет: глубина здесь всего `n`, предел из 12.4 ни при чём. Медленно ≠ глубоко |\n'
+                '| «долго считает — сейчас будет `RecursionError`» | нет: глубина здесь всего `n`, предел из 12.4 ни при чём. Медленно $\\ne$ глубоко |\n'
                 '| подняли предел глубины, быстрее не стало | и не станет: программа упирается не в стек, а в количество вызовов |\n'
                 '| в цикле `a, b = b, a + b` разбили на две строки — ответ неверный | `a = b` затирает старое `a`, и `b = a + b` складывает уже не то. Ровно тот случай, ради которого в 6.4 показан обмен одной строкой |\n'
                 '| `fib_loop(0)` вернул 1 | перепутано, что возвращать: после нуля проходов ответ лежит в `a`, а не в `b` |\n'
@@ -2664,7 +2671,7 @@ class Command(BaseCommand):
                 '| повторяющиеся подзадачи | одна и та же задача решается в дереве заново много раз |\n'
                 '| наивная рекурсия для `fib` | время `O(2ᴺ)`, память `O(N)` |\n'
                 '| цикл для `fib` | время `O(N)`, память `O(1)` |\n'
-                '| глубина ≠ число вызовов | у `fib` глубина `n`, а вызовов почти `2ⁿ` |\n\n'
+                '| глубина $\\ne$ число вызовов | у `fib` глубина `n`, а вызовов почти `2ⁿ` |\n\n'
                 'Медленно — не то же самое, что глубоко.'
             )),
             dict(order=28, block_type='text', title='Итог', content=(

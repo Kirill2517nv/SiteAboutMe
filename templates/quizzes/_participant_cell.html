@@ -1,0 +1,9 @@
+{% if row.user.profile.avatar %}
+<img src="{{ row.user.profile.avatar.url }}" alt=""
+     class="w-9 h-9 rounded-full object-cover flex-shrink-0">
+{% else %}
+<span class="w-9 h-9 rounded-full bg-gray-100 text-gray-500 text-xs font-semibold flex items-center justify-center flex-shrink-0">
+    {{ row.user.last_name|default:row.user.username|make_list|first|upper }}{{ row.user.first_name|make_list|first|upper|default:"" }}
+</span>
+{% endif %}
+<span>{{ row.full_name }}</span>

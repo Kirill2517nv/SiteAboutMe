@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% load static %}
+{% load textbook_tags %}
 
 {% block title %}{{ quiz.title }}{% endblock title %}
 
@@ -93,6 +94,84 @@
         color: #92400e; font-size: 13px; font-weight: 500;
     }
 
+    /* ── Условие задачи (Markdown через |markdownify) ─────────────────────
+       Применяется к учебниковым тестам и практикумам: обычные и ЕГЭ-тесты
+       по-прежнему выводятся как pre-wrap, их формулировки размечены пробелами. */
+    .task-text { color: #374151; font-size: 16px; line-height: 1.7; }
+    .task-text > :first-child { margin-top: 0; }
+    .task-text > :last-child { margin-bottom: 0; }
+    .task-text p { margin: 0 0 12px; }
+    .task-text strong { color: #111827; font-weight: 600; }
+    .task-text ul, .task-text ol { margin: 0 0 12px 22px; list-style: revert; }
+
+    /* Команды и операторы Python внутри текста.
+       .task-title — заголовок вопроса-однострочника: у него условие целиком
+       лежит в get_title(), и код в нём тоже надо оформлять. */
+    .task-text code, .task-title code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.9em;
+        color: var(--color-brand-700, #1d4ed8);
+        background: var(--color-brand-50, #eff6ff);
+        border: 1px solid var(--color-brand-100, #dbeafe);
+        border-radius: 5px;
+        padding: 1px 5px;
+        white-space: nowrap;
+    }
+
+    /* Подпись «Пример ввода» / «Пример вывода» — в Markdown это `###### …`.
+       Собственный тег, а не «абзац из одного strong»: :only-child не видит
+       текстовых узлов, и под такое правило попадал обычный абзац со словом
+       в **жирном** посередине. */
+    .task-text h6 {
+        margin: 16px 0 6px;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #64748b;
+    }
+
+    /* Блоки примеров и кода — «терминал» на светлой карточке условия */
+    .task-text pre {
+        margin: 0 0 12px;
+        padding: 12px 14px;
+        background: #0f172a;
+        border: 1px solid #1e293b;
+        border-left: 3px solid var(--color-brand-500, #3b82f6);
+        border-radius: 8px;
+        overflow-x: auto;
+    }
+    /* Сбрасываем padding и фон темы highlight.js (atom-one-dark), но НЕ color:
+       его на токенах ставят .hljs-* — иначе пропадёт подсветка синтаксиса. */
+    .task-text pre code {
+        display: block;
+        padding: 0; border: 0; border-radius: 0;
+        background: transparent;
+        color: #e2e8f0;
+        font-size: 13.5px; line-height: 1.6;
+        white-space: pre;
+    }
+    .task-text pre code .hljs-comment { color: #7f848e; }
+
+    /* ── Тёмная тема ──────────────────────────────────────────────────────
+       base.html красит .bg-gray-50 в #0f172a, то есть ровно в фон блока кода —
+       без этих правил pre сливался с карточкой условия. Поднимаем его на
+       «поверхность» slate-800 с рамкой. */
+    html.dark .task-text { color: #cbd5e1; }
+    html.dark .task-text strong { color: #f1f5f9; }
+    html.dark .task-text h6 { color: #94a3b8; }
+    html.dark .task-text code {
+        color: #93c5fd;
+        background: #172554;
+        border-color: #1e40af;
+    }
+    html.dark .task-text pre {
+        background: #1e293b;
+        border-color: #334155;
+        border-left-color: var(--color-brand-500, #3b82f6);
+    }
+    html.dark .task-text pre code { color: #e2e8f0; background: transparent; }
+
     @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     .animate-spin { animation: spin 1s linear infinite; }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
@@ -105,11 +184,11 @@
 {# ==================== READ-ONLY MODE ==================== #}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <nav class="mb-6">
-        <a href="{% url 'quizzes:quiz_list' %}" class="inline-flex items-center text-gray-500 hover:text-brand-600 transition-colors group">
+        <a href="{{ back_url }}" class="inline-flex items-center text-gray-500 hover:text-brand-600 transition-colors group">
             <svg class="w-5 h-5 mr-2 transition-transform group-hover:-translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
             </svg>
-            Назад к списку задач
+            {{ back_label }}
         </a>
     </nav>
 
@@ -166,7 +245,7 @@
                             {{ forloop.counter }}
                             {% endif %}
                         </span>
-                        <h3 class="text-lg font-semibold text-gray-900 pt-0.5">{{ question.get_title }}</h3>
+                        <h3 class="task-title text-lg font-semibold text-gray-900 pt-0.5">{% if quiz.is_self_check %}{{ question.get_title|markdownify_inline }}{% else %}{{ question.get_title }}{% endif %}</h3>
                         {% if question.is_solved %}
                         <span class="solved-badge ml-auto">Решено</span>
                         {% elif question.solved_answer %}
@@ -177,7 +256,19 @@
                     </div>
 
                     {% if question.get_body %}
+                    {% if quiz.is_self_check %}
+                    <div class="task-text ml-12 mb-4 bg-gray-50 rounded-lg p-4">{{ question.get_body|markdownify }}</div>
+                    {% else %}
                     <div class="ml-12 mb-4 text-gray-700 whitespace-pre-wrap bg-gray-50 rounded-lg p-4 font-mono text-sm">{{ question.get_body }}</div>
+                    {% endif %}
+                    {% endif %}
+
+                    {# Режим просмотра — решать уже нельзя, подсказка становится частью разбора. #}
+                    {% if question.hint %}
+                    <div class="task-text ml-12 mb-4 bg-amber-50 border border-amber-200 rounded-lg p-4">
+                        <div class="text-amber-800 font-semibold text-sm mb-2">Подсказка</div>
+                        {{ question.hint|markdownify }}
+                    </div>
                     {% endif %}
 
                     {% for img in question.images.all %}
@@ -222,12 +313,12 @@
             {% endfor %}
 
             <div class="text-center mt-6">
-                <a href="{% url 'quizzes:quiz_list' %}"
+                <a href="{{ back_url }}"
                    class="inline-flex items-center px-6 py-3 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors">
                     <svg class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
                     </svg>
-                    Вернуться к списку задач
+                    {{ back_label }}
                 </a>
             </div>
         </div>
@@ -246,7 +337,7 @@
     <div class="flex items-center justify-between mb-6">
         <div>
             <div class="flex items-center gap-3">
-                <a href="{% url 'quizzes:quiz_list' %}" class="text-gray-400 hover:text-gray-600 transition-colors">
+                <a href="{{ back_url }}" class="text-gray-400 hover:text-gray-600 transition-colors">
                     <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
                 </a>
                 <h1 class="text-2xl font-bold text-gray-900">{{ quiz.title }}</h1>
@@ -306,10 +397,27 @@
                     </div>
                 </div>
 
-                <!-- Question body -->
-                {% if question.get_body %}
-                <div class="prose max-w-none mb-4 text-gray-700 whitespace-pre-wrap bg-gray-50 rounded-lg p-4 font-mono text-sm">{{ question.get_body }}</div>
+                {# Условие: у вопроса в одну строку get_body() пуст, текст лежит в get_title(). #}
+                {% if quiz.is_self_check %}
+                <div class="task-text max-w-none mb-4 bg-gray-50 rounded-lg p-4">{{ question.get_body|default:question.get_title|markdownify }}</div>
+                {% else %}
+                <div class="prose max-w-none mb-4 text-gray-700 whitespace-pre-wrap bg-gray-50 rounded-lg p-4 {% if quiz.quiz_type == 'exam' %}font-mono text-sm{% else %}text-base leading-relaxed{% endif %}">{{ question.get_body|default:question.get_title }}</div>
                 {% endif %}
+
+                {# Подсказка: появляется, только если ученик сам её открыл. #}
+                <div x-show="tasks[currentTask]?.hint_state === 'taken'" x-cloak
+                     class="task-text mb-4 bg-amber-50 border border-amber-200 rounded-lg p-4">
+                    <div class="flex items-center gap-2 text-amber-800 font-semibold text-sm mb-2">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 18h6M10 21h4M12 3a6 6 0 00-3 11v2h6v-2a6 6 0 00-3-11z"/></svg>
+                        Подсказка
+                    </div>
+                    <div x-html="tasks[currentTask]?.hint_html"></div>
+                </div>
+                <button type="button" x-show="tasks[currentTask]?.hint_state === 'declined'" x-cloak
+                        @click="hintDecide('take')"
+                        class="mb-4 text-sm text-gray-400 hover:text-amber-700 underline underline-offset-2 transition-colors">
+                    Всё-таки открыть подсказку
+                </button>
 
                 <!-- Images -->
                 {% for img in question.images.all %}
@@ -327,9 +435,17 @@
                 </a>
                 {% endfor %}
 
+                {# Решённый вопрос: балл уже засчитан и не пересчитывается, поэтому менять ответ не даём. #}
+                {% if question.is_solved and question.question_type != 'code' %}
+                <div class="mt-4 flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                    <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                    Решено верно — ответ зафиксирован
+                </div>
+                {% endif %}
+
                 <!-- Answer input: choice -->
                 {% if question.question_type == 'choice' %}
-                <div class="mt-4 space-y-2">
+                <div class="mt-4 space-y-2 {% if question.is_solved %}opacity-75 pointer-events-none{% endif %}">
                     {% for choice in question.choices.all %}
                     <label class="flex items-center p-3 border rounded-lg cursor-pointer transition-colors"
                            :class="answers[{{ question.id }}] === '{{ choice.id }}'
@@ -339,6 +455,7 @@
                                name="question_{{ question.id }}"
                                value="{{ choice.id }}"
                                x-model="answers[{{ question.id }}]"
+                               {% if question.is_solved %}disabled{% endif %}
                                class="w-4 h-4 text-brand-600 border-gray-300 focus:ring-brand-500">
                         <span class="ml-3 text-gray-700">{{ choice.text }}</span>
                     </label>
@@ -351,7 +468,8 @@
                     <label class="block text-sm font-medium text-gray-700 mb-2">Ответ:</label>
                     <input type="text"
                            x-model="answers[{{ question.id }}]"
-                           class="w-full max-w-md px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors"
+                           {% if question.is_solved %}disabled{% endif %}
+                           class="w-full max-w-md px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors {% if question.is_solved %}bg-gray-50 text-gray-500{% endif %}"
                            placeholder="Введите ответ...">
                 </div>
 
@@ -654,6 +772,33 @@
         </div>
     </div>
 
+    <!-- Hint offer modal: появляется, когда подсказка открылась и выбор ещё не сделан -->
+    <div x-show="hintOffer" x-cloak class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div @click.stop class="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl">
+            <div class="flex items-center gap-3 mb-3">
+                <span class="w-10 h-10 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center flex-shrink-0">
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 18h6M10 21h4M12 3a6 6 0 00-3 11v2h6v-2a6 6 0 00-3-11z"/></svg>
+                </span>
+                <h3 class="text-lg font-bold text-gray-900">К этой задаче есть подсказка</h3>
+            </div>
+            <p class="text-sm text-gray-600 mb-5">
+                Задача не поддаётся с нескольких попыток. Можно открыть подсказку —
+                она подскажет ход решения, но не даст готовый код. А можно закрыть
+                это окно и додумать самому: на оценку выбор не влияет.
+            </p>
+            <div class="flex flex-col sm:flex-row gap-2">
+                <button @click="hintDecide('take')"
+                        class="flex-1 px-4 py-2.5 text-sm font-medium bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors">
+                    Показать подсказку
+                </button>
+                <button @click="hintDecide('decline')"
+                        class="flex-1 px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
+                    Решу сам
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Best code viewer modal -->
     <div x-show="bestCodeModal.show" x-cloak class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
         <div @click.stop class="bg-white rounded-2xl p-6 max-w-2xl w-full shadow-2xl max-h-[80vh] flex flex-col">
@@ -693,6 +838,11 @@
 <!-- Highlight.js for code display in solved answers -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+{% comment %}
+Подсвечиваем ```python в условиях задач и код решённых ответов. В read-only
+ветке этот вызов уже есть; здесь его не было, и код выводился одним цветом.
+{% endcomment %}
+<script>hljs.highlightAll();</script>
 <!-- Quiz async (WebSocket + code submission) -->
 <script src="{% static 'js/quiz-async.js' %}"></script>
 <script src="{% static 'js/help-requests.js' %}"></script>
@@ -714,6 +864,7 @@ function quizApp() {
         pendingNavigationUrl: null,
         showMobileSidebar: false,
         bestCodeModal: { show: false, title: '', subtitle: '', code: '', questionId: null },
+        hintOffer: false,
         quizId: {{ quiz.id }},
         csrfToken: '{{ csrf_token }}',
 
@@ -832,6 +983,7 @@ function quizApp() {
 
             // Lazy init CodeMirror for first task
             this.$nextTick(() => this.ensureCodeMirror());
+            this.maybeOfferHint();
 
             // Open help after CodeMirror is ready
             if (openHelpId) {
@@ -920,6 +1072,41 @@ function quizApp() {
         goToTask(index) {
             this.currentTask = index;
             this.ensureCodeMirror();
+            this.maybeOfferHint();
+        },
+
+        // --- Подсказки ---
+        // Задача не знает о подсказке, пока сервер не отдаст hint_state:
+        // до трёх неудачных попыток (или дедлайна) в tasks её попросту нет.
+        maybeOfferHint() {
+            this.hintOffer = this.tasks[this.currentTask]?.hint_state === 'offer';
+        },
+
+        async checkHint(questionId) {
+            const task = this.tasks.find(t => t.id === questionId);
+            if (!task || task.hint_state) return;
+            try {
+                const data = await (await fetch(`/quizzes/question/${questionId}/hint/`)).json();
+                if (data.state) {
+                    task.hint_state = data.state;
+                    this.maybeOfferHint();
+                }
+            } catch (e) { /* подсказка не критична — молча пропускаем */ }
+        },
+
+        async hintDecide(action) {
+            const task = this.tasks[this.currentTask];
+            if (!task) return;
+            this.hintOffer = false;
+            try {
+                const data = await (await fetch(`/quizzes/question/${task.id}/hint/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.csrfToken },
+                    body: JSON.stringify({ action }),
+                })).json();
+                task.hint_state = data.state;
+                if (data.hint) task.hint_html = data.hint;
+            } catch (e) { /* молча: выбор можно сделать снова */ }
         },
 
         prevTask() { if (this.currentTask > 0) this.goToTask(this.currentTask - 1); },
@@ -982,6 +1169,12 @@ function quizApp() {
 
             if (cpuTimeMs != null || memoryKb != null) {
                 this.codeMetrics[questionId] = { cpu_time_ms: cpuTimeMs, memory_kb: memoryKb };
+            }
+
+            // Неудачная попытка могла стать третьей — спрашиваем сервер, не
+            // пора ли предложить подсказку.
+            if (status === 'failed') {
+                this.checkHint(questionId);
             }
 
             if (status === 'success' && isCorrect) {
