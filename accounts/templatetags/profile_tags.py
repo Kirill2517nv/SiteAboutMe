@@ -19,7 +19,7 @@ def bio_paragraphs(value):
 def duration_display(value):
     """timedelta → 'Xч Yм' или 'Yм Zс'."""
     if not isinstance(value, timedelta):
-        return '—'
+        return '–'
     total_seconds = int(value.total_seconds())
     if total_seconds <= 0:
         return '0с'

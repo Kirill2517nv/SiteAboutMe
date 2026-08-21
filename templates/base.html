@@ -50,7 +50,7 @@
            Используем :where() чтобы снизить специфичность до (0,1,1):
            это позволяет dark:* и hover:* классам нормально перебивать эти правила. ─── */
 
-        /* Фоны — !important нужен только body, остальное через :where() */
+        /* Фоны – !important нужен только body, остальное через :where() */
         html.dark body { background-color: #0f172a !important; }
         html.dark :where(.bg-gray-50)  { background-color: #0f172a; }
         html.dark :where(.bg-white)    { background-color: #1e293b; }
@@ -62,7 +62,7 @@
         html.dark :where(.from-blue-50)  { --tw-gradient-from: #172554; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, rgb(23 37 84 / 0)); }
         html.dark :where(.to-blue-50)    { --tw-gradient-to: #0f172a; }
 
-        /* Текст — :where() позволяет dark:text-* и hover:text-* перебивать */
+        /* Текст – :where() позволяет dark:text-* и hover:text-* перебивать */
         html.dark :where(.text-gray-900) { color: #f1f5f9; }
         html.dark :where(.text-gray-800) { color: #e2e8f0; }
         html.dark :where(.text-gray-700) { color: #cbd5e1; }
@@ -300,7 +300,7 @@
         // Инициализация PhotoSwipe для всех галерей.
         // children ограничен ссылками с data-pswp-width: в .pswp-gallery
         // (напр. контейнер блоков урока) попадают и обычные текстовые
-        // ссылки — без фильтра лайтбокс перехватывал бы и их, пытаясь
+        // ссылки – без фильтра лайтбокс перехватывал бы и их, пытаясь
         // открыть страницу как картинку.
         const lightbox = new PhotoSwipeLightbox({
             gallery: '.pswp-gallery',

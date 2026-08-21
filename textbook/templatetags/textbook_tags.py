@@ -115,9 +115,9 @@ def time_short(seconds):
     try:
         seconds = int(seconds or 0)
     except (TypeError, ValueError):
-        return '—'
+        return '–'
     if seconds <= 0:
-        return '—'
+        return '–'
     if seconds < 60:
         return f'{seconds} с'
     minutes, secs = divmod(seconds, 60)

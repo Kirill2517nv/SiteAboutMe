@@ -31,7 +31,7 @@ class Section(models.Model):
         null=True, blank=True, verbose_name="Дедлайн",
         help_text="После этого момента задачи блока и самопроверки уроков "
                   "переходят в режим просмотра: решения больше не принимаются. "
-                  "Пусто — без ограничения по времени."
+                  "Пусто – без ограничения по времени."
     )
     hints_open = models.BooleanField(
         default=False, verbose_name="Открыть подсказки блока",
@@ -42,13 +42,13 @@ class Section(models.Model):
     # Пороги оценки — число решённых задач практикума. Пусто у любого из полей
     # означает «оценку за этот блок не выставляем».
     grade_5_from = models.PositiveIntegerField(
-        null=True, blank=True, verbose_name="Оценка 5 — от скольких задач"
+        null=True, blank=True, verbose_name="Оценка 5 – от скольких задач"
     )
     grade_4_from = models.PositiveIntegerField(
-        null=True, blank=True, verbose_name="Оценка 4 — от скольких задач"
+        null=True, blank=True, verbose_name="Оценка 4 – от скольких задач"
     )
     grade_3_from = models.PositiveIntegerField(
-        null=True, blank=True, verbose_name="Оценка 3 — от скольких задач"
+        null=True, blank=True, verbose_name="Оценка 3 – от скольких задач"
     )
 
     def grade_for(self, solved_tasks):
@@ -184,8 +184,8 @@ class ArticleBlock(models.Model):
     title = models.CharField(max_length=200, blank=True, verbose_name="Заголовок (необязательно)")
     content = models.TextField(
         blank=True, verbose_name="Содержимое",
-        help_text="text — Markdown; code — исходный код; formula — LaTeX; "
-                  "image/video — подпись/описание"
+        help_text="text – Markdown; code – исходный код; formula – LaTeX; "
+                  "image/video – подпись/описание"
     )
     code_language = models.CharField(
         max_length=20, choices=CODE_LANGUAGE_CHOICES,
@@ -215,7 +215,7 @@ class ArticleBlock(models.Model):
         verbose_name_plural = "Блоки статьи"
 
     def __str__(self):
-        return f"{self.article.title} — {self.get_block_type_display()} (#{self.order})"
+        return f"{self.article.title} – {self.get_block_type_display()} (#{self.order})"
 
 
 class ArticleQuiz(models.Model):
@@ -287,4 +287,4 @@ class ArticleProgress(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.user} — {self.article} ({self.get_status_display()})"
+        return f"{self.user} – {self.article} ({self.get_status_display()})"

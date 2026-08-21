@@ -39,7 +39,7 @@
             </div>
 
             {% if student_groups %}
-            {# Учителю — выбор классов, чьи аватарки показывать. Ученик видит свой класс без выбора. #}
+            {# Учителю – выбор классов, чьи аватарки показывать. Ученик видит свой класс без выбора. #}
             <form method="get" class="flex flex-wrap items-center gap-3 mb-5 text-sm">
                 <span class="text-gray-500 dark:text-slate-400">Показывать классы:</span>
                 {% for row in student_groups %}
@@ -117,7 +117,7 @@
                                 {% for step in group.grade_scale %}
                                 <span class="px-2 py-0.5 rounded-md whitespace-nowrap
                                              {% if step.reached %}bg-green-100 text-green-700{% else %}bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-slate-400{% endif %}">
-                                    {% if step.reached %}✓ {% endif %}на {{ step.grade }} — от {{ step.need }}
+                                    {% if step.reached %}✓ {% endif %}на {{ step.grade }} – от {{ step.need }}
                                 </span>
                                 {% endfor %}
                             </div>
@@ -153,7 +153,7 @@
                         <a href="{{ item.article.get_absolute_url }}"
                            class="flex items-center gap-3 px-[18px] py-[11px] border-b border-gray-50 dark:border-slate-700/60 last:border-b-0 hover:bg-gray-50 dark:hover:bg-slate-700/40 transition-colors">
                             {% comment %}
-                            Цвет галочки — результат микротеста урока: он же показан бейджем
+                            Цвет галочки – результат микротеста урока: он же показан бейджем
                             в самой статье. Если тест не решался, красим по статусу чтения.
                             {% endcomment %}
                             {% if item.quiz_state == 'green' %}

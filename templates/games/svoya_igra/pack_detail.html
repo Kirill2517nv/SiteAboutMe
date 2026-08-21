@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 
-{% block title %}{{ pack.title }} — Своя игра{% endblock %}
+{% block title %}{{ pack.title }} – Своя игра{% endblock %}
 
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
@@ -52,7 +52,7 @@
                     {{ q.points }}
                 </div>
                 {% empty %}
-                <div class="bg-gray-100 dark:bg-slate-700 text-gray-400 text-center py-4 rounded-lg text-sm">—</div>
+                <div class="bg-gray-100 dark:bg-slate-700 text-gray-400 text-center py-4 rounded-lg text-sm">–</div>
                 {% endfor %}
                 {% endfor %}
             </div>

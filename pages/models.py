@@ -308,7 +308,7 @@ class AuthorPhoto(models.Model):
         verbose_name_plural = "Фотографии автора"
 
     def __str__(self):
-        return f"Фото #{self.order} — {self.caption or self.image.name}"
+        return f"Фото #{self.order} – {self.caption or self.image.name}"
 
 
 class AuthorVideo(models.Model):
@@ -368,4 +368,4 @@ class AuthorEvent(models.Model):
         verbose_name_plural = "События / публикации"
 
     def __str__(self):
-        return f"[{self.get_event_type_display()}] {self.year} — {self.title}"
+        return f"[{self.get_event_type_display()}] {self.year} – {self.title}"

@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% load textbook_tags %}
 
-{% block title %}Статистика — {{ section.title }}{% endblock %}
+{% block title %}Статистика – {{ section.title }}{% endblock %}
 
 {% block content %}
 <div class="min-h-screen bg-gray-50 dark:bg-slate-900">
@@ -19,7 +19,7 @@
             </p>
             {% if section.grade_3_from is None %}
             <p class="mt-1 text-sm text-amber-600 dark:text-amber-400">
-                Пороги оценок для блока не заданы — оценки не выставляются. Задайте их в админке (поля «Оценка 3/4/5 от»).
+                Пороги оценок для блока не заданы – оценки не выставляются. Задайте их в админке (поля «Оценка 3/4/5 от»).
             </p>
             {% endif %}
         </header>
@@ -69,7 +69,7 @@
                                              {% elif row.grade == 3 %}bg-amber-100 text-amber-700
                                              {% else %}bg-red-100 text-red-700{% endif %}">{{ row.grade }}</span>
                                 {% else %}
-                                <span class="text-gray-300 dark:text-slate-600">—</span>
+                                <span class="text-gray-300 dark:text-slate-600">–</span>
                                 {% endif %}
                             </td>
                             <td class="px-4 py-3 text-right tabular-nums {% if row.practicum_done and row.practicum_done == practicum_total %}text-green-600 font-semibold{% else %}text-gray-700 dark:text-slate-300{% endif %}">
@@ -87,7 +87,7 @@
                                 {% if row.errors %}
                                 <a href="{{ row.errors_url }}" class="inline-block px-2 py-1 rounded-lg bg-red-50 text-red-700 font-semibold tabular-nums hover:bg-red-100 transition-colors">{{ row.errors }}</a>
                                 {% else %}
-                                <span class="text-gray-300 dark:text-slate-600">—</span>
+                                <span class="text-gray-300 dark:text-slate-600">–</span>
                                 {% endif %}
                             </td>
                         </tr>

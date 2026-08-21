@@ -520,7 +520,7 @@ function egeApp() {
             for (const task of this.tasks) {
                 if (task.is_solved) {
                     this.checkResults[task.id] = true;
-                    // Для решённых текстовых задач — заполнить ответ из БД (если нет в localStorage)
+                    // Для решённых текстовых задач – заполнить ответ из БД (если нет в localStorage)
                     if (task.saved_answer && !this.answers[task.id]) {
                         this.answers[task.id] = task.saved_answer;
                     }
@@ -533,7 +533,7 @@ function egeApp() {
                 }
             }
 
-            // Code checker (WebSocket) — destroy previous if init() re-runs
+            // Code checker (WebSocket) – destroy previous if init() re-runs
             if (this.codeChecker) this.codeChecker.destroy();
             this.codeChecker = new QuizCodeChecker(this.quizId, this.csrfToken);
             this.codeChecker.onStatusChange = (questionId, status, isCorrect, errorLog, cpuTimeMs, memoryKb) => {
@@ -556,7 +556,7 @@ function egeApp() {
             this.egeTimer.start();
             {% endif %}
 
-            // Перехват кликов по ссылкам — кастомный модал вместо beforeunload
+            // Перехват кликов по ссылкам – кастомный модал вместо beforeunload
             this._linkInterceptor = (e) => {
                 const link = e.target.closest('a[href]');
                 if (!link) return;
@@ -591,9 +591,9 @@ function egeApp() {
             };
             window.addEventListener('pageshow', this._pageShow);
 
-            // Ленивая инициализация CodeMirror — при первом показе задачи
+            // Ленивая инициализация CodeMirror – при первом показе задачи
             this.$nextTick(() => this.ensureCodeMirror());
-            // Не трекаем уже решённые задачи — сервер всё равно отклонит, но
+            // Не трекаем уже решённые задачи – сервер всё равно отклонит, но
             // избегаем лишних запросов.
             const firstTask = this.tasks[0];
             if (firstTask && !firstTask.is_solved) this.timeTracker.startTask(firstTask.id);

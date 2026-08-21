@@ -29,7 +29,7 @@ class AvatarForm(forms.ModelForm):
     def clean_avatar(self):
         avatar = self.cleaned_data['avatar']
         if avatar and avatar.size > 2 * 1024 * 1024:
-            raise forms.ValidationError('Файл больше 2 МБ — уменьшите картинку.')
+            raise forms.ValidationError('Файл больше 2 МБ – уменьшите картинку.')
         return avatar
 
 

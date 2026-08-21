@@ -69,7 +69,7 @@ class Question(models.Model):
     ]
 
     quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE, related_name='questions', verbose_name="Тест")
-    title = models.CharField(max_length=200, verbose_name="Заголовок вопроса", blank=True, help_text="Используется для отображения и сортировки. Если пусто — берётся первая строка текста.")
+    title = models.CharField(max_length=200, verbose_name="Заголовок вопроса", blank=True, help_text="Используется для отображения и сортировки. Если пусто – берётся первая строка текста.")
     text = models.TextField(verbose_name="Текст вопроса")
     question_type = models.CharField(max_length=10, choices=TYPE_CHOICES, default='choice', verbose_name="Тип вопроса")
     
@@ -359,7 +359,7 @@ class ExamTaskProgress(models.Model):
 
     def __str__(self):
         status = "решена" if self.is_solved else f"{self.attempts_to_solve} попыток"
-        return f"{self.user.username} — задача {self.question_id} ({status})"
+        return f"{self.user.username} – задача {self.question_id} ({status})"
 
 
 class SolutionAttachment(models.Model):
@@ -378,7 +378,7 @@ class SolutionAttachment(models.Model):
         unique_together = ['user', 'quiz', 'question']
 
     def __str__(self):
-        return f"Материал: {self.user.username} — задача {self.question_id}"
+        return f"Материал: {self.user.username} – задача {self.question_id}"
 
     def get_filename(self):
         import os
@@ -444,4 +444,4 @@ class HintChoice(models.Model):
 
     def __str__(self):
         verdict = "взял" if self.accepted else "отказался"
-        return f"{self.user.username} — задача {self.question_id}: {verdict}"
+        return f"{self.user.username} – задача {self.question_id}: {verdict}"

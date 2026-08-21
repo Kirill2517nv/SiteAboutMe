@@ -177,7 +177,7 @@
                     border border-gray-100 dark:border-slate-700 p-5">
           <p class="text-xs font-bold text-brand-600 dark:text-brand-500
                     uppercase tracking-widest mb-1">
-            {% if event.is_current %}{{ event.year }} — н.в.{% else %}{{ event.year }}{% endif %}
+            {% if event.is_current %}{{ event.year }} – н.в.{% else %}{{ event.year }}{% endif %}
           </p>
           <h3 class="font-semibold text-gray-900 dark:text-slate-100">{{ event.title }}</h3>
           {% if event.subtitle %}

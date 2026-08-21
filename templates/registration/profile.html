@@ -100,15 +100,15 @@
                 <div class="grid grid-cols-2 md:grid-cols-3 gap-3 text-left">
                     <div class="rounded-xl bg-white/10 px-4 py-3">
                         <div class="text-[11px] uppercase tracking-wide text-blue-100">Фамилия</div>
-                        <div class="font-semibold truncate mt-0.5">{{ profile_user.last_name|default:"—" }}</div>
+                        <div class="font-semibold truncate mt-0.5">{{ profile_user.last_name|default:"–" }}</div>
                     </div>
                     <div class="rounded-xl bg-white/10 px-4 py-3">
                         <div class="text-[11px] uppercase tracking-wide text-blue-100">Имя</div>
-                        <div class="font-semibold truncate mt-0.5">{{ profile_user.first_name|default:"—" }}</div>
+                        <div class="font-semibold truncate mt-0.5">{{ profile_user.first_name|default:"–" }}</div>
                     </div>
                     <div class="rounded-xl bg-white/10 px-4 py-3">
                         <div class="text-[11px] uppercase tracking-wide text-blue-100">Группа</div>
-                        <div class="font-semibold truncate mt-0.5">{{ group.name|default:"—" }}</div>
+                        <div class="font-semibold truncate mt-0.5">{{ group.name|default:"–" }}</div>
                     </div>
                     <div class="rounded-xl bg-white/10 px-4 py-3">
                         <div class="text-[11px] uppercase tracking-wide text-blue-100">Логин</div>
@@ -137,7 +137,7 @@
         <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 px-4 py-3.5">
             <div class="text-[11px] uppercase tracking-wide text-gray-500 dark:text-slate-400">Средний балл</div>
             <div class="text-xl lg:text-2xl font-bold leading-tight mt-0.5 {% if textbook.avg_grade %}text-gray-900 dark:text-white{% else %}text-gray-300 dark:text-slate-600{% endif %}">
-                {{ textbook.avg_grade|default:"—" }}
+                {{ textbook.avg_grade|default:"–" }}
             </div>
             <div class="text-[11px] text-gray-400 dark:text-slate-500">
                 {% if textbook.graded_count %}по {{ textbook.graded_count }} блок{{ textbook.graded_count|pluralize:"у,ам,ам" }}{% else %}оценок нет{% endif %}
@@ -191,7 +191,7 @@
                     <a href="{{ item.practicum_url|default:'#' }}" class="font-medium text-gray-900 dark:text-white hover:text-brand-600">{{ item.section.title }}</a>
                     <span class="text-gray-600 dark:text-slate-400">
                         решено {{ item.practicum_done }} из {{ item.practicum_total }}{% if item.next_step %},
-                        до «{{ item.next_step.grade }}» — {{ item.next_step.left }} задач{{ item.next_step.left|pluralize:"а,и," }}{% endif %}
+                        до «{{ item.next_step.grade }}» – {{ item.next_step.left }} задач{{ item.next_step.left|pluralize:"а,и," }}{% endif %}
                     </span>
                     {% if item.section.deadline %}
                     <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 text-xs font-medium">
@@ -235,14 +235,14 @@
                                 {% if item.practicum_total %}
                                     <a href="{{ item.practicum_url }}" class="text-gray-700 dark:text-slate-300 hover:text-brand-600">{{ item.practicum_done }}/{{ item.practicum_total }}</a>
                                 {% else %}
-                                    <span class="text-gray-300 dark:text-slate-600">—</span>
+                                    <span class="text-gray-300 dark:text-slate-600">–</span>
                                 {% endif %}
                             </td>
                             <td class="px-3 py-3 text-center tabular-nums text-gray-500 dark:text-slate-400">
-                                {% if item.self_check_total %}{{ item.self_check_done }}/{{ item.self_check_total }}{% else %}—{% endif %}
+                                {% if item.self_check_total %}{{ item.self_check_done }}/{{ item.self_check_total }}{% else %}–{% endif %}
                             </td>
                             <td class="px-3 py-3 text-center text-xs {% if item.is_closed %}text-red-500{% else %}text-gray-500 dark:text-slate-400{% endif %}">
-                                {% if item.section.deadline %}{{ item.section.deadline|date:"d.m.Y" }}{% else %}—{% endif %}
+                                {% if item.section.deadline %}{{ item.section.deadline|date:"d.m.Y" }}{% else %}–{% endif %}
                             </td>
                             <td class="px-3 py-3 text-center">
                                 {% include 'textbook/_grade_badge.html' with grade=item.grade %}
@@ -319,14 +319,14 @@
         <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 p-6 mb-4">
             <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-1">По номерам заданий</h3>
             <p class="text-xs text-gray-400 dark:text-slate-500 mb-4">
-                Под номером — <span class="font-medium text-gray-500 dark:text-slate-400">ваше среднее время</span>,
-                ниже — <span class="font-medium text-gray-500 dark:text-slate-400">цель</span>, к которой стоит стремиться.
-                Зелёный — уложились в цель, жёлтый — до полутора целей, красный — дольше, серый — задача ещё не решена.
+                Под номером – <span class="font-medium text-gray-500 dark:text-slate-400">ваше среднее время</span>,
+                ниже – <span class="font-medium text-gray-500 dark:text-slate-400">цель</span>, к которой стоит стремиться.
+                Зелёный – уложились в цель, жёлтый – до полутора целей, красный – дольше, серый – задача ещё не решена.
             </p>
             <div class="flex flex-wrap gap-2">
                 {% for task in ege.by_number %}
                 <div class="w-16 text-center"
-                     title="Задание {{ task.number }}: решено {{ task.solved }} из {{ task.total }}{% if task.avg_mm_ss %}, ваше среднее время {{ task.avg_mm_ss }}{% endif %}, цель — {{ task.recommended_min }} мин">
+                     title="Задание {{ task.number }}: решено {{ task.solved }} из {{ task.total }}{% if task.avg_mm_ss %}, ваше среднее время {{ task.avg_mm_ss }}{% endif %}, цель – {{ task.recommended_min }} мин">
                     <div class="h-9 rounded-lg flex items-center justify-center text-sm font-semibold
                         {% if task.color == 'green' %}bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300
                         {% elif task.color == 'yellow' %}bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300
@@ -339,7 +339,7 @@
                         {% elif task.color == 'yellow' %}text-amber-600 dark:text-amber-400
                         {% elif task.color == 'red' %}text-red-600 dark:text-red-400
                         {% else %}text-gray-300 dark:text-slate-600{% endif %}">
-                        {{ task.avg_mm_ss|default:"—" }}
+                        {{ task.avg_mm_ss|default:"–" }}
                     </div>
                     <div class="text-[10px] text-gray-400 dark:text-slate-500 leading-tight whitespace-nowrap">цель {{ task.recommended_min }} мин</div>
                     <div class="text-[10px] text-gray-400 dark:text-slate-500 tabular-nums leading-tight">{{ task.solved }}/{{ task.total }}</div>

@@ -50,7 +50,7 @@ class SectionAdmin(admin.ModelAdmin):
     @admin.display(description='Оценки')
     def grades_summary(self, obj):
         if obj.grade_3_from is None:
-            return '—'
+            return '–'
         return f'5: от {obj.grade_5_from} · 4: от {obj.grade_4_from} · 3: от {obj.grade_3_from}'
 
 
@@ -75,7 +75,7 @@ class ArticleAdmin(admin.ModelAdmin):
         }),
         ('Привязка (выбирается по вкладке)', {
             'fields': ('section', 'ege_task'),
-            'description': 'Для «Учебного материала» укажите Блок; для «Теории ЕГЭ» — Задание ЕГЭ.',
+            'description': 'Для «Учебного материала» укажите Блок; для «Теории ЕГЭ» – Задание ЕГЭ.',
         }),
         ('Превью', {
             'fields': ('thumbnail',),

@@ -70,7 +70,7 @@ class TheoryBlock(models.Model):
         verbose_name_plural = "Блоки теории"
 
     def __str__(self):
-        return f"{self.theory_page.title} — {self.get_block_type_display()} (#{self.order})"
+        return f"{self.theory_page.title} – {self.get_block_type_display()} (#{self.order})"
 
 
 class Simulation(models.Model):

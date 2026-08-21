@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% load static ege_filters %}
 
-{% block title %}Задача {{ ege_number }} — {{ target_user_name }}{% endblock title %}
+{% block title %}Задача {{ ege_number }} – {{ target_user_name }}{% endblock title %}
 
 {% block extra_css %}
 {% if question.question_type == 'code' %}
@@ -34,7 +34,7 @@
                 </div>
                 <div>
                     <h1 class="text-xl font-bold text-gray-900">{{ target_user_name }}</h1>
-                    <p class="text-sm text-gray-500">Задача {{ ege_number }}{% if answer.is_correct %} — <span class="text-green-600">верно</span>{% endif %}</p>
+                    <p class="text-sm text-gray-500">Задача {{ ege_number }}{% if answer.is_correct %} – <span class="text-green-600">верно</span>{% endif %}</p>
                 </div>
             </div>
 

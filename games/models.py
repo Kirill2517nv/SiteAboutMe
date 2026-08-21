@@ -62,7 +62,7 @@ class Question(models.Model):
         ordering = ['order', 'id']
 
     def __str__(self):
-        return f'{self.category.title} — {self.points} очков'
+        return f'{self.category.title} – {self.points} очков'
 
 
 class QuestionMedia(models.Model):
@@ -86,7 +86,7 @@ class QuestionMedia(models.Model):
 
     def __str__(self):
         prefix = 'Ответ' if self.is_answer else 'Вопрос'
-        return f'{prefix} — {self.get_media_type_display()} #{self.question_id}'
+        return f'{prefix} – {self.get_media_type_display()} #{self.question_id}'
 
 
 class GamePack(models.Model):
@@ -158,4 +158,4 @@ class GameSession(models.Model):
         ]
 
     def __str__(self):
-        return f'Сессия #{self.id} — {self.game_pack.title}'
+        return f'Сессия #{self.id} – {self.game_pack.title}'

@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 
-{% block title %}{{ full_name }} — {{ quiz.title }}{% endblock %}
+{% block title %}{{ full_name }} – {{ quiz.title }}{% endblock %}
 
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -29,15 +29,15 @@
             <div class="text-xs text-gray-400 mt-1">Всего задач</div>
         </div>
         <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 text-center">
-            <div class="text-2xl font-bold text-green-600" id="card-solved">—</div>
+            <div class="text-2xl font-bold text-green-600" id="card-solved">–</div>
             <div class="text-xs text-gray-400 mt-1">Решено</div>
         </div>
         <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 text-center">
-            <div class="text-2xl font-bold text-blue-600" id="card-attempts">—</div>
+            <div class="text-2xl font-bold text-blue-600" id="card-attempts">–</div>
             <div class="text-xs text-gray-400 mt-1">Всего попыток</div>
         </div>
         <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 text-center">
-            <div class="text-2xl font-bold text-purple-600" id="card-time">—</div>
+            <div class="text-2xl font-bold text-purple-600" id="card-time">–</div>
             <div class="text-xs text-gray-400 mt-1">Общее время</div>
         </div>
     </div>
@@ -76,7 +76,7 @@
                                 <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                             </span>
                             {% else %}
-                            <span class="text-gray-300">—</span>
+                            <span class="text-gray-300">–</span>
                             {% endif %}
                         </td>
                         {% endfor %}
@@ -96,7 +96,7 @@
                                 {{ stat.time_mm_ss }}
                             </span>
                             {% else %}
-                            <span class="text-gray-300">—</span>
+                            <span class="text-gray-300">–</span>
                             {% endif %}
                         </td>
                         {% endfor %}
@@ -107,7 +107,7 @@
                         <td class="sticky left-0 z-10 bg-white px-4 py-3 font-medium text-gray-700">Попытки</td>
                         {% for stat in stats %}
                         <td class="px-2 py-3 text-center text-xs text-gray-600">
-                            {% if stat.attempts > 0 %}{{ stat.attempts }}{% else %}<span class="text-gray-300">—</span>{% endif %}
+                            {% if stat.attempts > 0 %}{{ stat.attempts }}{% else %}<span class="text-gray-300">–</span>{% endif %}
                         </td>
                         {% endfor %}
                     </tr>
@@ -122,7 +122,7 @@
                                 {{ stat.cpu_time_ms|floatformat:1 }}мс
                             </span>
                             {% elif stat.is_code %}
-                            <span class="text-gray-300">—</span>
+                            <span class="text-gray-300">–</span>
                             {% else %}
                             <span class="text-gray-200">·</span>
                             {% endif %}
@@ -140,7 +140,7 @@
                                 {{ stat.memory_kb }} КБ
                             </span>
                             {% elif stat.is_code %}
-                            <span class="text-gray-300">—</span>
+                            <span class="text-gray-300">–</span>
                             {% else %}
                             <span class="text-gray-200">·</span>
                             {% endif %}
@@ -171,10 +171,10 @@
     const h = Math.floor(totalSeconds / 3600);
     const m = Math.floor((totalSeconds % 3600) / 60);
     const s = totalSeconds % 60;
-    const timeStr = h > 0 ? `${h}ч ${m}м` : m > 0 ? `${m}м ${s}с` : (s > 0 ? `${s}с` : '—');
+    const timeStr = h > 0 ? `${h}ч ${m}м` : m > 0 ? `${m}м ${s}с` : (s > 0 ? `${s}с` : '–');
 
     document.getElementById('card-solved').textContent = solved;
-    document.getElementById('card-attempts').textContent = totalAttempts || '—';
+    document.getElementById('card-attempts').textContent = totalAttempts || '–';
     document.getElementById('card-time').textContent = timeStr;
 })();
 </script>

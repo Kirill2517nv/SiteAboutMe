@@ -105,7 +105,7 @@
     .task-text ul, .task-text ol { margin: 0 0 12px 22px; list-style: revert; }
 
     /* Команды и операторы Python внутри текста.
-       .task-title — заголовок вопроса-однострочника: у него условие целиком
+       .task-title – заголовок вопроса-однострочника: у него условие целиком
        лежит в get_title(), и код в нём тоже надо оформлять. */
     .task-text code, .task-title code {
         font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -118,7 +118,7 @@
         white-space: nowrap;
     }
 
-    /* Подпись «Пример ввода» / «Пример вывода» — в Markdown это `###### …`.
+    /* Подпись «Пример ввода» / «Пример вывода» – в Markdown это `###### …`.
        Собственный тег, а не «абзац из одного strong»: :only-child не видит
        текстовых узлов, и под такое правило попадал обычный абзац со словом
        в **жирном** посередине. */
@@ -131,7 +131,7 @@
         color: #64748b;
     }
 
-    /* Блоки примеров и кода — «терминал» на светлой карточке условия */
+    /* Блоки примеров и кода – «терминал» на светлой карточке условия */
     .task-text pre {
         margin: 0 0 12px;
         padding: 12px 14px;
@@ -142,7 +142,7 @@
         overflow-x: auto;
     }
     /* Сбрасываем padding и фон темы highlight.js (atom-one-dark), но НЕ color:
-       его на токенах ставят .hljs-* — иначе пропадёт подсветка синтаксиса. */
+       его на токенах ставят .hljs-* – иначе пропадёт подсветка синтаксиса. */
     .task-text pre code {
         display: block;
         padding: 0; border: 0; border-radius: 0;
@@ -154,7 +154,7 @@
     .task-text pre code .hljs-comment { color: #7f848e; }
 
     /* ── Тёмная тема ──────────────────────────────────────────────────────
-       base.html красит .bg-gray-50 в #0f172a, то есть ровно в фон блока кода —
+       base.html красит .bg-gray-50 в #0f172a, то есть ровно в фон блока кода –
        без этих правил pre сливался с карточкой условия. Поднимаем его на
        «поверхность» slate-800 с рамкой. */
     html.dark .task-text { color: #cbd5e1; }
@@ -263,7 +263,7 @@
                     {% endif %}
                     {% endif %}
 
-                    {# Режим просмотра — решать уже нельзя, подсказка становится частью разбора. #}
+                    {# Режим просмотра – решать уже нельзя, подсказка становится частью разбора. #}
                     {% if question.hint %}
                     <div class="task-text ml-12 mb-4 bg-amber-50 border border-amber-200 rounded-lg p-4">
                         <div class="text-amber-800 font-semibold text-sm mb-2">Подсказка</div>
@@ -284,7 +284,7 @@
                             <svg class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                             </svg>
-                            {{ file.get_filename }}{% if file.description %} — {{ file.description }}{% endif %}
+                            {{ file.get_filename }}{% if file.description %} – {{ file.description }}{% endif %}
                         </a>
                     </div>
                     {% endfor %}
@@ -431,7 +431,7 @@
                 <a href="{% url 'quizzes:question_file_download' file.id %}" download
                    class="inline-flex items-center gap-2 px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-lg text-sm text-gray-700 mb-4 transition-colors">
                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                    {{ file.get_filename }}{% if file.description %} — {{ file.description }}{% endif %}
+                    {{ file.get_filename }}{% if file.description %} – {{ file.description }}{% endif %}
                 </a>
                 {% endfor %}
 
@@ -439,7 +439,7 @@
                 {% if question.is_solved and question.question_type != 'code' %}
                 <div class="mt-4 flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
                     <svg class="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                    Решено верно — ответ зафиксирован
+                    Решено верно – ответ зафиксирован
                 </div>
                 {% endif %}
 
@@ -732,7 +732,7 @@
                 <span x-text="unansweredCount"></span> задач без ответа!
             </p>
             <p x-show="hasPendingCode" class="text-sm text-amber-600 mb-4">
-                Есть решения на проверке — баллы обновятся автоматически.
+                Есть решения на проверке – баллы обновятся автоматически.
             </p>
             <div class="flex gap-3 mt-4">
                 <button @click="showFinishConfirm = false"
@@ -782,7 +782,7 @@
                 <h3 class="text-lg font-bold text-gray-900">К этой задаче есть подсказка</h3>
             </div>
             <p class="text-sm text-gray-600 mb-5">
-                Задача не поддаётся с нескольких попыток. Можно открыть подсказку —
+                Задача не поддаётся с нескольких попыток. Можно открыть подсказку –
                 она подскажет ход решения, но не даст готовый код. А можно закрыть
                 это окно и додумать самому: на оценку выбор не влияет.
             </p>
@@ -954,7 +954,7 @@ function quizApp() {
                 history.replaceState(null, '', cleanUrl);
             }
 
-            // Перехват кликов по ссылкам — модал "сохранить результаты"
+            // Перехват кликов по ссылкам – модал "сохранить результаты"
             this._linkInterceptor = (e) => {
                 const link = e.target.closest('a[href]');
                 if (!link) return;
@@ -1091,7 +1091,7 @@ function quizApp() {
                     task.hint_state = data.state;
                     this.maybeOfferHint();
                 }
-            } catch (e) { /* подсказка не критична — молча пропускаем */ }
+            } catch (e) { /* подсказка не критична – молча пропускаем */ }
         },
 
         async hintDecide(action) {
@@ -1171,7 +1171,7 @@ function quizApp() {
                 this.codeMetrics[questionId] = { cpu_time_ms: cpuTimeMs, memory_kb: memoryKb };
             }
 
-            // Неудачная попытка могла стать третьей — спрашиваем сервер, не
+            // Неудачная попытка могла стать третьей – спрашиваем сервер, не
             // пора ли предложить подсказку.
             if (status === 'failed') {
                 this.checkHint(questionId);
@@ -1276,7 +1276,7 @@ function quizApp() {
                 this.answers[qId] = cm.getValue();
             });
 
-            // Collect all answers (including solved — for re-submission)
+            // Collect all answers (including solved – for re-submission)
             const answersPayload = {};
             for (const task of this.tasks) {
                 const ans = this.answers[task.id];
@@ -1309,7 +1309,7 @@ function quizApp() {
                         sessionStorage.removeItem('quiz_' + this.quizId + '_question_' + task.id);
                     }
                     if (data.pending_checks > 0) {
-                        alert('Результат сохранён. ' + data.pending_checks + ' задач(а) ещё проверяются — баллы обновятся автоматически.');
+                        alert('Результат сохранён. ' + data.pending_checks + ' задач(а) ещё проверяются – баллы обновятся автоматически.');
                     }
                     window.location.href = data.redirect_url;
                 } else {
@@ -1392,7 +1392,7 @@ function quizApp() {
             } else if (status === 'polling') {
                 banner.classList.add('bg-amber-50', 'text-amber-700');
                 icon.innerHTML = '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>';
-                text.textContent = 'Режим резервной проверки — результаты могут приходить с задержкой';
+                text.textContent = 'Режим резервной проверки – результаты могут приходить с задержкой';
             } else if (status === 'disconnected') {
                 banner.classList.add('bg-red-50', 'text-red-700');
                 icon.innerHTML = '<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636a9 9 0 11-12.728 0M12 9v4m0 4h.01"/></svg>';

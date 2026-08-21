@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 
-{% block title %}Симуляции — Спецкурс{% endblock %}
+{% block title %}Симуляции – Спецкурс{% endblock %}
 
 {% block content %}
 <div class="min-h-screen bg-gray-50 dark:bg-slate-900 text-gray-900 dark:text-slate-100">
@@ -22,7 +22,7 @@
                         <span class="{% if group.grouper == 1 %}text-cyan-600 dark:text-cyan-400{% else %}text-blue-600 dark:text-blue-400{% endif %} font-bold text-sm">{{ group.grouper }}</span>
                     </div>
                     <h2 class="text-xl font-semibold text-gray-900 dark:text-white">
-                        Семестр {{ group.grouper }} —
+                        Семестр {{ group.grouper }} –
                         {% if group.grouper == 1 %}Фундамент{% else %}Исследование{% endif %}
                     </h2>
                 </div>

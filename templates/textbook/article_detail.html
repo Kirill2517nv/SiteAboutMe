@@ -2,7 +2,7 @@
 {% load static %}
 {% load textbook_tags %}
 
-{% block title %}{{ article.title }} — Учебник{% endblock %}
+{% block title %}{{ article.title }} – Учебник{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
@@ -31,7 +31,7 @@
                        class="flex items-center gap-2 px-2.5 py-2 rounded-lg text-sm transition-colors
                               {% if item.article.id == article.id %}bg-brand-50 dark:bg-slate-800 text-brand-700 dark:text-cyan-400 font-semibold{% else %}text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-800{% endif %}">
                         {% comment %}
-                        Цвет галочки — результат микротеста урока, тот же, что у бейджа
+                        Цвет галочки – результат микротеста урока, тот же, что у бейджа
                         «Проверь себя». Если тест не решался, красим по статусу чтения.
                         {% endcomment %}
                         {% if item.quiz_state == 'green' %}
@@ -51,7 +51,7 @@
                     </a>
                     {% endfor %}
 
-                    {# Практикум блока — не статья, а страница задач: отдельная карточка под списком уроков. #}
+                    {# Практикум блока – не статья, а страница задач: отдельная карточка под списком уроков. #}
                     {% if practicum %}
                     <a href="{{ practicum.url }}" class="block mt-3 pt-3 border-t border-gray-200 dark:border-slate-700">
                         <span class="block p-3 rounded-lg border bg-brand-50 dark:bg-slate-800 border-brand-500 dark:border-slate-700 transition-colors hover:bg-brand-100">
@@ -67,12 +67,12 @@
                                 <span class="block h-full rounded-full bg-brand-600" style="width: {{ practicum.pct }}%"></span>
                             </span>
                             {% if practicum.grade_scale %}
-                            {# Сколько задач нужно решить на каждую оценку — тот же расчёт, что на главной. #}
+                            {# Сколько задач нужно решить на каждую оценку – тот же расчёт, что на главной. #}
                             <span class="flex flex-wrap gap-1 mt-2 text-[11px]">
                                 {% for step in practicum.grade_scale %}
                                 <span class="px-1.5 py-0.5 rounded whitespace-nowrap
                                              {% if step.reached %}bg-green-100 text-green-700{% else %}bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-slate-400{% endif %}">
-                                    {% if step.reached %}✓ {% endif %}{{ step.grade }} — от {{ step.need }}
+                                    {% if step.reached %}✓ {% endif %}{{ step.grade }} – от {{ step.need }}
                                 </span>
                                 {% endfor %}
                             </span>
@@ -126,7 +126,7 @@
                 </div>
                 {% endif %}
                 <h1 class="article-title">{{ article.title }}</h1>
-                {# description на странице не показываем — краткое содержание дублировало вводку статьи. #}
+                {# description на странице не показываем – краткое содержание дублировало вводку статьи. #}
                 {% if not blocks %}
                 <span class="inline-flex items-center mt-4 px-2.5 py-1 rounded-full bg-gray-100 dark:bg-slate-800 text-gray-500 dark:text-slate-400 text-xs font-medium">Материалы скоро появятся</span>
                 {% endif %}
@@ -144,7 +144,7 @@
                     h2 для них не выводим.
                     {% endcomment %}
                     {% if block.block_type == 'text' and forloop.first %}
-                    {# вводка — свой заголовок в шапке карточки, рядом с медальоном-номером #}
+                    {# вводка – свой заголовок в шапке карточки, рядом с медальоном-номером #}
                     {% elif block.title and block.block_type != 'widget' and block.title != 'Коротко' and block.title != 'Что нас ждёт в этом блоке' %}
                     <h2 class="article-block-title">{{ block.title }}</h2>
                     {% endif %}
@@ -249,7 +249,7 @@
             {% if self_checks %}
             <section id="self-check" class="mt-16 pt-8 border-t border-gray-200 dark:border-slate-800 md:pl-2">
                 <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">Проверь себя</h2>
-                <p class="text-sm text-gray-500 dark:text-slate-400 mb-6">Короткие вопросы по теме урока. Попыток сколько угодно, на прохождение блока они не влияют — это проверка для себя.</p>
+                <p class="text-sm text-gray-500 dark:text-slate-400 mb-6">Короткие вопросы по теме урока. Попыток сколько угодно, на прохождение блока они не влияют – это проверка для себя.</p>
                 <div class="grid gap-3">
                     {% for item in self_checks %}
                     <a href="{% url 'quizzes:quiz_detail' item.link.quiz.id %}"
