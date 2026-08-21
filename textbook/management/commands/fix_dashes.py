@@ -15,6 +15,17 @@ EM, EN = "—", "–"
 SKIP_MODELS = {"admin.LogEntry"}
 # Пути и адреса тире не содержат, а портить их заменой не хочется.
 SKIP_FIELDS = (models.EmailField, models.URLField, models.SlugField, models.FileField)
+# То, что написал ученик, а не мы. Код трогать нельзя вдвойне: тире внутри строкового
+# литерала – это вывод программы, и замена уронит перепроверку решения.
+SKIP_PATHS = {
+    "quizzes.CodeSubmission.code",
+    "quizzes.CodeSubmission.error_log",
+    "quizzes.UserAnswer.code_answer",
+    "quizzes.UserAnswer.text_answer",
+    "quizzes.UserAnswer.error_log",
+    "quizzes.HelpComment.text",
+    "quizzes.HelpComment.code_snapshot",
+}
 
 
 class Command(BaseCommand):
@@ -34,6 +45,8 @@ class Command(BaseCommand):
                 if not isinstance(field, (models.CharField, models.TextField)):
                     continue
                 if isinstance(field, SKIP_FIELDS):
+                    continue
+                if f"{model._meta.label}.{field.name}" in SKIP_PATHS:
                     continue
 
                 qs = model._default_manager.filter(**{f"{field.name}__contains": EM})
