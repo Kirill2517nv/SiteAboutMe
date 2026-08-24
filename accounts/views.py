@@ -3,7 +3,7 @@ from datetime import timedelta
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.models import User
 from django.core.exceptions import PermissionDenied
-from django.db.models import Avg, Count, Max, Q, Sum
+from django.db.models import Avg, Count, Max, Prefetch, Q, Sum
 from django.shortcuts import get_object_or_404, redirect
 from django.views import generic
 from django import forms
@@ -13,7 +13,18 @@ from quizzes.views import EGE_RECOMMENDED_TIME, ege_time_color
 from textbook.models import Article, ArticleProgress
 from textbook.services import profile_textbook_stats
 
-from .models import Profile
+from .models import Profile, StudentGroup
+
+
+class AlumniForm(forms.ModelForm):
+    """
+    Карточку выпускника заполняет сам ученик – учитель её не редактирует.
+    Поля рисуются в шаблоне вручную: Tailwind сканирует только templates/ и
+    static/js/, классы из Python в собранный CSS не попадут.
+    """
+    class Meta:
+        model = Profile
+        fields = ['alumni_place', 'alumni_about']
 
 
 class AvatarForm(forms.ModelForm):
@@ -142,10 +153,18 @@ class ProfileView(LoginRequiredMixin, generic.TemplateView):
         return get_object_or_404(User, id=user_id)
 
     def post(self, request, *args, **kwargs):
-        """Смена аватара. Только в своём профиле: учитель чужой не трогает."""
+        """Аватар и карточка выпускника. Только в своём профиле: учитель чужой не трогает."""
         if self.get_profile_user() != request.user:
             raise PermissionDenied
         profile, _ = Profile.objects.get_or_create(user=request.user)
+
+        # Формы на странице две, различаем по полю: у карточки нет файлов.
+        if 'alumni_about' in request.POST:
+            alumni_form = AlumniForm(request.POST, instance=profile)
+            if alumni_form.is_valid():
+                alumni_form.save()
+            return redirect('accounts:profile')
+
         old_avatar = profile.avatar.name
         form = AvatarForm(request.POST, request.FILES, instance=profile)
         if form.is_valid():
@@ -193,3 +212,33 @@ class ProfileView(LoginRequiredMixin, generic.TemplateView):
             )
 
         return context
+
+
+class AlumniView(generic.ListView):
+    """
+    Публичный архив: выпускные классы с общим фото, словом учителя и карточками.
+
+    Открыт всем – в отличие от статистики учебника, где фамилии школьников
+    наружу не отдаются: здесь класс публикует учитель, а текст о себе пишет
+    сам выпускник.
+    """
+    template_name = 'accounts/alumni.html'
+    context_object_name = 'groups'
+
+    def get_queryset(self):
+        groups = list(
+            StudentGroup.objects
+            .exclude(graduation_year=None)
+            .prefetch_related(Prefetch('students', queryset=(
+                Profile.objects.select_related('user')
+                .order_by('user__last_name', 'user__first_name', 'user__username')
+            )))
+            .order_by('-graduation_year', 'name')
+        )
+        # Самый ранний выпуск – первый. Год не зашит в код: появится класс
+        # старше, и «первым» станет он, без правок шаблона.
+        if groups:
+            first_year = groups[-1].graduation_year
+            for group in groups:
+                group.is_first = group.graduation_year == first_year
+        return groups

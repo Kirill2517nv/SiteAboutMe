@@ -1,0 +1,171 @@
+{% extends 'base.html' %}
+{% load static profile_tags %}
+
+{% block title %}Выпускники{% endblock title %}
+
+{% block extra_css %}
+{# Playfair Display – только на этой странице: остальной сайт остаётся на Inter #}
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,500&display=swap" rel="stylesheet">
+<style>
+  .alumni h2, .cohort__title, .alumni .serif {
+    font-family: 'Playfair Display', Georgia, 'Times New Roman', serif;
+  }
+
+  /* Волосяная рамка-паспарту: у первого выпуска золотая, у остальных еле заметная */
+  .card { --mat: rgba(15, 23, 42, .13); }
+  .cohort--first .card { --mat: rgba(184, 134, 11, .55); }
+  /* Порядок важен: у .dark и .cohort--first одна специфичность, побеждает правило ниже */
+  .dark .card { --mat: rgba(226, 232, 240, .16); }
+  .dark .cohort--first .card { --mat: rgba(232, 195, 104, .5); }
+
+  .card::before {
+    content: ''; position: absolute; pointer-events: none;
+    inset: 10px; border: 1px solid var(--mat); border-radius: .8rem;
+  }
+
+  /* Виньетка в углах: один файл, четыре зеркальных отражения через transform */
+  .corner {
+    position: absolute; width: 3.25rem; height: 3.3rem;
+    pointer-events: none; user-select: none;
+  }
+  .corner--tl { top: 5px; left: 5px; }
+  .corner--tr { top: 5px; right: 5px; transform: scaleX(-1); }
+  .corner--bl { bottom: 5px; left: 5px; transform: scaleY(-1); }
+  .corner--br { bottom: 5px; right: 5px; transform: scale(-1); }
+
+  /* Золото выглядит одинаково в обеих темах, поэтому задано цветами, а не токенами Tailwind */
+  .cohort__title {
+    font-size: clamp(2.5rem, 8vw, 4.75rem);
+    font-weight: 700;
+    line-height: 1.05;
+    letter-spacing: -0.01em;
+    background: linear-gradient(175deg, #f6e3ab 0%, #d9a441 48%, #9a6b18 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* Линейка с ромбом: две волосяные линии, растворяющиеся в фон */
+  .cohort__rule { display: flex; align-items: center; gap: 1rem; }
+  .cohort__rule::before, .cohort__rule::after {
+    content: ''; flex: 1; height: 1px;
+    background: linear-gradient(90deg, transparent, #d9a441);
+  }
+  .cohort__rule::after { background: linear-gradient(270deg, transparent, #d9a441); }
+
+  @keyframes goldShift { 0%, 100% { background-position: 50% 0%; } 50% { background-position: 50% 100%; } }
+  @keyframes twinkle   { 0%, 100% { opacity: 1; transform: rotate(0deg); } 50% { opacity: .45; transform: rotate(90deg); } }
+
+  .cohort--first { background-size: 100% 260%; animation: goldShift 16s ease-in-out infinite; }
+  .cohort__diamond { color: #d9a441; animation: twinkle 5s ease-in-out infinite; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cohort--first, .cohort__diamond { animation: none; }
+  }
+</style>
+{% endblock extra_css %}
+
+{% block content %}
+<div class="alumni max-w-5xl mx-auto px-4 py-10">
+
+    {% for group in groups %}
+    {# Первый выпуск обведён золотой рамкой: p-* только у него, обычный класс рамки не имеет #}
+    <section id="g{{ group.id }}" data-aos="fade-up"
+             class="mb-14 scroll-mt-24{% if group.is_first %} cohort--first rounded-3xl p-5 sm:p-8 ring-1 ring-amber-300 dark:ring-amber-500/40 bg-gradient-to-b from-amber-50 via-white to-white dark:from-amber-500/10 dark:via-slate-900 dark:to-slate-900 shadow-sm{% endif %}">
+
+        {% if group.is_first %}
+        <div class="text-center mb-6">
+            <div class="cohort__rule mb-3">
+                <span class="cohort__diamond text-xs">◆</span>
+            </div>
+            <h2 class="cohort__title">Первый выпуск</h2>
+            <div class="mt-2 text-sm sm:text-base uppercase tracking-[0.45em] text-amber-700/70 dark:text-amber-300/60 pl-[0.45em]">
+                {{ group.graduation_year }}
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1 {% if group.is_first %}justify-center mb-2{% else %}mb-5{% endif %}">
+            <h2 class="text-2xl font-bold text-gray-900 dark:text-white">Группа {{ group.name }}</h2>
+            {# У первого выпуска год уже стоит крупно над заголовком – плашка была бы третьим повтором #}
+            {% if not group.is_first %}
+            <span class="px-2.5 py-0.5 rounded-lg text-sm font-medium bg-brand-100 dark:bg-brand-900/40 text-brand-700 dark:text-brand-300">
+                Выпуск {{ group.graduation_year }}
+            </span>
+            {% endif %}
+            <span class="text-sm text-gray-400 dark:text-slate-500">
+                {{ group.students.all|length }} чел.
+            </span>
+        </div>
+
+        {% if group.is_first %}
+        <p class="mb-6 text-center text-base text-amber-900/75 dark:text-amber-200/70 italic max-w-2xl mx-auto leading-relaxed">
+            Те, с кого всё началось – ученики, ради которых и появился этот сайт.
+            Жаль только, что он застал лишь последние полгода их учёбы.
+        </p>
+        {% endif %}
+
+        {% if group.graduation_photo %}
+        <figure class="mb-6">
+            <img src="{{ group.graduation_photo.url }}" alt="Группа {{ group.name }}, выпуск {{ group.graduation_year }}"
+                 class="w-full rounded-2xl object-cover shadow-sm{% if group.is_first %} ring-2 ring-amber-300 dark:ring-amber-500/40{% endif %}">
+            <figcaption class="serif italic text-center mt-3 text-base {% if group.is_first %}text-amber-800/70 dark:text-amber-300/60{% else %}text-gray-500 dark:text-slate-400{% endif %}">
+                Группа {{ group.name }} · выпуск {{ group.graduation_year }}
+            </figcaption>
+        </figure>
+        {% endif %}
+
+        {% if group.graduation_note %}
+        <blockquote class="mb-6 pl-4 border-l-4 {% if group.is_first %}border-amber-400{% else %}border-brand-400{% endif %} text-gray-700 dark:text-slate-300 leading-relaxed [&>p]:mb-2 [&>p:last-child]:mb-0">
+            {{ group.graduation_note|bio_paragraphs }}
+        </blockquote>
+        {% endif %}
+
+        <div class="grid sm:grid-cols-2 gap-4">
+            {% for p in group.students.all %}
+            {# cycle, а не счётчик: AOS срабатывает при въезде в экран, растущая задержка тормозила бы нижние #}
+            <div data-aos="fade-up" data-aos-delay="{% cycle '0' '90' %}"
+                 class="card relative rounded-2xl border bg-white dark:bg-slate-800 {% if group.is_first %}p-8 border-amber-300 dark:border-amber-500/40 hover:shadow-[0_10px_30px_-10px_rgba(184,134,11,0.55)]{% else %}p-6 border-gray-200 dark:border-slate-700 hover:shadow-lg{% endif %} transition duration-300 hover:-translate-y-1">
+
+                {% if group.is_first %}
+                {# Виньетка Joseph Watson (Wikimedia Commons, общественное достояние) #}
+                <img src="{% static 'img/corner-ornament.svg' %}" alt="" aria-hidden="true" class="corner corner--tl">
+                <img src="{% static 'img/corner-ornament.svg' %}" alt="" aria-hidden="true" class="corner corner--tr">
+                <img src="{% static 'img/corner-ornament.svg' %}" alt="" aria-hidden="true" class="corner corner--bl">
+                <img src="{% static 'img/corner-ornament.svg' %}" alt="" aria-hidden="true" class="corner corner--br">
+                {% endif %}
+
+                <div class="relative flex items-start gap-4">
+                    {# Портрет 3:4 – object-cover обрезает по центру, пропорции лица не плывут #}
+                    {% if p.avatar %}
+                    <img src="{{ p.avatar.url }}" alt="{{ p.user|surname_first }}"
+                         class="w-28 h-36 rounded-xl object-cover shrink-0{% if group.is_first %} ring-1 ring-amber-300/70{% endif %}">
+                    {% else %}
+                    <div class="w-28 h-36 rounded-xl bg-gray-100 dark:bg-slate-700 text-gray-400 dark:text-slate-400 text-2xl font-semibold flex items-center justify-center shrink-0">
+                        {{ p.user.last_name|default:p.user.username|make_list|first|upper }}{{ p.user.first_name|make_list|first|upper|default:"" }}
+                    </div>
+                    {% endif %}
+                    <div class="min-w-0 flex-1">
+                        <div class="serif text-xl font-semibold text-gray-900 dark:text-white leading-snug">
+                            {{ p.user|surname_first }}
+                        </div>
+                        {% if p.alumni_place %}
+                        <div class="text-sm text-brand-600 dark:text-brand-400">{{ p.alumni_place }}</div>
+                        {% endif %}
+                        {% if p.alumni_about %}
+                        <div class="serif italic mt-2 text-[15px] text-gray-600 dark:text-slate-300 leading-relaxed [&>p]:mb-2 [&>p:last-child]:mb-0">
+                            {{ p.alumni_about|bio_paragraphs }}
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% empty %}
+    <p class="text-gray-500 dark:text-slate-400">Пока ни один класс не выпустился.</p>
+    {% endfor %}
+
+</div>
+{% endblock content %}

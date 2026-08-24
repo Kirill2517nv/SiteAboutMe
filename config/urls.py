@@ -18,6 +18,7 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from accounts.views import AlumniView
 from pages.views import home_page_view, about_page_view
 
 urlpatterns = [
@@ -33,6 +34,7 @@ urlpatterns = [
     path('textbook/', include('textbook.urls')),
     path('', home_page_view, name='home'),
     path('about/', about_page_view, name='about'),
+    path('alumni/', AlumniView.as_view(), name='alumni'),
 ]
 
 if settings.DEBUG:

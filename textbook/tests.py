@@ -3,7 +3,12 @@ from django.test import SimpleTestCase, TestCase, override_settings
 
 from quizzes.models import Question, Quiz
 from textbook.models import Section
-from textbook.services import frontier_positions, shuffle_choices, sync_question_texts
+from textbook.services import (
+    course_map,
+    frontier_positions,
+    shuffle_choices,
+    sync_question_texts,
+)
 from textbook.templatetags.textbook_tags import markdownify
 
 
@@ -385,3 +390,100 @@ class ReadingTimeTest(TestCase):
         # Первая порция идёт целиком (прогресса ещё не было), дальше бюджет
         # упирается в реально прошедшее время — то есть почти в ноль.
         self.assertLess(total, 400)
+
+
+class CourseMapPinTest(TestCase):
+    """Метка «вы здесь» на главной: когда блок её отпускает.
+
+    Правило двойное: либо практикум сдан минимум на тройку И в следующем блоке
+    открыта хотя бы одна статья, либо у блока прошёл дедлайн – тогда двигаем
+    принудительно, задачи всё равно больше не принимаются.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.contrib.auth.models import User
+
+        from textbook.models import Article
+
+        cls.student = User.objects.create_user('petya')
+
+        # Пороги как у боевого блока 1: 5 – от 18, 4 – от 17, 3 – от 16.
+        cls.practicum = Quiz.objects.create(title='Практикум блока 1')
+        for n in range(18):
+            Question.objects.create(quiz=cls.practicum, text=f'Задача {n}',
+                                    correct_text_answer='1')
+        cls.s1 = Section.objects.create(
+            title='Блок 1', slug='cm1', order=1, is_published=True,
+            practicum_quiz=cls.practicum,
+            grade_5_from=18, grade_4_from=17, grade_3_from=16,
+        )
+        cls.s2 = Section.objects.create(title='Блок 2', slug='cm2', order=2,
+                                        is_published=True)
+        for section, prefix in ((cls.s1, 'cm1'), (cls.s2, 'cm2')):
+            for i in (1, 2):
+                Article.objects.create(section=section, slug=f'{prefix}-a{i}',
+                                       title=f'Урок {i}', order=i, is_published=True)
+
+    def solve(self, count):
+        """Засчитать ученику `count` задач практикума."""
+        from quizzes.models import UserAnswer, UserResult
+
+        UserResult.objects.filter(user=self.student, quiz=self.practicum).delete()
+        result = UserResult.objects.create(user=self.student, quiz=self.practicum, score=count)
+        for question in self.practicum.questions.all()[:count]:
+            UserAnswer.objects.create(user_result=result, question=question,
+                                      text_answer='1', is_correct=True)
+
+    def start_second_block(self):
+        from textbook.models import ArticleProgress
+
+        ArticleProgress.objects.create(
+            user=self.student, article=self.s2.articles.first(), status='reading')
+
+    def pin(self):
+        rows = course_map(self.student)
+        current = next((r for r in rows if r['is_current']), None)
+        return current['section'].order if current else None
+
+    def test_pin_stays_while_grade_below_three(self):
+        self.solve(15)
+        self.start_second_block()
+        self.assertEqual(self.pin(), 1)
+
+    def test_pin_stays_until_next_block_is_opened(self):
+        """Тройка есть, но следующий блок не открывали – метка не убегает вперёд."""
+        self.solve(16)
+        self.assertEqual(self.pin(), 1)
+
+    def test_pin_moves_on_grade_three_and_started_next(self):
+        self.solve(16)
+        self.start_second_block()
+        self.assertEqual(self.pin(), 2)
+
+    def test_deadline_moves_pin_regardless_of_progress(self):
+        """После дедлайна метка уходит, даже если задачи не решены совсем."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        Section.objects.filter(pk=self.s1.pk).update(
+            deadline=timezone.now() - timedelta(days=1))
+        self.assertEqual(self.pin(), 2)
+
+    def test_pin_stays_on_last_block_even_after_deadline(self):
+        """Переезжать некуда: следующего опубликованного блока нет."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        Section.objects.filter(pk=self.s2.pk).update(is_published=False)
+        Section.objects.filter(pk=self.s1.pk).update(
+            deadline=timezone.now() - timedelta(days=1))
+        self.assertEqual(self.pin(), 1)
+
+    def test_guest_has_no_pin(self):
+        """У гостя прогресса нет – метку ставить не на что."""
+        from django.contrib.auth.models import AnonymousUser
+
+        self.assertFalse(any(row['is_current'] for row in course_map(AnonymousUser())))

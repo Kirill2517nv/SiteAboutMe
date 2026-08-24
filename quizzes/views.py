@@ -263,8 +263,13 @@ def ege_list_view(request):
             'best_score': best_score,
         })
 
+    # Теория ЕГЭ переехала сюда с главной учебника: задачи и теория по
+    # одному заданию должны лежать рядом, а не в разных разделах сайта.
+    from textbook.services import ege_theory_groups
+
     return render(request, 'quizzes/ege_list.html', {
         'variants': variants,
+        'ege_tasks': ege_theory_groups(),
     })
 
 

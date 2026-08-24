@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load profile_tags %}
 
 {% block title %}Запросы помощи{% endblock title %}
 
@@ -70,7 +71,7 @@
 
                 <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2 mb-1">
-                        <span class="font-semibold text-gray-900">{{ hr.student.get_full_name|default:hr.student.username }}</span>
+                        <span class="font-semibold text-gray-900">{{ hr.student|student_name }}</span>
                         <span class="text-gray-400">&middot;</span>
                         <span class="text-sm text-gray-500">{{ hr.quiz.title }}</span>
                         {% if hr.has_unread_for_teacher %}

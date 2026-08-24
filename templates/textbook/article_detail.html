@@ -109,20 +109,24 @@
 
             <!-- Хлебная крошка -->
             <nav class="text-sm text-gray-500 dark:text-slate-400 mb-2 md:pl-2">
-                <a href="{{ back_url }}" class="hover:text-gray-700 dark:hover:text-slate-300 transition-colors">Учебник</a>
+                <a href="{{ back_url }}" class="hover:text-gray-700 dark:hover:text-slate-300 transition-colors">{{ back_label|default:"Учебник" }}</a>
                 {% if group_title %}<span class="text-gray-300 dark:text-slate-600">/</span> {{ group_title }}{% endif %}
                 {% if article_number %}<span class="text-gray-300 dark:text-slate-600">/</span> Статья {{ article_number }}{% endif %}
             </nav>
 
             <!-- Заголовок + статус прогресса -->
             <header class="mb-10 md:pl-2">
-                {% if progress %}
-                <div class="mb-3">
+                {% if progress or frontier %}
+                <div class="mb-3 flex items-center gap-3">
+                    {% if progress %}
                     <span id="progress-badge"
                           data-status="{{ progress.status }}"
                           class="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-400">
                         {{ progress.get_status_display }}
                     </span>
+                    {% endif %}
+                    {# Те же фишки, что в списке уроков: кто остановился на этой статье #}
+                    {% include 'textbook/_frontier_avatars.html' with users=frontier %}
                 </div>
                 {% endif %}
                 <h1 class="article-title">{{ article.title }}</h1>
@@ -311,7 +315,10 @@
 <script>
     window.MathJax = {
         tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
-        options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre'] }
+        // `code` в списке пропусков: внутри `обратных кавычек` лежит код и
+        // битовые строки, а не формулы, и знак $ там не должен открывать
+        // математику. Формулы в тексте пишутся только через $...$.
+        options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'] }
     };
     // Единое оформление для всех блоков кода: и для block_type='code',
     // и для ``` -фенсов внутри markdown-текста (оба дают <pre><code>).
@@ -350,5 +357,35 @@
 </script>
 <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" defer></script>
 <script src="{% static 'js/textbook-widgets.js' %}"></script>
+<script>
+    // Виджеты перерисовывают себя на каждое действие ученика – уже после того,
+    // как MathJax прошёлся по странице. Без этого формулы внутри виджета
+    // остались бы сырым «$V = W \cdot H \cdot b$». Наблюдаем за поддеревом и
+    // набираем заново; флаг busy гасит мутации самого MathJax, иначе
+    // наблюдатель зациклился бы на собственном выводе.
+    (function () {
+        const widgets = Array.from(document.querySelectorAll('[data-widget]'));
+        if (!widgets.length) return;
+        let timer = null, busy = false;
+
+        function retypeset() {
+            if (busy || !window.MathJax || !MathJax.typesetPromise) return;
+            busy = true;
+            MathJax.typesetClear(widgets);
+            MathJax.typesetPromise(widgets)
+                .catch(() => {})
+                .then(() => { busy = false; });
+        }
+
+        const observer = new MutationObserver(() => {
+            if (busy) return;
+            clearTimeout(timer);
+            timer = setTimeout(retypeset, 80);
+        });
+        widgets.forEach(w => observer.observe(w, {
+            childList: true, subtree: true, characterData: true,
+        }));
+    })();
+</script>
 <script src="{% static 'js/textbook-progress.js' %}"></script>
 {% endblock %}

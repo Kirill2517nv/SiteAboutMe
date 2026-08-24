@@ -2481,7 +2481,7 @@
         // ── лента байтов (может не влезть по ширине — своя прокрутка,
         // т.к. рамка .textbook-widget обрезает выходящее за границы)
         const stripScroll = document.createElement('div');
-        stripScroll.className = 'overflow-x-auto pb-1';
+        stripScroll.className = 'overflow-x-auto py-1';
         const strip = document.createElement('div');
         strip.className = 'flex gap-1 justify-center w-max mx-auto';
         stripScroll.appendChild(strip);
@@ -2783,7 +2783,7 @@
 
         // ── лента символов (может не влезть по ширине — своя прокрутка)
         const stripScroll = document.createElement('div');
-        stripScroll.className = 'overflow-x-auto pb-1';
+        stripScroll.className = 'overflow-x-auto py-1';
         const strip = document.createElement('div');
         strip.className = 'flex gap-2 justify-center w-max mx-auto';
         stripScroll.appendChild(strip);
@@ -2862,7 +2862,9 @@
             panel.appendChild(srcCaption);
 
             const srcScroll = document.createElement('div');
-            srcScroll.className = 'overflow-x-auto pb-1';
+            // py-1, а не pb-1: overflow-x-auto режет и по вертикали, поэтому
+            // без верхнего отступа кольцо подсветки (ring-2) обрезается сверху.
+            srcScroll.className = 'overflow-x-auto py-1';
             const srcRow = document.createElement('div');
             srcRow.className = 'flex gap-0.5 justify-center w-max mx-auto';
             srcScroll.appendChild(srcRow);
@@ -3263,9 +3265,11 @@
 
             let leaves = 0;
             let maxDepth = 0;
+            let sideCaps = false;
             (function layout(node) {
                 const kids = ['0', '1'].map(function (b) { return node.children[b]; })
                     .filter(function (n) { return n; });
+                if (node.symbols.length && kids.length) sideCaps = true;
                 if (!kids.length) {
                     node.x = 40 + leaves * STEP;
                     leaves++;
@@ -3277,7 +3281,7 @@
                 if (node.depth > maxDepth) maxDepth = node.depth;
             })(root);
 
-            const width = Math.max(240, 80 + (leaves - 1) * STEP);
+            const width = Math.max(240, 80 + (leaves - 1) * STEP) + (sideCaps ? 44 : 0);
             const height = 28 + maxDepth * ROW + 52;
             const svg = svgEl('svg', {
                 width: width, height: height,
@@ -3296,9 +3300,15 @@
                         'stroke-width': 2,
                         'stroke-dasharray': kid.free ? '4 3' : ''
                     }));
+                    // Метку отводим по нормали к ребру, а не просто влево/вправо:
+                    // на крутых рёбрах горизонтальный сдвиг кладёт цифру на саму линию.
+                    const dx = kid.x - node.x;
+                    const dy = kid.y - node.y;
+                    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+                    const off = 13;
                     const label = svgEl('text', {
-                        x: (node.x + kid.x) / 2 + (b === '0' ? -11 : 11),
-                        y: (node.y + kid.y) / 2 + 4,
+                        x: (node.x + kid.x) / 2 + (b === '0' ? -dy : dy) / len * off,
+                        y: (node.y + kid.y) / 2 + (b === '0' ? dx : -dx) / len * off + 4,
                         'text-anchor': 'middle',
                         class: 'fill-gray-400 dark:fill-slate-500',
                         'font-size': 12, 'font-family': 'monospace'
@@ -3314,10 +3324,11 @@
                 const kids = Object.keys(node.children);
                 const isSymbol = node.symbols.length > 0;
                 const broken = isSymbol && kids.length > 0;   // символ не в листе
+                let w = 30;
 
                 if (isSymbol) {
                     const text = node.symbols.map(function (i) { return rows[i].sym; }).join('/');
-                    const w = Math.max(30, text.length * 9 + 12);
+                    w = Math.max(30, text.length * 9 + 12);
                     svg.appendChild(svgEl('rect', {
                         x: node.x - w / 2, y: node.y - 14, width: w, height: 28, rx: 8,
                         class: (broken
@@ -3344,7 +3355,13 @@
                 }
 
                 if (node.code && (isSymbol || node.free)) {
-                    const cap = svgEl('text', {
+                    // Под узлом с детьми уже идёт ребро со своей меткой 0/1 –
+                    // код там налезает на цифру, поэтому уводим его вправо от плашки.
+                    const cap = svgEl('text', kids.length ? {
+                        x: node.x + w / 2 + 5, y: node.y + 4, 'text-anchor': 'start',
+                        class: 'fill-gray-500 dark:fill-slate-400',
+                        'font-size': 11, 'font-family': 'monospace'
+                    } : {
                         x: node.x, y: node.y + 30, 'text-anchor': 'middle',
                         class: node.free ? 'fill-gray-400 dark:fill-slate-500' : 'fill-gray-500 dark:fill-slate-400',
                         'font-size': 11, 'font-family': 'monospace'
@@ -3395,14 +3412,13 @@
         tableCard.appendChild(tableBody);
         tableCard.appendChild(tableFoot);
 
+        // Два ряда: таблица и дерево сверху, лента и вердикт снизу.
+        // Вердикт стоит справа от ленты, на узком экране уезжает под неё.
         const verdictCard = document.createElement('div');
-        verdictCard.className = CARD;
-
-        grid.appendChild(tableCard);
-        grid.appendChild(verdictCard);
+        verdictCard.className = 'pt-3 border-t md:pt-0 md:border-t-0 md:border-l md:pl-4 border-gray-200 dark:border-slate-600';
 
         const treeCard = document.createElement('div');
-        treeCard.className = 'mt-3 ' + CARD;
+        treeCard.className = CARD;
         const treeCap = document.createElement('div');
         treeCap.className = 'text-xs text-gray-500 dark:text-slate-400 mb-1 text-center';
         treeCap.textContent = 'Кодовое дерево: шаг влево — 0, шаг вправо — 1. ' +
@@ -3411,6 +3427,9 @@
         treeHost.className = 'overflow-x-auto';
         treeCard.appendChild(treeCap);
         treeCard.appendChild(treeHost);
+
+        grid.appendChild(tableCard);
+        grid.appendChild(treeCard);
 
         const decodeCard = document.createElement('div');
         decodeCard.className = 'mt-3 ' + CARD;
@@ -3440,13 +3459,19 @@
         encodeRow.className = 'flex flex-wrap items-center gap-2 mb-3';
         const decodeOut = document.createElement('div');
 
-        decodeCard.appendChild(tapeRow);
-        decodeCard.appendChild(encodeRow);
-        decodeCard.appendChild(decodeOut);
+        const decodeLeft = document.createElement('div');
+        decodeLeft.appendChild(tapeRow);
+        decodeLeft.appendChild(encodeRow);
+        decodeLeft.appendChild(decodeOut);
+
+        const decodeGrid = document.createElement('div');
+        decodeGrid.className = 'grid gap-3 md:grid-cols-2';
+        decodeGrid.appendChild(decodeLeft);
+        decodeGrid.appendChild(verdictCard);
+        decodeCard.appendChild(decodeGrid);
 
         body.appendChild(presetRow);
         body.appendChild(grid);
-        body.appendChild(treeCard);
         body.appendChild(decodeCard);
 
         // ── таблица кодов ────────────────────────────────────────
@@ -3830,6 +3855,12 @@
 
         function fmt(x) {
             return x.toFixed(2).replace('.', ',');
+        }
+
+        // То же число внутри $…$: голая запятая в математике – знак пунктуации
+        // и тянет за собой пробел, поэтому её прячут в скобки.
+        function mfmt(x) {
+            return fmt(x).replace(',', '{,}');
         }
 
         // ── исходные данные: частоты символов ────────────────────
@@ -4265,8 +4296,10 @@
         function renderTree(host) {
             host.innerHTML = '';
             const roots = queueOrder();
-            const STEP = 62;
-            const ROW = 56;
+            // Геометрия, размеры плашек и палитра – те же, что у дерева
+            // в виджете fano-code: два дерева стоят в одном уроке рядом.
+            const STEP = 78;
+            const ROW = 58;
 
             let cursor = 0;
             let maxDepth = 0;
@@ -4274,21 +4307,21 @@
                 (function layout(n, depth) {
                     n.depth = depth;
                     if (n.sym !== null) {
-                        n.x = 32 + cursor * STEP;
+                        n.x = 40 + cursor * STEP;
                         cursor++;
                     } else {
                         layout(n.left, depth + 1);
                         layout(n.right, depth + 1);
                         n.x = (n.left.x + n.right.x) / 2;
                     }
-                    n.y = 30 + depth * ROW;
+                    n.y = 28 + depth * ROW;
                     if (depth > maxDepth) maxDepth = depth;
                 })(root, 0);
                 if (ri < roots.length - 1) cursor += 0.55;   // зазор между деревьями
             });
 
-            const width = Math.max(240, 64 + (cursor - 1) * STEP);
-            const height = 30 + maxDepth * ROW + 46;
+            const width = Math.max(240, 80 + (cursor - 1) * STEP);
+            const height = 28 + maxDepth * ROW + 52;
             const svg = svgEl('svg', {
                 width: width, height: height,
                 viewBox: '0 0 ' + width + ' ' + height,
@@ -4301,13 +4334,19 @@
                     [[n.left, '0'], [n.right, '1']].forEach(function (pair) {
                         const kid = pair[0];
                         svg.appendChild(svgEl('line', {
-                            x1: n.x, y1: n.y + 13, x2: kid.x, y2: kid.y - 15,
+                            x1: n.x, y1: n.y + 12, x2: kid.x, y2: kid.y - 14,
                             class: 'stroke-gray-300 dark:stroke-slate-600',
                             'stroke-width': 2
                         }));
+                        // Метку отводим по нормали к ребру, а не просто влево/вправо:
+                        // на крутых рёбрах горизонтальный сдвиг кладёт цифру на саму линию.
+                        const dx = kid.x - n.x;
+                        const dy = kid.y - n.y;
+                        const len = Math.sqrt(dx * dx + dy * dy) || 1;
+                        const off = 13;
                         const label = svgEl('text', {
-                            x: (n.x + kid.x) / 2 + (pair[1] === '0' ? -11 : 11),
-                            y: (n.y + kid.y) / 2 + 4,
+                            x: (n.x + kid.x) / 2 + (pair[1] === '0' ? -dy : dy) / len * off,
+                            y: (n.y + kid.y) / 2 + (pair[1] === '0' ? dx : -dx) / len * off + 4,
                             'text-anchor': 'middle',
                             class: 'fill-gray-400 dark:fill-slate-500',
                             'font-size': 12, 'font-family': 'monospace'
@@ -4328,9 +4367,9 @@
                     }
 
                     if (n.sym !== null) {
-                        const w = Math.max(30, String(n.sym).length * 10 + 14);
+                        const w = Math.max(30, String(n.sym).length * 9 + 12);
                         g.appendChild(svgEl('rect', {
-                            x: n.x - w / 2, y: n.y - 15, width: w, height: 30, rx: 8,
+                            x: n.x - w / 2, y: n.y - 14, width: w, height: 28, rx: 8,
                             class: SVG_TONE[n.idx % SVG_TONE.length],
                             'stroke-width': selected.indexOf(n) >= 0 ? 3 : 1.5
                         }));
@@ -4349,10 +4388,15 @@
                         cap.textContent = String(n.w);
                         g.appendChild(cap);
                     } else {
+                        // Обводка серая, как у fano-code; выделенный узел берёт
+                        // цвет кольца из очереди – иначе на сером фоне его не видно.
+                        const picked = selected.indexOf(n) >= 0;
                         g.appendChild(svgEl('circle', {
-                            cx: n.x, cy: n.y, r: 15,
-                            class: 'fill-gray-200 stroke-gray-400 dark:fill-slate-600 dark:stroke-slate-400',
-                            'stroke-width': selected.indexOf(n) >= 0 ? 3 : 1.5
+                            cx: n.x, cy: n.y, r: 14,
+                            class: picked
+                                ? 'fill-gray-200 stroke-brand-500 dark:fill-slate-600 dark:stroke-cyan-400'
+                                : 'fill-gray-200 stroke-gray-300 dark:fill-slate-600 dark:stroke-slate-500',
+                            'stroke-width': picked ? 3 : 1.5
                         }));
                         const t = svgEl('text', {
                             x: n.x, y: n.y + 4, 'text-anchor': 'middle',
@@ -4459,8 +4503,8 @@
             sum.innerHTML = 'Всего <b>' + bits + '</b> ' + plural(bits, 'бит', 'бита', 'битов') +
                 ' против <b>' + uniform + '</b> у равномерного кода (' + ub + ' ' +
                 plural(ub, 'бит', 'бита', 'битов') + ' на символ). ' +
-                'Средняя длина L = ' + fmt(bits / freq) + ' бита на символ, ' +
-                'коэффициент сжатия k = ' + fmt(uniform / bits) + '.';
+                'Средняя длина $L = ' + mfmt(bits / freq) + '$ бита на символ, ' +
+                'коэффициент сжатия $k = ' + mfmt(uniform / bits) + '$.';
             resultCard.appendChild(sum);
 
             const note = document.createElement('div');
@@ -4943,6 +4987,12 @@
             return Math.round(x * 100) / 100;
         }
 
+        // Число для формулы: разряды разделяет \, – обычный пробел внутри $…$
+        // MathJax проглотит, и 1 411 200 склеится в 1411200.
+        function mnum(n) {
+            return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '\\,');
+        }
+
         function render() {
             const pts = samples();
             const L = levelCount();
@@ -4965,8 +5015,8 @@
                     ? 'bg-red-50 border-red-300 text-red-700 dark:bg-red-900/30 dark:border-red-700 dark:text-red-200'
                     : 'bg-emerald-50 border-emerald-300 text-emerald-700 dark:bg-emerald-900/30 dark:border-emerald-700 dark:text-emerald-200');
             badge.textContent = aliased
-                ? 'Котельников нарушен: ' + rate + ' < 2 · ' + signal
-                : 'Котельников выполнен: ' + rate + ' ≥ 2 · ' + signal;
+                ? 'Котельников нарушен: $' + rate + ' < 2 \\cdot ' + signal + '$'
+                : 'Котельников выполнен: $' + rate + ' \\ge 2 \\cdot ' + signal + '$';
             verdict.appendChild(badge);
 
             const verdictText = document.createElement('span');
@@ -4991,12 +5041,14 @@
             verdict.appendChild(verdictText);
 
             const perSecond = rate * bits;
-            stats.innerHTML = 'Отсчётов за секунду: <b class="font-mono text-gray-900 dark:text-white">' + rate +
-                '</b> · уровней: <b class="font-mono text-gray-900 dark:text-white">2<sup>' + bits + '</sup> = ' + L +
-                '</b> · поток: <b class="font-mono text-gray-900 dark:text-white">' + rate + ' × ' + bits + ' = ' +
-                perSecond + '</b> битов в секунду' +
+            // Формулы – в том же виде, что и в тексте урока: LaTeX, который
+            // наберёт MathJax после перерисовки виджета.
+            stats.innerHTML = 'Отсчётов за секунду: <b class="text-gray-900 dark:text-white">$' + rate +
+                '$</b> · уровней: <b class="text-gray-900 dark:text-white">$2^{' + bits + '} = ' + mnum(L) +
+                '$</b> · поток: <b class="text-gray-900 dark:text-white">$' + rate + ' \\times ' + bits + ' = ' +
+                mnum(perSecond) + '$</b> битов в секунду' +
                 '<div class="text-xs text-gray-400 dark:text-slate-500 mt-1">' +
-                'для сравнения, аудио-CD: 44 100 × 16 × 2 = 1 411 200 битов в секунду</div>';
+                'для сравнения, аудио-CD: $44\\,100 \\times 16 \\times 2 = 1\\,411\\,200$ битов в секунду</div>';
 
             if (selected >= 0 && selected < pts.length) {
                 const p = pts[selected];
@@ -5375,6 +5427,11 @@
             return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
         }
 
+        // То же число, но для формулы: внутри $…$ обычный пробел не виден.
+        function mnum(n) {
+            return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '\\,');
+        }
+
         function plural(n, one, few, many) {
             const d10 = n % 10, d100 = n % 100;
             if (d10 === 1 && d100 !== 11) return one;
@@ -5738,16 +5795,18 @@
             const colors = Math.pow(2, d.bits);
             const full = SIZE_MAX * Math.round(SIZE_MAX * 3 / 4) * 24 / 8;
 
+            // Формулы – в том же виде, что и в тексте урока: LaTeX, который
+            // наберёт MathJax после перерисовки виджета.
             stats.innerHTML =
-                '<div>Пикселей: <b class="font-mono text-gray-900 dark:text-white">' + w +
-                ' × ' + h + ' = ' + num(pixels) + '</b> · цветов: ' +
-                '<b class="font-mono text-gray-900 dark:text-white">2<sup>' + d.bits +
-                '</sup> = ' + num(colors) + '</b> <span class="text-gray-400 dark:text-slate-500">(' +
+                '<div>Пикселей: <b class="text-gray-900 dark:text-white">$' + w +
+                ' \\times ' + h + ' = ' + mnum(pixels) + '$</b> · цветов: ' +
+                '<b class="text-gray-900 dark:text-white">$2^{' + d.bits +
+                '} = ' + mnum(colors) + '$</b> <span class="text-gray-400 dark:text-slate-500">(' +
                 d.note + ')</span></div>' +
-                '<div class="mt-1">Объём: <b class="font-mono text-gray-900 dark:text-white">' +
-                num(pixels) + ' × ' + d.bits + ' = ' + num(bits) + '</b> битов = ' +
-                '<b class="font-mono text-gray-900 dark:text-white">' + num(bytes) +
-                '</b> ' + byteWord(bytes) + '</div>' +
+                '<div class="mt-1">Объём: <b class="text-gray-900 dark:text-white">$' +
+                mnum(pixels) + ' \\times ' + d.bits + ' = ' + mnum(bits) + '$</b> битов = ' +
+                '<b class="text-gray-900 dark:text-white">$' + mnum(bytes) +
+                '$</b> ' + byteWord(bytes) + '</div>' +
                 '<div class="text-xs text-gray-400 dark:text-slate-500 mt-1">' +
                 'самая тяжёлая настройка (64 × 48, 24 бита) — ' + num(full) + ' байтов; ' +
                 'средняя ошибка цвета сейчас — ' +

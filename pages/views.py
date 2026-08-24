@@ -71,9 +71,98 @@ def parse_changelog():
     return versions
 
 
+def _plural(n, forms):
+    """Русское склонение по числу: 1 урок, 2 урока, 5 уроков.
+
+    Встроенный `pluralize` знает только две формы и на «2 урока» ломается.
+    """
+    if 11 <= n % 100 <= 14:
+        return forms[2]
+    if n % 10 == 1:
+        return forms[0]
+    if 2 <= n % 10 <= 4:
+        return forms[1]
+    return forms[2]
+
+
 def home_page_view(request):
-    changelog_versions = parse_changelog()
-    return render(request, 'home.html', {'changelog_versions': changelog_versions})
+    """Главная – карта курса: маршрут по всем блокам учебника с прогрессом."""
+    from accounts.models import StudentGroup
+    from textbook.services import (
+        course_map,
+        frontier_by_section,
+        frontier_positions,
+        visible_group_ids,
+    )
+
+    rows = course_map(request.user)
+    current = next((r for r in rows if r['is_current']), None)
+
+    # Фишки одноклассников – та же механика, что в списке уроков внутри
+    # учебника. Кого показывать, решает `visible_group_ids`: аноним не видит
+    # никого, ученик – свой класс, учитель – выбранные галочками.
+    # Маршрут прогоняется один раз: лицевая сторона карточки показывает фишки
+    # по блоку, оборотная – по каждому уроку.
+    group_ids = visible_group_ids(request)
+    positions = frontier_positions(group_ids) if group_ids else {}
+    by_section = frontier_by_section(positions)
+    for row in rows:
+        row['frontier'] = by_section.get(row['section'].id, [])
+        for item in row['lesson_items']:
+            item['frontier'] = positions.get(item['article'].id, [])
+
+    # Змейка: нечётные ряды идут слева направо, чётные – справа налево,
+    # поэтому маршрут читается одной непрерывной линией. Колонку считаем
+    # здесь, а не в шаблоне: {% cycle %} не умеет разворачивать порядок.
+    per_row = 3
+    for i, row in enumerate(rows):
+        line = i // per_row
+        idx = i % per_row
+        row['grid_row'] = line + 1
+        row['grid_col'] = idx + 1 if line % 2 == 0 else per_row - idx
+        # Номер уже стоит в кружке карточки – в названии он только съедает ширину
+        row['title'] = re.sub(r'^Блок \d+\.\s*', '', row['section'].title)
+        n = row['lessons']
+        row['lessons_label'] = f"{n} {_plural(n, ('статья', 'статьи', 'статей'))}"
+
+    # Горизонтальная линия ряда рисуется пунктиром, если все его блоки ещё
+    # не опубликованы. Развороты всегда сплошные: пунктирная вертикальная
+    # скобка выглядит грубо, а без разворота маршрут рвётся между рядами.
+    row_count = -(-len(rows) // per_row)
+    lines = [
+        {'index': k,
+         'is_soon': all(r['is_soon'] for r in rows[k * per_row:(k + 1) * per_row])}
+        for k in range(row_count)
+    ]
+    turns = [
+        {'index': k, 'side': 'right' if k % 2 == 0 else 'left'}
+        for k in range(row_count - 1)
+    ]
+
+    sections = len(rows)
+    lessons = sum(r['lessons'] for r in rows)
+    return render(request, 'home.html', {
+        'rows': rows,
+        'lines': lines,
+        'turns': turns,
+        'current': current,
+        # Карточка с фишками выше – место под ряд аватарок. Признак берём
+        # по факту, а не по роли: свой класс видит и ученик.
+        'has_pins': any(r['frontier'] for r in rows),
+        # Панель выбора классов – только учителю; ученик видит свой класс без выбора.
+        'student_groups': (
+            [{'group': g, 'checked': g.id in group_ids}
+             for g in StudentGroup.objects.filter(graduation_year__isnull=True).order_by('name')]
+            if request.user.is_superuser else []
+        ),
+        'section_label': f"{sections} {_plural(sections, ('блок', 'блока', 'блоков'))}",
+        'lesson_label': f"{lessons} {_plural(lessons, ('статья', 'статьи', 'статей'))}",
+    })
+
+
+def changelog_view(request):
+    """История версий – раньше жила на главной, теперь отдельной страницей."""
+    return render(request, 'changelog.html', {'changelog_versions': parse_changelog()})
 
 
 def about_page_view(request):

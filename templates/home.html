@@ -1,127 +1,920 @@
 {% extends 'base.html' %}
-{% load static %}
 
 {% block title %}Главная{% endblock title %}
 
+{% comment %}
+Карта курса: маршрут-змейка по всем блокам учебника. Геометрия описана здесь
+обычным CSS, а не Tailwind-утилитами, потому что позиции линий маршрута –
+calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту карточки, дорога
+переехала сама. Через утилиты это выражается только россыпью arbitrary values.
+Макет: design_handoff/HomeCourseMap.dc.html
+{% endcomment %}
+{% block extra_css %}
+<style>
+  :root {
+    --cmap-node-h:   310px;
+    --cmap-row-gap:   52px;
+    --cmap-col-gap:   26px;
+    --cmap-line-w:     3px;
+    --cmap-turn-w:    30px;
+    --cmap-badge-mid: 30px;   /* от верха карточки до центра кружка с номером */
+    --cmap-line:   #d1d5db;
+    --cmap-label:  104px;     /* колонка подписей «Задачи блока» и т.д. */
+  }
+  html.dark { --cmap-line: #475569; }
+
+  /* ---------- Маршрут ----------
+     Линии лежат под карточками и видны только в промежутках между ними –
+     отсюда широкий --cmap-col-gap: это длина видимого отрезка дороги. */
+  .cmap { position: relative; padding: 4px var(--cmap-turn-w) 0; }
+  /* У учителя на карточке ещё ряд аватарок – ему карточка выше.
+     Переменная переопределяется на .cmap, поэтому линии маршрута,
+     считающие top через calc(), переезжают вместе с сеткой. */
+  .cmap--pins { --cmap-node-h: 372px; }
+  .cmap__lines { position: absolute; inset: 4px var(--cmap-turn-w) 0; pointer-events: none; }
+  .cmap__line {
+    position: absolute; left: 0; right: 0; height: var(--cmap-line-w);
+    background: var(--cmap-line); border-radius: var(--cmap-line-w);
+  }
+  .cmap__turn {
+    position: absolute; width: var(--cmap-turn-w);
+    height: calc(var(--cmap-node-h) + var(--cmap-row-gap));
+    border: var(--cmap-line-w) solid var(--cmap-line);
+  }
+  .cmap__turn--right {
+    right: calc(var(--cmap-turn-w) * -1); border-left: none;
+    border-radius: 0 999px 999px 0;
+  }
+  .cmap__turn--left {
+    left: calc(var(--cmap-turn-w) * -1); border-right: none;
+    border-radius: 999px 0 0 999px;
+  }
+  /* Дорога, уходящая в туман: горизонтальные линии в рядах ещё не
+     опубликованных блоков рисуются пунктиром. Развороты остаются
+     сплошными – жирная вертикальная пунктирная скобка выглядит грубо,
+     а без неё маршрут разрывался бы на переходе между рядами. */
+  .cmap__line.is-soon {
+    height: 0; background: none; border: none;
+    border-top: var(--cmap-line-w) dashed var(--cmap-line); opacity: .8;
+  }
+
+  .cmap__grid {
+    position: relative; display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-auto-rows: var(--cmap-node-h);
+    column-gap: var(--cmap-col-gap); row-gap: var(--cmap-row-gap);
+  }
+
+  /* ---------- Карточка блока ----------
+     Состав лицевой стороны повторяет строку блока в textbook_home.html.
+     Сама .cnode – только сцена для переворота: оформление (фон, рамка,
+     скругление, отступы) живёт на .cnode__face, иначе задняя грань не может
+     выглядеть как отдельная карточка. */
+  .cnode { position: relative; perspective: 1400px; }
+
+  .cnode__inner {
+    position: relative; width: 100%; height: 100%;
+    transform-style: preserve-3d; transition: transform .55s ease;
+  }
+  .cnode__inner.is-flipped { transform: rotateY(180deg); }
+
+  .cnode__face {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; padding: 16px;
+    /* Скрывает обратную сторону грани, пока она отвёрнута от зрителя */
+    backface-visibility: hidden; -webkit-backface-visibility: hidden;
+    transition: box-shadow .15s;
+  }
+  html.dark .cnode__face { background: #1e293b; border-color: #334155; }
+  .cnode__face--front { cursor: pointer; }
+  /* Отвёрнутая грань не должна ловить клики. backface-visibility прячет её
+     визуально, но hit-test на это не всегда полагается – гасим явно. */
+  .cnode__face--back { pointer-events: none; }
+  .cnode__inner.is-flipped .cnode__face--front { pointer-events: none; }
+  .cnode__inner.is-flipped .cnode__face--back { pointer-events: auto; }
+  /* Прокрутка – на внутреннем списке, а не на грани: overflow вместе с
+     backface-visibility: hidden в Chrome схлопывает 3D-контекст, и
+     отвёрнутая грань начинает просвечивать сквозь лицевую. */
+  .cnode__face--back { transform: rotateY(180deg); }
+  .cnode:hover .cnode__face { box-shadow: 0 4px 12px rgba(15, 23, 42, .09); }
+
+  .cnode__head { display: flex; align-items: flex-start; gap: 10px; }
+  .cnode__badge {
+    width: 28px; height: 28px; border-radius: 999px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; background: #f3f4f6; color: #6b7280;
+  }
+  html.dark .cnode__badge { background: #334155; color: #94a3b8; }
+  .cnode__title {
+    flex: 1; min-width: 0; font-size: 15px; line-height: 1.3; font-weight: 600;
+    color: #111827; padding-top: 4px;
+  }
+  html.dark .cnode__title { color: #f1f5f9; }
+  /* Заголовок – единственная ссылка на лицевой стороне: он ведёт к последней
+     прочитанной статье. Клик по остальной площади переворачивает карточку. */
+  a.cnode__title { text-decoration: none; cursor: pointer; }
+  a.cnode__title:hover { color: #2563eb; }
+  html.dark a.cnode__title:hover { color: #22d3ee; }
+
+  /* Дедлайн и оценка – отдельной строкой: рядом с названием на карточке
+     ~370px им обоим места не хватает, название рассыпается на пять строк. */
+  .cnode__chips { display: flex; gap: 8px; margin-top: 10px; padding-left: 38px; }
+  .cnode__chip {
+    flex-shrink: 0; padding: 4px 10px; border-radius: 8px; text-align: center;
+    background: #f3f4f6;
+  }
+  html.dark .cnode__chip { background: #334155; }
+  .cnode__chip b {
+    display: block; font-size: 9.5px; font-weight: 500;
+    letter-spacing: .05em; text-transform: uppercase; color: #6b7280;
+  }
+  .cnode__chip i {
+    display: block; font-style: normal; font-size: 13px; font-weight: 600;
+    color: #111827; white-space: nowrap;
+  }
+  html.dark .cnode__chip b { color: #94a3b8; }
+  html.dark .cnode__chip i { color: #f1f5f9; }
+  .cnode__chip--grade i { font-size: 17px; line-height: 1.1; }
+  .cnode__chip--g5 { background: #dcfce7; }
+  .cnode__chip--g5 b, .cnode__chip--g5 i { color: #16a34a; }
+  .cnode__chip--g4 { background: #eff6ff; }
+  .cnode__chip--g4 b, .cnode__chip--g4 i { color: #2563eb; }
+  .cnode__chip--g3 { background: #fef3c7; }
+  .cnode__chip--g3 b, .cnode__chip--g3 i { color: #b45309; }
+  .cnode__chip--g2, .cnode__chip--overdue { background: #fee2e2; }
+  .cnode__chip--g2 b, .cnode__chip--g2 i,
+  .cnode__chip--overdue b, .cnode__chip--overdue i { color: #b91c1c; }
+  html.dark .cnode__chip--g5 { background: #052e16; }
+  html.dark .cnode__chip--g5 b, html.dark .cnode__chip--g5 i { color: #4ade80; }
+  html.dark .cnode__chip--g4 { background: #172554; }
+  html.dark .cnode__chip--g4 b, html.dark .cnode__chip--g4 i { color: #60a5fa; }
+  html.dark .cnode__chip--g3 { background: #422006; }
+  html.dark .cnode__chip--g3 b, html.dark .cnode__chip--g3 i { color: #fbbf24; }
+  html.dark .cnode__chip--g2, html.dark .cnode__chip--overdue { background: #450a0a; }
+  html.dark .cnode__chip--g2 b, html.dark .cnode__chip--g2 i,
+  html.dark .cnode__chip--overdue b, html.dark .cnode__chip--overdue i { color: #f87171; }
+
+  /* Строки прогресса */
+  .cnode__rows { display: flex; flex-direction: column; gap: 7px; margin-top: 14px; }
+  .cnode__row { display: flex; align-items: center; gap: 10px; }
+  .cnode__row-label {
+    width: var(--cmap-label); flex-shrink: 0; font-size: 12.5px; color: #6b7280;
+  }
+  html.dark .cnode__row-label { color: #94a3b8; }
+  .cnode__bar {
+    flex: 1; height: 8px; border-radius: 999px; background: #f3f4f6; overflow: hidden;
+  }
+  html.dark .cnode__bar { background: #334155; }
+  .cnode__fill { display: block; height: 100%; background: #2563eb; border-radius: 999px; }
+  .cnode__fill--green { background: #10b981; }
+  .cnode__row-num {
+    width: 44px; flex-shrink: 0; text-align: right;
+    font-size: 12.5px; font-variant-numeric: tabular-nums; color: #6b7280;
+  }
+  html.dark .cnode__row-num { color: #94a3b8; }
+  /* Подпись над чипами, а не слева: рядом с колонкой в 104px три чипа
+     не помещаются и сворачиваются в три строки, ломая высоту карточки. */
+  .cnode__row--scale { flex-direction: column; align-items: flex-start; gap: 5px; }
+  .cnode__row--scale .cnode__row-label { width: auto; }
+  .cnode__scale { display: flex; flex-wrap: wrap; gap: 5px; }
+  .cnode__scale-chip {
+    padding: 2px 7px; border-radius: 6px; white-space: nowrap;
+    font-size: 10.5px; background: #f3f4f6; color: #6b7280;
+  }
+  html.dark .cnode__scale-chip { background: #334155; color: #94a3b8; }
+  .cnode__scale-chip.is-reached { background: #dcfce7; color: #16a34a; }
+  html.dark .cnode__scale-chip.is-reached { background: #052e16; color: #4ade80; }
+  .cnode__note { font-size: 12.5px; color: #9ca3af; }
+  html.dark .cnode__note { color: #64748b; }
+
+  /* Кнопки прижаты к низу, чтобы ряд карточек читался ровной линией */
+  .cnode__actions { display: flex; gap: 8px; margin-top: auto; padding-top: 14px; }
+  .cnode__btn {
+    font-size: 12.5px; font-weight: 600; padding: 8px 14px; border-radius: 8px;
+    white-space: nowrap; text-decoration: none; transition: background .15s;
+  }
+  .cnode__btn--ghost { background: #f3f4f6; color: #374151; }
+  .cnode__btn--ghost:hover { background: #e5e7eb; }
+  html.dark .cnode__btn--ghost { background: #334155; color: #cbd5e1; }
+  .cnode__btn--primary { background: #2563eb; color: #fff; }
+  .cnode__btn--primary:hover { background: #1d4ed8; }
+  .cnode__btn--done { background: #dcfce7; color: #16a34a; }
+  html.dark .cnode__btn--done { background: #052e16; color: #4ade80; }
+
+  /* Фишки одноклассников. Без position/z-index: собственный контекст
+     наложения переживал бы backface-visibility родителя, и невидимый
+     блок с лицевой стороны продолжал бы ловить клики по нижним урокам
+     оборотной. */
+  .cnode__pins {
+    margin-top: 12px; padding-top: 12px;
+    border-top: 1px solid #f3f4f6;
+  }
+  html.dark .cnode__pins { border-top-color: #334155; }
+  .cnode__pins-label {
+    display: block; font-size: 10.5px; letter-spacing: .04em;
+    text-transform: uppercase; color: #9ca3af; margin-bottom: 6px;
+  }
+  html.dark .cnode__pins-label { color: #64748b; }
+
+  /* ---------- Оборотная сторона: список уроков ---------- */
+  .cnode__back-head {
+    display: flex; align-items: center; gap: 10px;
+    padding-bottom: 10px; margin-bottom: 8px;
+    border-bottom: 1px solid #f3f4f6;
+  }
+  html.dark .cnode__back-head { border-bottom-color: #334155; }
+  .cnode__back-title { font-size: 13px; font-weight: 600; color: #111827; }
+  html.dark .cnode__back-title { color: #f1f5f9; }
+  .cnode__back-hint { margin-left: auto; font-size: 10.5px; color: #9ca3af; }
+  html.dark .cnode__back-hint { color: #64748b; }
+
+  .cnode__lessons {
+    display: flex; flex-direction: column; gap: 1px;
+    flex: 1; min-height: 0; overflow-y: auto;
+  }
+  .cnode__lesson {
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 6px; border-radius: 7px;
+  }
+  .cnode__lesson:hover { background: #f9fafb; }
+  html.dark .cnode__lesson:hover { background: #0f172a; }
+  .cnode__lesson-link {
+    flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 6px;
+    text-decoration: none; font-size: 12px; line-height: 1.35;
+  }
+  .cnode__lesson-num {
+    flex-shrink: 0; font-variant-numeric: tabular-nums;
+    font-size: 11px; color: #9ca3af;
+  }
+  html.dark .cnode__lesson-num { color: #64748b; }
+  .cnode__lesson-title { color: #374151; }
+  html.dark .cnode__lesson-title { color: #cbd5e1; }
+  .cnode__lesson-link:hover .cnode__lesson-title { color: #2563eb; }
+  html.dark .cnode__lesson-link:hover .cnode__lesson-title { color: #22d3ee; }
+  /* Прочитанный урок приглушён: взгляд цепляется за непройденное */
+  .cnode__lesson.is-read .cnode__lesson-title { color: #9ca3af; }
+  html.dark .cnode__lesson.is-read .cnode__lesson-title { color: #64748b; }
+
+  /* Метка «вы здесь» над текущим блоком */
+  .cnode__pin {
+    position: absolute; bottom: calc(100% + 10px); left: 24px; z-index: 2;
+    white-space: nowrap; font-size: 11px; font-weight: 600;
+    background: #2563eb; color: #fff; padding: 4px 10px; border-radius: 999px;
+  }
+  .cnode__pin::after {
+    content: ''; position: absolute; top: 100%; left: 14px;
+    border: 5px solid transparent; border-top-color: #2563eb;
+  }
+
+  /* ---------- Состояния ---------- */
+  .cnode.is-done .cnode__face { border-color: #dbeafe; background: #eff6ff; }
+  html.dark .cnode.is-done .cnode__face { border-color: #1e3a8a; background: #172554; }
+  .cnode.is-done .cnode__badge { background: #2563eb; color: #fff; }
+
+  .cnode.is-current .cnode__face {
+    border: 2px solid #2563eb; padding: 15px;
+    box-shadow: 0 6px 18px rgba(37, 99, 235, .18);
+  }
+  .cnode.is-current .cnode__badge {
+    background: #2563eb; color: #fff; box-shadow: 0 0 0 4px #eff6ff;
+  }
+  html.dark .cnode.is-current .cnode__badge { box-shadow: 0 0 0 4px #172554; }
+
+  /* Фон – не transparent, а цвет страницы: маршрут проходит ПОД сеткой,
+     и сквозь прозрачную карточку линия перечёркивала заголовок. */
+  .cnode.is-soon .cnode__face {
+    background: #f9fafb; border-style: dashed; border-color: var(--cmap-line);
+    box-shadow: none; cursor: default;
+  }
+  html.dark .cnode.is-soon .cnode__face { background: #0f172a; border-color: var(--cmap-line); }
+  .cnode.is-soon:hover .cnode__face { box-shadow: none; }
+  .cnode.is-soon .cnode__badge { background: transparent; border: 1px dashed var(--cmap-line); }
+  .cnode.is-soon .cnode__title { color: #9ca3af; font-weight: 500; }
+  html.dark .cnode.is-soon .cnode__title { color: #64748b; }
+
+  /* Легенда */
+  .cmap__legend {
+    display: flex; flex-wrap: wrap; gap: 20px; justify-content: center;
+    margin-top: 34px; font-size: 12.5px; color: #6b7280;
+  }
+  html.dark .cmap__legend { color: #94a3b8; }
+  .cmap__legend span.dot { width: 12px; height: 12px; border-radius: 999px; flex-shrink: 0; }
+  .cmap__legend > span { display: inline-flex; align-items: center; gap: 7px; }
+  .dot--done { background: #2563eb; }
+  .dot--current { background: #2563eb; box-shadow: 0 0 0 3px #eff6ff; }
+  html.dark .dot--current { box-shadow: 0 0 0 3px #172554; }
+  .dot--open { background: #f3f4f6; border: 1px solid #e5e7eb; }
+  html.dark .dot--open { background: #334155; border-color: #475569; }
+  .dot--soon { border: 1px dashed var(--cmap-line); }
+
+  /* ==================== Врезка для гостя ====================
+     Три мини-демонстрации показывают ровно то, о чём написано рядом:
+     карточка блока переворачивается, статья раскрывается без входа,
+     практикум проверяется, но под замком. Всё на CSS-анимациях –
+     ни одной картинки и ни строчки JS, чтобы главная не потяжелела. */
+  .intro__stage {
+    position: relative; height: 152px; margin-bottom: 14px;
+    border-radius: 12px; overflow: hidden;
+    background: linear-gradient(160deg, #f8fafc 0%, #eef2f7 100%);
+    border: 1px solid #e9edf3;
+  }
+  html.dark .intro__stage {
+    background: linear-gradient(160deg, #0f172a 0%, #1e293b 100%);
+    border-color: #334155;
+  }
+  /* Клетка на фоне – намёк на «карту». Маска гасит её к краям, иначе сетка
+     спорит с самой демонстрацией и рябит. */
+  .intro__stage::before {
+    content: ''; position: absolute; inset: 0; opacity: .55;
+    background-image:
+      linear-gradient(#dbe3ec 1px, transparent 1px),
+      linear-gradient(90deg, #dbe3ec 1px, transparent 1px);
+    background-size: 22px 22px;
+    -webkit-mask-image: radial-gradient(circle at 50% 50%, #000 30%, transparent 76%);
+            mask-image: radial-gradient(circle at 50% 50%, #000 30%, transparent 76%);
+  }
+  html.dark .intro__stage::before {
+    opacity: .4;
+    background-image:
+      linear-gradient(#1e3a5f 1px, transparent 1px),
+      linear-gradient(90deg, #1e3a5f 1px, transparent 1px);
+  }
+  .idemo { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+  .ibar { height: 6px; border-radius: 999px; background: #e5e7eb; }
+  html.dark .ibar { background: #334155; }
+  .ibar--accent { background: #bfdbfe; }
+  html.dark .ibar--accent { background: #1e3a8a; }
+
+  /* ---------- 1. Карточка переворачивается ---------- */
+  .iflip { position: relative; width: 150px; height: 94px; perspective: 640px; }
+  .iflip__inner {
+    position: relative; width: 100%; height: 100%;
+    transform-style: preserve-3d;
+    animation: iflip 7s cubic-bezier(.55, .05, .3, 1) infinite;
+  }
+  /* Крутим всё время вперёд, 0 → 180 → 360: на обратном ходе карточка
+     «отматывалась» бы назад, и жест читался бы как отмена. */
+  @keyframes iflip {
+    0%, 30%  { transform: rotateY(0deg); }
+    44%, 84% { transform: rotateY(180deg); }
+    100%     { transform: rotateY(360deg); }
+  }
+  .iflip__face {
+    position: absolute; inset: 0; padding: 11px 12px;
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
+    box-shadow: 0 8px 20px -10px rgba(15, 23, 42, .4);
+    backface-visibility: hidden; -webkit-backface-visibility: hidden;
+  }
+  html.dark .iflip__face { background: #1e293b; border-color: #334155; }
+  .iflip__face--back { transform: rotateY(180deg); }
+  .iflip__head { display: flex; align-items: center; gap: 7px; margin-bottom: 10px; }
+  .iflip__num {
+    width: 18px; height: 18px; border-radius: 999px; flex-shrink: 0;
+    background: #eff6ff; color: #2563eb;
+    font-size: 10px; font-weight: 700; line-height: 18px; text-align: center;
+  }
+  html.dark .iflip__num { background: #172554; color: #60a5fa; }
+  .iflip__prog { margin-top: 11px; height: 6px; border-radius: 999px; background: #f1f5f9; }
+  html.dark .iflip__prog { background: #0f172a; }
+  .iflip__prog i { display: block; height: 100%; width: 62%; border-radius: 999px; background: #2563eb; }
+  .iflip__row { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+  .iflip__tag { flex-shrink: 0; width: 17px; font-size: 9px; font-weight: 700; line-height: 1; color: #94a3b8; }
+  .iflip__cursor {
+    position: absolute; left: 50%; top: 50%; width: 16px; height: 16px;
+    color: #0f172a; filter: drop-shadow(0 1px 2px rgba(15, 23, 42, .35));
+    animation: icursor 7s ease-in-out infinite;
+  }
+  html.dark .iflip__cursor { color: #f8fafc; }
+  @keyframes icursor {
+    0%       { transform: translate(38px, 30px) scale(1); opacity: 0; }
+    10%      { opacity: 1; }
+    24%      { transform: translate(0, 0) scale(1); opacity: 1; }
+    28%      { transform: translate(1px, 1px) scale(.82); opacity: 1; }
+    34%, 74% { transform: translate(0, 0) scale(1); opacity: 1; }
+    88%, 100%{ transform: translate(38px, 30px) scale(1); opacity: 0; }
+  }
+  .iflip__tap {
+    position: absolute; left: 50%; top: 50%; width: 28px; height: 28px;
+    margin: -14px 0 0 -14px; border-radius: 999px;
+    border: 2px solid #2563eb; opacity: 0;
+    animation: itap 7s ease-out infinite;
+  }
+  @keyframes itap {
+    0%, 26%  { transform: scale(.25); opacity: 0; }
+    30%      { transform: scale(.5);  opacity: .8; }
+    44%, 100%{ transform: scale(2.2); opacity: 0; }
+  }
+
+  /* ---------- 2. Статья раскрывается ---------- */
+  .iread { width: 170px; }
+  .iread__page {
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
+    padding: 12px 13px 14px; box-shadow: 0 8px 20px -10px rgba(15, 23, 42, .4);
+    animation: ifloat 6s ease-in-out infinite;
+  }
+  html.dark .iread__page { background: #1e293b; border-color: #334155; }
+  @keyframes ifloat {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-5px); }
+  }
+  .iread__title { height: 8px; width: 64%; border-radius: 999px; background: #bfdbfe; margin-bottom: 11px; }
+  html.dark .iread__title { background: #1e3a8a; }
+  /* Строки «пишутся» по очереди: ширину каждой держит своя --w,
+     keyframes берут её через var() – одни keyframes на все строки. */
+  .iread__line {
+    height: 5px; border-radius: 999px; background: #e5e7eb;
+    margin-bottom: 7px; width: 0;
+    animation: iline 6s ease-out infinite;
+  }
+  html.dark .iread__line { background: #334155; }
+  .iread__line:last-child { margin-bottom: 0; }
+  .iread__line:nth-child(2) { --w: 100%; animation-delay: 0s; }
+  .iread__line:nth-child(3) { --w: 92%;  animation-delay: .28s; }
+  .iread__line:nth-child(4) { --w: 97%;  animation-delay: .56s; }
+  .iread__line:nth-child(5) { --w: 58%;  animation-delay: .84s; }
+  @keyframes iline {
+    0%        { width: 0; }
+    16%, 88%  { width: var(--w); }
+    100%      { width: var(--w); }
+  }
+  .iread__badge {
+    position: absolute; right: 12px; top: 12px;
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 8px; border-radius: 999px; white-space: nowrap;
+    background: #dcfce7; color: #15803d;
+    font-size: 10px; font-weight: 700; line-height: 1.4;
+    animation: ipop 6s ease-out infinite;
+  }
+  html.dark .iread__badge { background: #052e16; color: #4ade80; }
+  @keyframes ipop {
+    0%, 34%   { transform: scale(.6); opacity: 0; }
+    46%       { transform: scale(1.1); opacity: 1; }
+    54%, 90%  { transform: scale(1); opacity: 1; }
+    100%      { transform: scale(1); opacity: 0; }
+  }
+
+  /* ---------- 3. Практикум под замком ---------- */
+  .icode { position: relative; width: 174px; }
+  .icode__win {
+    background: #0f172a; border: 1px solid #1e293b; border-radius: 10px;
+    padding: 10px 11px 12px; box-shadow: 0 10px 24px -12px rgba(15, 23, 42, .7);
+  }
+  .icode__dots { display: flex; gap: 4px; margin-bottom: 9px; }
+  .icode__dots i { width: 6px; height: 6px; border-radius: 999px; background: #334155; }
+  .icode__ln { display: flex; align-items: center; gap: 4px; height: 5px; margin-bottom: 7px; }
+  .icode__ln i { display: inline-block; height: 5px; border-radius: 999px; background: #475569; }
+  .icode__ln i.kw { background: #60a5fa; }
+  .icode__ln i.st { background: #fbbf24; }
+  .icode__ln--pad { padding-left: 10px; }
+  /* Третья строка «допечатывается», за ней мигает каретка. */
+  .icode__type {
+    display: inline-flex; align-items: center; gap: 4px;
+    overflow: hidden; white-space: nowrap;
+    animation: itype 6s steps(12) infinite;
+  }
+  @keyframes itype {
+    0%, 6%   { width: 0; }
+    30%, 92% { width: 74px; }
+    100%     { width: 74px; }
+  }
+  .icode__caret {
+    width: 2px; height: 8px; background: #38bdf8; border-radius: 1px;
+    animation: icaret 1s steps(1) infinite;
+  }
+  @keyframes icaret { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; } }
+  .icode__res {
+    margin-top: 10px; display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 8px; border-radius: 8px;
+    background: #052e16; color: #4ade80; white-space: nowrap;
+    font-size: 10px; font-weight: 700; line-height: 1.4;
+    animation: ipop 6s ease-out infinite;
+  }
+  .icode__lock {
+    position: absolute; right: -9px; top: -11px;
+    width: 28px; height: 28px; border-radius: 999px;
+    display: flex; align-items: center; justify-content: center;
+    background: #fef3c7; color: #b45309;
+    box-shadow: 0 6px 14px -6px rgba(15, 23, 42, .55);
+    animation: ilock 6s ease-in-out infinite;
+  }
+  html.dark .icode__lock { background: #422006; color: #fbbf24; }
+  @keyframes ilock {
+    0%, 46%, 72%, 100% { transform: translateY(0) rotate(0deg); }
+    52%  { transform: translateY(-4px) rotate(-11deg); }
+    58%  { transform: translateY(0) rotate(9deg); }
+    64%  { transform: translateY(0) rotate(-5deg); }
+  }
+
+  /* Зацикленная анимация в фоне – первое, что мешает при вестибулярных
+     расстройствах. По системному флагу оставляем ровно тот же кадр, но статичный. */
+  @media (prefers-reduced-motion: reduce) {
+    .iflip__inner, .iflip__cursor, .iflip__tap, .iread__page, .iread__line,
+    .iread__badge, .icode__type, .icode__caret, .icode__res, .icode__lock {
+      animation: none;
+    }
+    .iread__line { width: var(--w); }
+    .iflip__cursor, .iread__badge, .icode__res { opacity: 1; }
+    .iflip__tap { opacity: 0; }
+  }
+
+  /* На узком экране змейка не читается – маршрут разворачивается в столбик */
+  @media (max-width: 1023px) {
+    .cmap { padding: 0; }
+    .cmap__lines { display: none; }
+    .cmap__grid { grid-template-columns: minmax(0, 1fr); grid-auto-rows: auto; row-gap: 14px; }
+    .cnode { grid-column: 1 !important; grid-row: auto !important; }
+    .cnode__pin { position: static; display: inline-block; margin-bottom: 8px; }
+    .cnode__pin::after { display: none; }
+  }
+</style>
+{% endblock extra_css %}
+
 {% block content %}
-<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-9">
 
-    <!-- Hero Banner -->
-    <div class="bg-gradient-to-r from-brand-50 to-blue-50 rounded-2xl shadow-md p-8 sm:p-12 mb-12"
-         data-aos="fade-down">
-        <div class="flex items-start gap-4">
-            <div class="flex-shrink-0 w-12 h-12 bg-brand-600 rounded-lg flex items-center justify-center">
-                <svg class="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                          d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+  <!-- Шапка: чем является курс, и куда вернуться -->
+  <header class="flex flex-wrap items-end justify-between gap-8 mb-8">
+    <div>
+      <h1 class="text-3xl font-bold text-gray-900 dark:text-white leading-tight mb-2.5">
+        {% if user.is_authenticated %}
+          С возвращением{% if user.first_name %}, {{ user.first_name }}{% endif %}
+        {% else %}
+          Курс информатики
+        {% endif %}
+      </h1>
+      <p class="text-[15px] text-gray-500 dark:text-slate-400">
+        <b class="font-semibold text-gray-700 dark:text-slate-300">{{ section_label }}</b> ·
+        <b class="font-semibold text-gray-700 dark:text-slate-300">{{ lesson_label }}</b> ·
+        практикум с автопроверкой
+      </p>
+    </div>
+
+    {% if current %}
+    <div class="shrink-0 flex items-center gap-4 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-2xl px-4 py-3.5 shadow-sm">
+      <div>
+        <div class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500 mb-0.5">Вы остановились</div>
+        <div class="text-sm font-semibold text-gray-900 dark:text-white">{{ current.section.title }}</div>
+        <div class="text-[12.5px] text-gray-500 dark:text-slate-400 mt-0.5">
+          Статья {{ current.lessons_done }} из {{ current.lessons }}{% if current.practicum.total %} · задачи блока {{ current.practicum.done }} из {{ current.practicum.total }}{% endif %}
+        </div>
+      </div>
+      {# Та же цель, что у заголовка карточки блока: последняя прочитанная статья #}
+      <a href="{{ current.entry_url }}"
+         class="inline-flex items-center gap-2 whitespace-nowrap bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold px-[18px] py-2.5 rounded-xl transition-colors">
+        Продолжить
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+      </a>
+    </div>
+    {% elif not user.is_authenticated %}
+    <div class="shrink-0 flex items-center gap-4 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-2xl px-4 py-3.5 shadow-sm">
+      <div>
+        <div class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500 mb-0.5">Уже учитесь здесь?</div>
+        <div class="text-sm font-semibold text-gray-900 dark:text-white">Войдите, чтобы видеть прогресс</div>
+        <div class="text-[12.5px] text-gray-500 dark:text-slate-400 mt-0.5">Оценки, дедлайны и решённые задачи</div>
+      </div>
+      <a href="{% url 'login' %}"
+         class="whitespace-nowrap bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold px-[18px] py-2.5 rounded-xl transition-colors">
+        Войти
+      </a>
+    </div>
+    {% endif %}
+  </header>
+
+  {% if not user.is_authenticated %}
+  {% comment %}
+  Врезка для гостя: карта курса ничего не объясняет о себе, а половина её
+  возможностей (оценки, практикум) гостю недоступна. Ученику этот текст уже
+  не нужен – он видит карточку «вы остановились» и сразу идёт дальше.
+  {% endcomment %}
+  <section data-aos="fade-up"
+           class="mb-8 rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-5 py-6 sm:px-7 shadow-sm">
+    <h2 class="text-base font-semibold text-gray-900 dark:text-white mb-1.5">Что это за сайт</h2>
+    <p class="text-[14px] leading-relaxed text-gray-600 dark:text-slate-300 mb-5 max-w-3xl">
+      Это школьный курс информатики и подготовки к ЕГЭ. Ниже – карта курса: каждая
+      карточка это один блок с теорией, самопроверками и задачами. Блоки идут по
+      порядку, линия между ними и есть маршрут обучения.
+    </p>
+
+    {% comment %}
+    Каждая колонка начинается с мини-демонстрации того, о чём в ней написано.
+    Всё декоративное: aria-hidden, чтобы скринридер не читал набор пустых
+    элементов – текст рядом говорит то же самое словами.
+    {% endcomment %}
+    <div class="grid gap-6 sm:grid-cols-3">
+
+      <div data-aos="fade-up" data-aos-delay="50">
+        <div class="intro__stage" aria-hidden="true">
+          <div class="idemo">
+            <div class="iflip">
+              <div class="iflip__inner">
+                <div class="iflip__face">
+                  <div class="iflip__head">
+                    <span class="iflip__num">1</span>
+                    <span class="ibar ibar--accent" style="width: 74px"></span>
+                  </div>
+                  <span class="ibar" style="width: 100%; display: block"></span>
+                  <div class="iflip__prog"><i></i></div>
+                </div>
+                <div class="iflip__face iflip__face--back">
+                  <div class="iflip__row">
+                    <span class="iflip__tag">1.1</span>
+                    <span class="ibar" style="width: 86px; height: 5px"></span>
+                  </div>
+                  <div class="iflip__row">
+                    <span class="iflip__tag">1.2</span>
+                    <span class="ibar" style="width: 68px; height: 5px"></span>
+                  </div>
+                  <div class="iflip__row">
+                    <span class="iflip__tag">1.3</span>
+                    <span class="ibar" style="width: 79px; height: 5px"></span>
+                  </div>
+                </div>
+              </div>
+              <span class="iflip__tap"></span>
+              <svg class="iflip__cursor" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M5.5 2.6v16.1l3.9-3.8 2.3 5.5 3-1.3-2.3-5.4 5.4-0.3z"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+        <div class="text-[13px] font-semibold text-gray-900 dark:text-white mb-1">Как читать карту</div>
+        <p class="text-[13.5px] leading-relaxed text-gray-500 dark:text-slate-400">
+          Нажмите на заголовок блока – откроется его первая статья. Нажмите в любое
+          другое место карточки – она перевернётся и покажет список всех статей блока.
+        </p>
+      </div>
+
+      <div data-aos="fade-up" data-aos-delay="150">
+        <div class="intro__stage" aria-hidden="true">
+          <div class="idemo">
+            <div class="iread">
+              <div class="iread__page">
+                <div class="iread__title"></div>
+                <div class="iread__line"></div>
+                <div class="iread__line"></div>
+                <div class="iread__line"></div>
+                <div class="iread__line"></div>
+              </div>
+            </div>
+            <span class="iread__badge">
+              <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M8 11V7a4 4 0 0 1 7.5-2M6 11h12v9H6z"/>
+              </svg>
+              без входа
+            </span>
+          </div>
+        </div>
+        <div class="text-[13px] font-semibold text-gray-900 dark:text-white mb-1">Учебник открыт всем</div>
+        <p class="text-[13.5px] leading-relaxed text-gray-500 dark:text-slate-400">
+          Читать статьи можно без регистрации: теория, примеры и разборы доступны
+          сразу, ничего вводить не нужно.
+        </p>
+      </div>
+
+      <div data-aos="fade-up" data-aos-delay="250">
+        <div class="intro__stage" aria-hidden="true">
+          <div class="idemo">
+            <div class="icode">
+              <div class="icode__win">
+                <div class="icode__dots"><i></i><i></i><i></i></div>
+                <div class="icode__ln">
+                  <i class="kw" style="width: 22px"></i>
+                  <i style="width: 30px"></i>
+                  <i style="width: 12px"></i>
+                </div>
+                <div class="icode__ln icode__ln--pad">
+                  <i class="kw" style="width: 18px"></i>
+                  <i class="st" style="width: 40px"></i>
+                </div>
+                <div class="icode__ln icode__ln--pad">
+                  <span class="icode__type">
+                    <i class="kw" style="width: 16px"></i>
+                    <i style="width: 22px"></i>
+                    <i class="st" style="width: 26px"></i>
+                  </span>
+                  <span class="icode__caret"></span>
+                </div>
+                <span class="icode__res">
+                  <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+                  </svg>
+                  тесты пройдены
+                </span>
+              </div>
+              <span class="icode__lock">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M8 11V7a4 4 0 1 1 8 0v4M6 11h12v9H6z"/>
                 </svg>
+              </span>
             </div>
-            <div>
-                <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 mb-3">Добро пожаловать!</h1>
-                <p class="text-base sm:text-lg text-gray-600 leading-relaxed">
-                    Пока версия сайта не дойдёт до первой релизной версии (1.0.0),
-                    здесь будет публиковаться список изменений в суровом текстовом виде,
-                    чтобы вы могли наблюдать, что появилось в новой версии.
-                </p>
-            </div>
+          </div>
         </div>
+        <div class="text-[13px] font-semibold text-gray-900 dark:text-white mb-1">Задачи – по логину</div>
+        <p class="text-[13.5px] leading-relaxed text-gray-500 dark:text-slate-400">
+          Практикум с автопроверкой, оценки и прогресс работают только для учеников.
+          Логин и пароль выдаю лично – контакты на вкладке
+          <a href="{% url 'about' %}" class="text-brand-600 hover:text-brand-700 dark:text-cyan-400 font-medium">«Об авторе»</a>.
+        </p>
+      </div>
     </div>
 
-    <!-- Section Header -->
-    <div class="flex items-center mb-8" data-aos="fade-right">
-        <div class="flex-shrink-0 w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center mr-4">
-            <svg class="w-5 h-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-            </svg>
-        </div>
-        <h2 class="text-2xl font-bold text-gray-900">История изменений</h2>
+    <p class="mt-5 pt-4 border-t border-gray-100 dark:border-slate-700 text-[12.5px] leading-relaxed text-gray-400 dark:text-slate-500">
+      Почему не открытая регистрация: сайт живёт на моём старом ноутбуке, и проверка
+      кода запускается прямо на нём. Пары десятков учеников он выдерживает,
+      а вот всех желающих – вряд ли, поэтому доступы я выдаю вручную.
+    </p>
+  </section>
+  {% endif %}
+
+  {% if student_groups %}
+  {% comment %}
+  Выбор классов, чьи фишки показывать. Пустой выбор означает «все классы» –
+  это состояние формы по умолчанию, до первого клика. Логика в
+  textbook.services.visible_group_ids, общая со списком уроков в учебнике.
+  {% endcomment %}
+  <form method="get" class="flex flex-wrap items-center gap-3 mb-6 text-sm">
+    <span class="text-gray-500 dark:text-slate-400">Показывать классы:</span>
+    {% for item in student_groups %}
+    <label class="flex items-center gap-1.5 text-gray-700 dark:text-slate-300 cursor-pointer">
+      <input type="checkbox" name="group" value="{{ item.group.id }}"
+             {% if item.checked %}checked{% endif %}
+             onchange="this.form.submit()"
+             class="rounded border-gray-300 text-brand-600">
+      {{ item.group.name }}
+    </label>
+    {% endfor %}
+  </form>
+  {% endif %}
+
+  <!-- ==================== КАРТА КУРСА ==================== -->
+  <section class="cmap{% if has_pins %} cmap--pins{% endif %}">
+
+    <div class="cmap__lines">
+      {% for line in lines %}
+      <span class="cmap__line{% if line.is_soon %} is-soon{% endif %}"
+            style="top: calc((var(--cmap-node-h) + var(--cmap-row-gap)) * {{ line.index }} + var(--cmap-badge-mid) - var(--cmap-line-w) / 2);"></span>
+      {% endfor %}
+      {% for turn in turns %}
+      <span class="cmap__turn cmap__turn--{{ turn.side }}"
+            style="top: calc((var(--cmap-node-h) + var(--cmap-row-gap)) * {{ turn.index }} + var(--cmap-badge-mid) - var(--cmap-line-w) / 2);"></span>
+      {% endfor %}
     </div>
 
-    <!-- Changelog Cards -->
-    <div class="space-y-6">
-        {% for version in changelog_versions %}
-        <article class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-all duration-300"
-                 data-aos="fade-up"
-                 data-aos-delay="{{ forloop.counter0 }}00">
+    <div class="cmap__grid">
+      {% for row in rows %}
+      {% comment %}
+      Две грани на одной сцене. Заголовок – ссылка на последнюю прочитанную
+      статью, клик по остальной площади переворачивает карточку к списку
+      уроков. Кнопки и ссылки внутри гасят всплытие, иначе переход к задачам
+      попутно крутил бы карточку.
+      {% endcomment %}
+      <div class="cnode{% if row.is_soon %} is-soon{% elif row.is_current %} is-current{% elif row.is_done %} is-done{% endif %}"
+           style="grid-column: {{ row.grid_col }}; grid-row: {{ row.grid_row }};"
+           x-data="{ flipped: false }">
 
-            <!-- Version Header -->
-            <div class="px-6 py-4 bg-gray-50 border-b border-gray-100">
-                <div class="flex flex-wrap items-center gap-3">
-                    <span class="inline-flex items-center px-3 py-1 bg-brand-600 text-white rounded-full text-sm font-semibold">
-                        v{{ version.number }}
-                    </span>
-                    <span class="text-sm text-gray-500">{{ version.date }}</span>
-                    {% if forloop.first %}
-                    <span class="px-2.5 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
-                        Последняя
-                    </span>
-                    {% endif %}
-                </div>
-            </div>
+        {% if row.is_current %}<span class="cnode__pin">вы здесь</span>{% endif %}
 
-            <!-- Version Content -->
-            <div class="px-6 py-5">
-                {% for category in version.categories %}
-                <div class="{% if not forloop.last %}mb-6{% endif %}">
-                    <h3 class="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                        {% if category.name == "Добавлено" %}
-                        <svg class="w-5 h-5 flex-shrink-0 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-                        </svg>
-                        {% elif category.name == "Изменено" %}
-                        <svg class="w-5 h-5 flex-shrink-0 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                        </svg>
-                        {% elif category.name == "Исправлено" %}
-                        <svg class="w-5 h-5 flex-shrink-0 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-                        </svg>
-                        {% elif category.name == "Удалено" %}
-                        <svg class="w-5 h-5 flex-shrink-0 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"/>
-                        </svg>
-                        {% endif %}
-                        {{ category.name }}
-                    </h3>
+        <div class="cnode__inner" :class="flipped && 'is-flipped'">
 
-                    {% for section in category.sections %}
-                        {% if section.title %}
-                        <div class="{% if not forloop.first %}mt-4{% endif %} ml-7">
-                            <h4 class="text-base font-semibold text-gray-800 mb-2">{{ section.title }}</h4>
-                            <ul class="space-y-1.5">
-                                {% for item in section.items %}
-                                <li class="text-gray-600 text-sm flex items-start gap-2">
-                                    <span class="text-gray-300 mt-1 flex-shrink-0">&#9702;</span>
-                                    <span>{{ item }}</span>
-                                </li>
-                                {% endfor %}
-                            </ul>
-                        </div>
-                        {% else %}
-                        <ul class="space-y-2 ml-7">
-                            {% for item in section.items %}
-                            <li class="text-gray-700 leading-relaxed flex items-start gap-2">
-                                <span class="text-gray-400 mt-1.5 flex-shrink-0">&bull;</span>
-                                <span>{{ item }}</span>
-                            </li>
-                            {% endfor %}
-                        </ul>
-                        {% endif %}
-                    {% endfor %}
-                </div>
-                {% endfor %}
-            </div>
-        </article>
-        {% empty %}
-        <div class="bg-gray-50 rounded-xl p-12 text-center">
-            <svg class="w-16 h-16 mx-auto text-gray-300 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-            </svg>
-            <p class="text-gray-500">История изменений скоро появится...</p>
+        <div class="cnode__face cnode__face--front"
+             {% if not row.is_soon %}@click="flipped = true"{% endif %}>
+
+        <div class="cnode__head">
+          <span class="cnode__badge">{{ row.section.order }}</span>
+          {% if row.is_soon %}
+          <span class="cnode__title">{{ row.title }}</span>
+          {% else %}
+          <a href="{{ row.entry_url }}" class="cnode__title" @click.stop>{{ row.title }}</a>
+          {% endif %}
         </div>
-        {% endfor %}
+
+        {# Дедлайн и оценка – только вошедшему: гостю чужой график ничего не говорит #}
+        {% if user.is_authenticated and not row.is_soon %}
+        {% if row.section.deadline or row.grade %}
+        <div class="cnode__chips">
+          {% if row.section.deadline %}
+          <span class="cnode__chip{% if row.section.is_closed %} cnode__chip--overdue{% endif %}">
+            <b>Дедлайн</b>
+            <i>{% if row.section.is_closed %}прошёл{% else %}{{ row.section.deadline|date:"d E" }}{% endif %}</i>
+          </span>
+          {% endif %}
+          {% if row.grade %}
+          <span class="cnode__chip cnode__chip--grade cnode__chip--g{{ row.grade }}">
+            <b>Оценка</b>
+            <i>{{ row.grade }}</i>
+          </span>
+          {% endif %}
+        </div>
+        {% endif %}
+        {% endif %}
+
+        <div class="cnode__rows">
+          {% if row.practicum.total %}
+          <div class="cnode__row">
+            <span class="cnode__row-label">Задачи блока</span>
+            <span class="cnode__bar"><span class="cnode__fill" style="width: {{ row.practicum.pct }}%;"></span></span>
+            <span class="cnode__row-num">{{ row.practicum.done }}/{{ row.practicum.total }}</span>
+          </div>
+          {% if row.grade_scale %}
+          <div class="cnode__row cnode__row--scale">
+            <span class="cnode__row-label">Задач на оценку</span>
+            <span class="cnode__scale">
+              {% for step in row.grade_scale %}
+              <span class="cnode__scale-chip{% if step.reached %} is-reached{% endif %}">на {{ step.grade }} – от {{ step.need }}</span>
+              {% endfor %}
+            </span>
+          </div>
+          {% endif %}
+          {% endif %}
+
+          {% if row.self_check.total %}
+          <div class="cnode__row">
+            <span class="cnode__row-label">Самопроверки</span>
+            <span class="cnode__bar"><span class="cnode__fill cnode__fill--green" style="width: {{ row.self_check.pct }}%;"></span></span>
+            <span class="cnode__row-num">{{ row.self_check.done }}/{{ row.self_check.total }}</span>
+          </div>
+          {% endif %}
+
+          {% if row.is_soon %}
+          <span class="cnode__note">Скоро · {{ row.lessons_label }}</span>
+          {% elif not user.is_authenticated or not row.practicum.total and not row.self_check.total %}
+          {# Нечего показать в цифрах – ни гостю, ни там, где задач ещё нет: только число статей #}
+          <span class="cnode__note">{{ row.lessons_label }}</span>
+          {% endif %}
+        </div>
+
+        {% if user.is_authenticated and not row.is_soon %}
+        {% if user.is_superuser or row.practicum.total %}
+        <div class="cnode__actions">
+          {% if user.is_superuser %}
+          <a href="{% url 'textbook:section_stats' row.section.slug %}" class="cnode__btn cnode__btn--ghost" @click.stop>Статистика</a>
+          {% endif %}
+          {% if row.practicum.total %}
+          <a href="{{ row.practicum.url }}" @click.stop
+             class="cnode__btn {% if row.is_done %}cnode__btn--done{% else %}cnode__btn--primary{% endif %}">
+            {% comment %}
+            Подпись не зависит от того, начаты задачи или нет: вариант
+            «Продолжить задачи →» шире карточки и ломает ряд кнопок.
+            {% endcomment %}
+            {% if row.is_done %}✓ Задачи сданы{% else %}Решать задачи →{% endif %}
+          </a>
+          {% endif %}
+        </div>
+        {% endif %}
+        {% endif %}
+
+        {% if row.frontier %}
+        <div class="cnode__pins">
+          <span class="cnode__pins-label">Сейчас на блоке</span>
+          {% include 'textbook/_frontier_avatars.html' with users=row.frontier compact=1 %}
+        </div>
+        {% endif %}
+
+        </div>{# /face--front #}
+
+        {% if not row.is_soon %}
+        <div class="cnode__face cnode__face--back" @click="flipped = false">
+          <div class="cnode__back-head">
+            <span class="cnode__badge">{{ row.section.order }}</span>
+            <span class="cnode__back-title">{{ row.title }}</span>
+            <span class="cnode__back-hint">назад</span>
+          </div>
+          <div class="cnode__lessons">
+            {% for item in row.lesson_items %}
+            <div class="cnode__lesson{% if item.is_read %} is-read{% endif %}">
+              <a href="{{ item.url }}" class="cnode__lesson-link" @click.stop>
+                <span class="cnode__lesson-num">{{ item.num_label }}</span>
+                <span class="cnode__lesson-title">{{ item.article.title }}</span>
+              </a>
+              {% include 'textbook/_frontier_avatars.html' with users=item.frontier compact=1 %}
+            </div>
+            {% empty %}
+            <span class="cnode__note">В этом блоке пока нет статей.</span>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        </div>{# /inner #}
+
+      </div>
+      {% endfor %}
     </div>
+  </section>
+
+  <div class="cmap__legend">
+    <span><span class="dot dot--done"></span>Задачи сданы</span>
+    <span><span class="dot dot--current"></span>Сейчас здесь</span>
+    <span><span class="dot dot--open"></span>Открыт</span>
+    <span><span class="dot dot--soon"></span>Скоро</span>
+  </div>
+
+  <div class="mt-11 pt-7 border-t border-gray-200 dark:border-slate-700 text-center text-[12.5px]">
+    <a href="{% url 'pages:changelog' %}" class="text-gray-400 dark:text-slate-500 hover:text-brand-600 dark:hover:text-cyan-400 transition-colors">
+      Что нового на сайте
+    </a>
+  </div>
+
 </div>
 {% endblock content %}

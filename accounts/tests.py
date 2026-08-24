@@ -6,11 +6,11 @@ from datetime import timedelta
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase, override_settings
+from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
 from PIL import Image
 
-from accounts.models import Profile
+from accounts.models import Profile, StudentGroup
 from quizzes.models import Question, Quiz, UserAnswer, UserResult
 from textbook.models import Article, ArticleProgress, Section
 from textbook.services import profile_textbook_stats
@@ -196,3 +196,62 @@ class TextbookStatsTests(TestCase):
         self.assertEqual(stats['lessons_done'], 1)
         self.assertEqual(stats['lessons_total'], 1)
         self.assertEqual(stats['lessons_pct'], 100)
+
+
+@NO_MANIFEST_STATIC
+class AlumniTests(TestCase):
+    """Архив выпускников: попадает туда только класс с годом выпуска."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.graduated = StudentGroup.objects.create(name='11А', graduation_year=2025)
+        cls.active = StudentGroup.objects.create(name='10Б')
+        cls.alum = User.objects.create_user('alum', password='pw',
+                                            last_name='Петров', first_name='Иван')
+        Profile.objects.create(user=cls.alum, group=cls.graduated,
+                               alumni_place='НГУ', alumni_about='Учусь на ФИТ.')
+        cls.pupil = User.objects.create_user('pupil', password='pw', last_name='Сидоров')
+        Profile.objects.create(user=cls.pupil, group=cls.active)
+
+    def test_anonymous_sees_graduated_class_only(self):
+        response = self.client.get(reverse('alumni'))
+        self.assertEqual(response.status_code, 200)
+        page = response.content.decode()
+
+        self.assertIn('Петров Иван', page)  # фамилия впереди имени
+        self.assertIn('Учусь на ФИТ.', page)
+        self.assertNotIn('Сидоров', page, 'действующий класс попал в архив')
+
+    def test_first_cohort_marked(self):
+        earlier = StudentGroup.objects.create(name='11В', graduation_year=2024)
+        response = self.client.get(reverse('alumni'))
+        flags = {g.name: g.is_first for g in response.context['groups']}
+
+        self.assertEqual(flags, {earlier.name: True, self.graduated.name: False})
+        self.assertIn('Первый выпуск', response.content.decode())
+
+    def test_student_fills_own_card(self):
+        self.client.force_login(self.alum)
+        self.client.post(reverse('accounts:profile'), {
+            'alumni_place': 'НГТУ', 'alumni_about': 'Работаю.',
+        })
+        profile = Profile.objects.get(user=self.alum)
+
+        self.assertEqual(profile.alumni_place, 'НГТУ')
+        self.assertEqual(profile.alumni_about, 'Работаю.')
+        # Аватар второй формой не затёрло.
+        self.assertEqual(profile.avatar.name, '')
+
+    def test_alumni_badge_in_name(self):
+        from accounts.templatetags.profile_tags import student_name
+
+        self.assertEqual(student_name(self.alum), 'Петров Иван 🎓 2025')
+        self.assertEqual(student_name(self.pupil), 'Сидоров')
+
+    def test_graduated_group_hidden_from_active_lists(self):
+        from textbook.services import visible_group_ids
+
+        request = RequestFactory().get('/')
+        request.user = User.objects.create_superuser('t', password='pw')
+
+        self.assertEqual(visible_group_ids(request), [self.active.id])

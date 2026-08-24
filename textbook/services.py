@@ -647,3 +647,237 @@ def update_article_mastery(user, quiz):
             if progress.read_at is None:
                 progress.read_at = now
             progress.save(update_fields=['status', 'mastered_at', 'read_at', 'updated_at'])
+
+
+def visible_group_ids(request):
+    """
+    Чьи аватарки видит зритель: свой класс, у суперюзера — выбранные галочками.
+
+    Аноним не видит никого: фамилии и фото школьников не должны утекать в
+    открытый интернет. Пустой выбор у суперюзера означает «все классы» — это
+    состояние формы по умолчанию, до первого клика.
+    """
+    from accounts.models import StudentGroup
+
+    if not request.user.is_authenticated:
+        return []
+    if request.user.is_superuser:
+        # Выпускные классы живут в архиве и в активную статистику не попадают.
+        all_ids = list(StudentGroup.objects.filter(graduation_year__isnull=True)
+                       .values_list('id', flat=True))
+        chosen = {int(g) for g in request.GET.getlist('group') if g.isdigit()}
+        return [g for g in all_ids if g in chosen] or all_ids
+    # RelatedObjectDoesNotExist наследуется от AttributeError — getattr отработает
+    # и для пользователя без профиля.
+    group_id = getattr(getattr(request.user, 'profile', None), 'group_id', None)
+    return [group_id] if group_id else []
+
+
+def _section_entry_article(lessons, progress):
+    """
+    Статья, на которую ведёт карточка блока с главной.
+
+    Приоритет: последняя прочитанная (по `read_at`), затем та, что читается
+    сейчас (по `updated_at`), иначе первый урок блока. Промежуточная ступень
+    нужна, потому что `read_at` ставится только когда статью долистали до
+    конца: у брошенной на середине его нет, но вернуть ученика надо именно
+    туда, а не в начало блока.
+    """
+    last_read = last_reading = None
+    for art in lessons:
+        status, read_at, updated_at = progress.get(art.id, (None, None, None))
+        if status in ('read', 'mastered') and read_at:
+            if last_read is None or read_at > last_read[0]:
+                last_read = (read_at, art)
+        elif status == 'reading' and updated_at:
+            if last_reading is None or updated_at > last_reading[0]:
+                last_reading = (updated_at, art)
+
+    if last_read:
+        return last_read[1]
+    if last_reading:
+        return last_reading[1]
+    return lessons[0] if lessons else None
+
+
+def course_map(user):
+    """
+    Строки карты курса для главной страницы: по строке на каждый блок учебника.
+
+    Отличие от `textbook_home_view`: сюда попадают и неопубликованные блоки.
+    На карте они рисуются как «скоро» – без них маршрут обрывался бы на
+    середине, а именно непрерывность маршрута и есть смысл карты.
+
+    Блок считается пройденным, если сдан практикум. У блока без практикума
+    критерий тот же, что у `frontier_positions`: все уроки прочитаны, иначе
+    первый же блок без задач останавливал бы метку «вы здесь» навсегда.
+    """
+    from django.db.models import Prefetch
+    from django.urls import reverse
+
+    from .models import Article, ArticleProgress, Section
+
+    stats = {}
+    progress = {}
+    if user.is_authenticated:
+        stats, _ = section_quiz_stats(user)
+        # Одним запросом: статус плюс обе отметки времени. read_at ставится,
+        # когда статью долистали, updated_at обновляется на любом сохранении –
+        # по ним и выбирается статья, на которую ведёт карточка блока.
+        progress = {
+            art_id: (status, read_at, updated_at)
+            for art_id, status, read_at, updated_at in (
+                ArticleProgress.objects
+                .filter(user=user, article__track='material')
+                .values_list('article_id', 'status', 'read_at', 'updated_at')
+            )
+        }
+
+    published = Prefetch(
+        'articles',
+        queryset=(Article.objects.filter(track='material', is_published=True)
+                  .only('id', 'section_id', 'slug', 'order', 'title')
+                  .order_by('order')),
+        to_attr='published_articles',
+    )
+
+    rows = []
+    for section in Section.objects.prefetch_related(published):
+        bucket = stats.get(
+            section.id, {'practicum': [0, 0], 'self_check': [0, 0], 'url': ''}
+        )
+        prac_done, prac_total = bucket['practicum']
+        self_done, self_total = bucket['self_check']
+        lessons = section.published_articles
+        lessons_done = sum(
+            1 for a in lessons
+            if progress.get(a.id, (None,))[0] in ('read', 'mastered')
+        )
+        entry = _section_entry_article(lessons, progress)
+
+        if prac_total:
+            is_done = prac_done >= prac_total
+        else:
+            is_done = bool(lessons) and lessons_done == len(lessons)
+
+        grade = section.grade_for(prac_done) if user.is_authenticated else None
+
+        # «Блок закрыт» для метки «вы здесь» – не то же, что «пройден».
+        # Достаточно сдать практикум на тройку; полное решение не требуется.
+        # Порогов оценок у блока может не быть – тогда критерий «все задачи»,
+        # а у блока без практикума – «все уроки прочитаны», иначе метка
+        # застряла бы на первом же блоке без задач.
+        if grade is not None:
+            cleared = grade >= 3
+        else:
+            cleared = is_done
+
+        rows.append({
+            'section': section,
+            'lessons': len(lessons),
+            'lessons_done': lessons_done,
+            # Список уроков для оборотной стороны карточки на главной.
+            'lesson_items': [
+                {
+                    'article': a,
+                    'num_label': f'{section.order}.{a.order}',
+                    'url': a.get_absolute_url(),
+                    'is_read': progress.get(a.id, (None,))[0] in ('read', 'mastered'),
+                }
+                for a in lessons
+            ],
+            # Куда ведёт карточка блока. Пустой блок статей не имеет – ведём
+            # в оглавление учебника, чтобы ссылка не упиралась в 404.
+            'entry_url': entry.get_absolute_url() if entry else reverse('textbook:home'),
+            'practicum': {'done': prac_done, 'total': prac_total, 'url': bucket['url'],
+                          'pct': round(prac_done / prac_total * 100) if prac_total else 0},
+            'self_check': {'done': self_done, 'total': self_total,
+                           'pct': round(self_done / self_total * 100) if self_total else 0},
+            'grade': grade,
+            'grade_scale': section.grade_scale(prac_done),
+            'is_done': is_done,
+            'is_current': False,
+            'is_soon': not section.is_published,
+            'cleared': cleared,
+            # «Начато чтение» – у статьи есть строка прогресса. Она заводится
+            # при первом открытии статьи, поэтому годится как признак того,
+            # что ученик до блока добрался.
+            'started': any(a.id in progress for a in lessons),
+        })
+
+    # Метка «вы здесь» – первый опубликованный блок, который ещё не отпущен.
+    # Блок отпускает метку в двух случаях:
+    #   1. практикум сдан минимум на тройку И в следующем блоке открыта хотя
+    #      бы одна статья. Без второго условия метка убегала бы вперёд по
+    #      блоку, которого ученик ещё не открывал;
+    #   2. дедлайн блока прошёл – задачи больше не принимаются, держать на нём
+    #      метку незачем, двигаем независимо от прогресса.
+    # Переезжать некуда, если следующего блока нет или он не опубликован:
+    # тогда метка остаётся здесь даже после дедлайна.
+    # У гостя текущего блока нет: считать его прогресс не по чему.
+    if user.is_authenticated:
+        for i, row in enumerate(rows):
+            if row['is_soon']:
+                continue
+            nxt = rows[i + 1] if i + 1 < len(rows) else None
+            if nxt and not nxt['is_soon']:
+                if (row['cleared'] and nxt['started']) or row['section'].is_closed:
+                    continue
+            row['is_current'] = True
+            break
+    return rows
+
+
+def frontier_by_section(positions):
+    """
+    {section_id: [ученики]} из {article_id: [ученики]}, который отдаёт
+    `frontier_positions`.
+
+    На карте курса карточка соответствует блоку, поэтому позиции с точностью
+    до статьи схлопываются до блока. Ученики внутри блока идут в порядке своих
+    статей: сначала те, кто дальше не продвинулся.
+
+    Принимает готовые позиции, а не список групп: главная показывает фишки и
+    по блокам, и по отдельным урокам на обороте карточки, а маршрут стоит
+    прогонять один раз.
+    """
+    from .models import Article
+
+    if not positions:
+        return {}
+
+    order = dict(
+        Article.objects.filter(id__in=positions)
+        .values_list('id', 'section_id')
+    )
+    by_section = {}
+    for article_id in sorted(positions, key=lambda a: (order.get(a) or 0, a)):
+        section_id = order.get(article_id)
+        if section_id:
+            by_section.setdefault(section_id, []).extend(positions[article_id])
+    return by_section
+
+
+def ege_theory_groups():
+    """
+    Теория ЕГЭ, сгруппированная по заданиям: [{'task': EgeTask, 'articles': [...]}].
+
+    Живёт в сервисах, потому что раздел переехал с главной учебника на страницу
+    тренажёра ЕГЭ, а статьи по-прежнему принадлежат приложению textbook.
+    Задания без опубликованных статей не показываем – пустой заголовок только
+    сбивает с толку.
+    """
+    from django.db.models import Prefetch
+
+    from .models import Article, EgeTask
+
+    published = Prefetch(
+        'articles',
+        queryset=Article.objects.filter(track='ege', is_published=True),
+        to_attr='published_articles',
+    )
+    return [
+        {'task': task, 'articles': task.published_articles}
+        for task in EgeTask.objects.prefetch_related(published)
+        if task.published_articles
+    ]

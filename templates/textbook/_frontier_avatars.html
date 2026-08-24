@@ -5,12 +5,16 @@
 Раскрытый список раздвигает саму строку, а не всплывает поверх неё: карточка
 блока обрезает содержимое (rounded-xl overflow-hidden), и абсолютный поповер у
 нижних уроков был бы срезан.
+
+compact=1 – только кружки, без раскрытия по наведению. Нужен на карте курса
+главной: там карточка блока шириной ~370px, и список из трёх десятков фамилий
+вывалился бы за её пределы.
 {% endcomment %}
 {% if users %}
 <span class="flex justify-end group/pins shrink-0">
 
     {# Свёрнуто: пять кружков и счётчик остальных #}
-    <span class="flex -space-x-1.5 group-hover/pins:hidden">
+    <span class="flex -space-x-1.5{% if not compact %} group-hover/pins:hidden{% endif %}">
         {% for u in users|slice:":5" %}
         {% with name=u.get_full_name|default:u.username %}
         {% if u.profile.avatar %}
@@ -32,6 +36,7 @@
     </span>
 
     {# Развёрнуто по наведению: до 50 человек с фамилиями, в несколько строк #}
+    {% if not compact %}
     <span class="hidden group-hover/pins:flex flex-wrap justify-end items-center gap-x-3 gap-y-1.5 max-w-[560px]">
         {% for u in users|slice:":50" %}
         <span class="flex items-center gap-1.5 whitespace-nowrap">
@@ -52,5 +57,6 @@
         <span class="text-xs text-gray-400 dark:text-slate-500">и ещё {{ users|length|add:"-50" }}</span>
         {% endif %}
     </span>
+    {% endif %}
 </span>
 {% endif %}

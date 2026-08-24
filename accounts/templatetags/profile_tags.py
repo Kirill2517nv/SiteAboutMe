@@ -30,3 +30,23 @@ def duration_display(value):
     if minutes > 0:
         return f'{minutes}м {seconds}с'
     return f'{seconds}с'
+
+
+@register.filter
+def surname_first(user):
+    """«Фамилия Имя» – get_full_name() даёт обратный порядок, «Имя Фамилия»."""
+    return f'{user.last_name} {user.first_name}'.strip() or user.username
+
+
+@register.filter
+def student_name(user):
+    """
+    Имя с пометкой выпускника: «Иванов Иван 🎓 2025».
+
+    RelatedObjectDoesNotExist наследуется от AttributeError, поэтому getattr
+    отрабатывает и для пользователя без профиля.
+    """
+    name = surname_first(user)
+    group = getattr(getattr(user, 'profile', None), 'group', None)
+    year = getattr(group, 'graduation_year', None)
+    return f'{name} 🎓 {year}' if year else name

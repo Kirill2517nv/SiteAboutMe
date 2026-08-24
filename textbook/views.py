@@ -9,7 +9,7 @@ from django.views.decorators.http import require_POST
 from accounts.models import StudentGroup
 from quizzes.models import Question, Quiz, UserAnswer, UserResult
 
-from .models import Article, ArticleProgress, ArticleQuiz, EgeTask, Section
+from .models import Article, ArticleProgress, ArticleQuiz, Section
 from .services import (
     attempted_quiz_ids,
     correct_answers_count,
@@ -17,6 +17,7 @@ from .services import (
     quiz_state,
     section_quiz_stats,
     visible_articles,
+    visible_group_ids,
 )
 
 
@@ -78,33 +79,13 @@ def _bar(done, total, url=''):
             'pct': round(done / total * 100) if total else 0}
 
 
-def _visible_group_ids(request):
-    """
-    Чьи аватарки видит зритель: свой класс, у суперюзера — выбранные галочками.
-
-    Аноним не видит никого: фамилии и фото школьников не должны утекать в
-    открытый интернет. Пустой выбор у суперюзера означает «все классы» — это
-    состояние формы по умолчанию, до первого клика.
-    """
-    if not request.user.is_authenticated:
-        return []
-    if request.user.is_superuser:
-        all_ids = list(StudentGroup.objects.values_list('id', flat=True))
-        chosen = {int(g) for g in request.GET.getlist('group') if g.isdigit()}
-        return [g for g in all_ids if g in chosen] or all_ids
-    # RelatedObjectDoesNotExist наследуется от AttributeError — getattr отработает
-    # и для пользователя без профиля.
-    group_id = getattr(getattr(request.user, 'profile', None), 'group_id', None)
-    return [group_id] if group_id else []
-
-
 def textbook_home_view(request):
     """Главная учебника с двумя вкладками: учебный материал (аккордеон по блокам) и теория ЕГЭ."""
     progress_map = {}
     quiz_stats = {}
     article_states = {}
-    visible_group_ids = _visible_group_ids(request)
-    frontier = frontier_positions(visible_group_ids)
+    group_ids = visible_group_ids(request)
+    frontier = frontier_positions(group_ids)
     if request.user.is_authenticated:
         progress_map = dict(
             ArticleProgress.objects.filter(user=request.user, article__track='material')
@@ -155,24 +136,12 @@ def textbook_home_view(request):
             'is_closed': section.is_closed,
         })
 
-    ege_articles = Prefetch(
-        'articles',
-        queryset=Article.objects.filter(track='ege', is_published=True),
-        to_attr='published_articles',
-    )
-    ege_tasks = [
-        {'task': task, 'articles': task.published_articles}
-        for task in EgeTask.objects.prefetch_related(ege_articles)
-        if task.published_articles
-    ]
-
     context = {
         'material_sections': material_sections,
-        'ege_tasks': ege_tasks,
         # Панель фильтра классов — только учителю; ученик видит свой класс без выбора.
         'student_groups': (
-            [{'group': g, 'checked': g.id in visible_group_ids}
-             for g in StudentGroup.objects.order_by('name')]
+            [{'group': g, 'checked': g.id in group_ids}
+             for g in StudentGroup.objects.filter(graduation_year__isnull=True).order_by('name')]
             if request.user.is_superuser else []
         ),
         'total_lessons': total_lessons,
@@ -212,17 +181,21 @@ def article_detail_view(request, slug):
         siblings = list(article.ege_task.articles.filter(track='ege', is_published=True))
         group_title = f'Задание {article.ege_task.number}. {article.ege_task.title}'
         article_number = ''
-        back_url = reverse('textbook:home') + '#ege'
+        # Теория ЕГЭ живёт на странице тренажёра, вкладка «Теория»
+        back_url = reverse('ege:ege_list') + '#theory'
+        back_label = 'Тренажёр ЕГЭ'
     elif article.section_id:
         siblings = list(article.section.articles.filter(track='material', is_published=True))
         group_title = article.section.title
         article_number = f'{article.section.order}.{article.order}'
         back_url = reverse('textbook:home')
+        back_label = 'Учебник'
     else:
         siblings = [article]
         group_title = ''
         article_number = ''
         back_url = reverse('textbook:home')
+        back_label = 'Учебник'
 
     progress_map = {}
     if request.user.is_authenticated and siblings:
@@ -271,16 +244,23 @@ def article_detail_view(request, slug):
             user=request.user, article=article,
         )
 
+    # Те же фишки одноклассников, что и в списке уроков на главной учебника:
+    # у кого маршрут остановился ровно на этой статье. Аноним не видит никого –
+    # правило то же, что в `visible_group_ids`.
+    frontier_here = frontier_positions(visible_group_ids(request)).get(article.id, [])
+
     context = {
         'article': article,
         'blocks': blocks,
         'self_checks': self_checks,
         'progress': progress,
+        'frontier': frontier_here,
         'sidebar_items': sidebar_items,
         'practicum': practicum,
         'group_title': group_title,
         'article_number': article_number,
         'back_url': back_url,
+        'back_label': back_label,
         'prev_article': prev_article,
         'next_article': next_article,
     }
@@ -366,7 +346,8 @@ def section_stats_view(request, slug):
         }
 
     groups = []
-    for group in StudentGroup.objects.prefetch_related('students__user').order_by('name'):
+    for group in (StudentGroup.objects.filter(graduation_year__isnull=True)
+                  .prefetch_related('students__user').order_by('name')):
         students = [p.user for p in group.students.all()]
         if students:
             groups.append({'name': group.name, 'rows': [row_for(u) for u in students]})
