@@ -289,9 +289,18 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
   }
   html.dark .cnode.is-soon .cnode__face { background: #0f172a; border-color: var(--cmap-line); }
   .cnode.is-soon:hover .cnode__face { box-shadow: none; }
-  .cnode.is-soon .cnode__badge { background: transparent; border: 1px dashed var(--cmap-line); }
-  .cnode.is-soon .cnode__title { color: #9ca3af; font-weight: 500; }
-  html.dark .cnode.is-soon .cnode__title { color: #64748b; }
+  /* Единственная карточка «скоро» в конце маршрута – содержимого нет, только
+     подпись по центру, поэтому грань центрируется, а не выстраивает строки. */
+  .cnode__soon-face {
+    align-items: center; justify-content: center; gap: 12px; text-align: center;
+  }
+  .cnode__soon-icon { color: #9ca3af; }
+  html.dark .cnode__soon-icon { color: #64748b; }
+  .cnode__soon-text {
+    font-size: 14px; line-height: 1.4; font-weight: 500; color: #9ca3af;
+    max-width: 15ch;
+  }
+  html.dark .cnode__soon-text { color: #64748b; }
 
   /* Легенда */
   .cmap__legend {
@@ -769,7 +778,7 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
       уроков. Кнопки и ссылки внутри гасят всплытие, иначе переход к задачам
       попутно крутил бы карточку.
       {% endcomment %}
-      <div class="cnode{% if row.is_soon %} is-soon{% elif row.is_current %} is-current{% elif row.is_done %} is-done{% endif %}"
+      <div class="cnode{% if row.is_current %} is-current{% elif row.is_done %} is-done{% endif %}"
            style="grid-column: {{ row.grid_col }}; grid-row: {{ row.grid_row }};"
            x-data="{ flipped: false }">
 
@@ -777,20 +786,15 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
 
         <div class="cnode__inner" :class="flipped && 'is-flipped'">
 
-        <div class="cnode__face cnode__face--front"
-             {% if not row.is_soon %}@click="flipped = true"{% endif %}>
+        <div class="cnode__face cnode__face--front" @click="flipped = true">
 
         <div class="cnode__head">
           <span class="cnode__badge">{{ row.section.order }}</span>
-          {% if row.is_soon %}
-          <span class="cnode__title">{{ row.title }}</span>
-          {% else %}
           <a href="{{ row.entry_url }}" class="cnode__title" @click.stop>{{ row.title }}</a>
-          {% endif %}
         </div>
 
         {# Дедлайн и оценка – только вошедшему: гостю чужой график ничего не говорит #}
-        {% if user.is_authenticated and not row.is_soon %}
+        {% if user.is_authenticated %}
         {% if row.section.deadline or row.grade %}
         <div class="cnode__chips">
           {% if row.section.deadline %}
@@ -836,15 +840,13 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
           </div>
           {% endif %}
 
-          {% if row.is_soon %}
-          <span class="cnode__note">Скоро · {{ row.lessons_label }}</span>
-          {% elif not user.is_authenticated or not row.practicum.total and not row.self_check.total %}
+          {% if not user.is_authenticated or not row.practicum.total and not row.self_check.total %}
           {# Нечего показать в цифрах – ни гостю, ни там, где задач ещё нет: только число статей #}
           <span class="cnode__note">{{ row.lessons_label }}</span>
           {% endif %}
         </div>
 
-        {% if user.is_authenticated and not row.is_soon %}
+        {% if user.is_authenticated %}
         {% if user.is_superuser or row.practicum.total %}
         <div class="cnode__actions">
           {% if user.is_superuser %}
@@ -873,7 +875,6 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
 
         </div>{# /face--front #}
 
-        {% if not row.is_soon %}
         <div class="cnode__face cnode__face--back" @click="flipped = false">
           <div class="cnode__back-head">
             <span class="cnode__badge">{{ row.section.order }}</span>
@@ -894,12 +895,31 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
             {% endfor %}
           </div>
         </div>
-        {% endif %}
 
         </div>{# /inner #}
 
       </div>
       {% endfor %}
+
+      {% if soon %}
+      {% comment %}
+      Одна карточка вместо всех неопубликованных блоков: их состав ещё может
+      поменяться, поэтому названия наружу не показываем.
+      {% endcomment %}
+      <div class="cnode is-soon" style="grid-column: {{ soon.grid_col }}; grid-row: {{ soon.grid_row }};">
+        <div class="cnode__inner">
+          <div class="cnode__face cnode__soon-face">
+            <span class="cnode__soon-icon">
+              <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                <circle cx="12" cy="12" r="9"/>
+                <path stroke-linecap="round" d="M12 7v5l3 2"/>
+              </svg>
+            </span>
+            <span class="cnode__soon-text">Новые материалы добавятся скоро</span>
+          </div>
+        </div>
+      </div>
+      {% endif %}
     </div>
   </section>
 

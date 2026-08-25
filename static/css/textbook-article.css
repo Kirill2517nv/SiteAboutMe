@@ -152,6 +152,8 @@ html.dark .article-body a:hover { color: var(--color-dark-accent); }
 :is(.article-body, .article-summary-card__body, .article-lead__text, .article-outlook-panel__body) tr:last-child td { border-bottom: none; }
 
 .article-body figure { text-align: center; margin: 0 0 26px; }
+/* Preflight Tailwind делает img блочным, поэтому text-align его не центрирует. */
+.article-body img { margin-inline: auto; }
 /* Единый бокс 4:3 для всех иллюстраций. aspect-ratio, а не height: 600px:
    на узком экране max-width ужимает ширину, и фиксированная высота заставила бы
    object-fit обрезать картинку по бокам тем сильнее, чем уже экран. */
@@ -160,6 +162,11 @@ html.dark .article-body a:hover { color: var(--color-dark-accent); }
   aspect-ratio: 4 / 3; height: auto; object-fit: cover;
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-border-medium); box-shadow: var(--shadow-sm);
+}
+/* Таблица ASCII в уроке 7.2 – широкая (≈2.6:1), общий бокс 4:3 с object-fit:
+   cover срезал бы у неё верхнюю и нижнюю строки. Показываем целиком. */
+.article-body figure img[src*="teksta-ascii/1."] {
+  aspect-ratio: auto; object-fit: contain;
 }
 
 /* ============================================================

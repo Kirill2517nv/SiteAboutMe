@@ -98,6 +98,12 @@ def home_page_view(request):
     rows = course_map(request.user)
     current = next((r for r in rows if r['is_current']), None)
 
+    # Неопубликованные блоки на карте не рисуются вовсе – вместо них в конце
+    # маршрута стоит одна карточка «скоро». Так состав будущих блоков можно
+    # менять, не показывая ученикам черновые названия.
+    has_soon = any(r['is_soon'] for r in rows)
+    rows = [r for r in rows if not r['is_soon']]
+
     # Фишки одноклассников – та же механика, что в списке уроков внутри
     # учебника. Кого показывать, решает `visible_group_ids`: аноним не видит
     # никого, ученик – свой класс, учитель – выбранные галочками.
@@ -115,23 +121,28 @@ def home_page_view(request):
     # поэтому маршрут читается одной непрерывной линией. Колонку считаем
     # здесь, а не в шаблоне: {% cycle %} не умеет разворачивать порядок.
     per_row = 3
+
+    def snake(i):
+        line, idx = divmod(i, per_row)
+        return line + 1, (idx + 1 if line % 2 == 0 else per_row - idx)
+
     for i, row in enumerate(rows):
-        line = i // per_row
-        idx = i % per_row
-        row['grid_row'] = line + 1
-        row['grid_col'] = idx + 1 if line % 2 == 0 else per_row - idx
+        row['grid_row'], row['grid_col'] = snake(i)
         # Номер уже стоит в кружке карточки – в названии он только съедает ширину
         row['title'] = re.sub(r'^Блок \d+\.\s*', '', row['section'].title)
         n = row['lessons']
         row['lessons_label'] = f"{n} {_plural(n, ('статья', 'статьи', 'статей'))}"
 
-    # Горизонтальная линия ряда рисуется пунктиром, если все его блоки ещё
-    # не опубликованы. Развороты всегда сплошные: пунктирная вертикальная
+    # Карточка «скоро» занимает следующую клетку змейки после последнего блока.
+    soon = dict(zip(('grid_row', 'grid_col'), snake(len(rows)))) if has_soon else None
+
+    # Горизонтальная линия ряда рисуется пунктиром, если в нём стоит только
+    # карточка «скоро». Развороты всегда сплошные: пунктирная вертикальная
     # скобка выглядит грубо, а без разворота маршрут рвётся между рядами.
-    row_count = -(-len(rows) // per_row)
+    cells = len(rows) + (1 if has_soon else 0)
+    row_count = -(-cells // per_row)
     lines = [
-        {'index': k,
-         'is_soon': all(r['is_soon'] for r in rows[k * per_row:(k + 1) * per_row])}
+        {'index': k, 'is_soon': k * per_row >= len(rows)}
         for k in range(row_count)
     ]
     turns = [
@@ -143,6 +154,7 @@ def home_page_view(request):
     lessons = sum(r['lessons'] for r in rows)
     return render(request, 'home.html', {
         'rows': rows,
+        'soon': soon,
         'lines': lines,
         'turns': turns,
         'current': current,
