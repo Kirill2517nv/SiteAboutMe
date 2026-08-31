@@ -1,0 +1,30 @@
+{% comment %}
+Класс цвета крупного числа по шкале «плохо – хорошо» (quizzes.ege_constants).
+Подключается прямо внутрь атрибута class:
+
+    <div class="text-4xl {% include 'quizzes/_ege_scale_color.html' with color=overview.score.color %}">
+
+Отдельным файлом, потому что цепочку из пяти веток используют две карточки
+хаба, а Tailwind собирается заранее: сконструировать класс из переменной
+(«text-{{ color }}-600») нельзя – сканер его не увидит и в CSS такого правила
+не окажется. Значит, все пять вариантов должны быть написаны буквально, и
+писать их дважды – верный способ однажды поправить только одну копию.
+{% endcomment %}
+{% comment %}
+Две шкалы. Прогноз балла идёт по цветам (плохо – хорошо), долг по ошибкам –
+по насыщенности одного красного: зелёного там быть не должно, ошибки не
+бывают достижением. Насыщенность задана прозрачностью, а не номером оттенка,
+– так ступени монотонны и в светлой теме, и в тёмной, где «ярче» означает
+светлее, а не темнее.
+{% endcomment %}
+{% if color == 'red' %}text-red-600 dark:text-red-400
+{% elif color == 'orange' %}text-orange-600 dark:text-orange-400
+{% elif color == 'amber' %}text-amber-600 dark:text-amber-400
+{% elif color == 'lime' %}text-lime-600 dark:text-lime-400
+{% elif color == 'emerald' %}text-emerald-600 dark:text-emerald-400
+{% elif color == 'red1' %}text-red-600/40 dark:text-red-400/40
+{% elif color == 'red2' %}text-red-600/55 dark:text-red-400/55
+{% elif color == 'red3' %}text-red-600/75 dark:text-red-400/75
+{% elif color == 'red4' %}text-red-600 dark:text-red-400
+{% elif color == 'red5' %}text-red-700 dark:text-red-300
+{% else %}text-gray-900 dark:text-white{% endif %}

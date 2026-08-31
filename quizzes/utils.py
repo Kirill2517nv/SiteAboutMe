@@ -1,5 +1,6 @@
 import docker
 from docker.errors import DockerException, APIError
+import json
 import tarfile
 import io
 import re
@@ -202,3 +203,15 @@ def run_code_in_docker(code, input_data, extra_files=None):
                 container.remove(force=True)
             except:
                 pass
+
+
+# Экранирование, которым Django пользуется в json_script. json.dumps не трогает
+# «<» и «>», поэтому строка «</script>» внутри данных закрывает тег и остаток
+# уходит в разметку. В данные страницы попадает и ответ ученика, и его код –
+# то есть текст, который пишет он сам, а страницу его сессии открывает учитель.
+_JS_JSON_ESCAPES = {ord('<'): '\\u003C', ord('>'): '\\u003E', ord('&'): '\\u0026'}
+
+
+def js_json(value):
+    """JSON, который безопасно вставить в <script> шаблона."""
+    return json.dumps(value).translate(_JS_JSON_ESCAPES)

@@ -27,4 +27,10 @@ app.conf.beat_schedule = {
         'task': 'quizzes.tasks.cleanup_stale_submissions',
         'schedule': 1800,  # every 30 minutes
     },
+    # Фактическая сложность задач ЕГЭ по решаемости. Раз в сутки достаточно:
+    # доля верных первых попыток за час заметно не меняется.
+    'recalc-ege-difficulty': {
+        'task': 'quizzes.tasks.recalc_ege_difficulty_task',
+        'schedule': 86400,
+    },
 }

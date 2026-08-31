@@ -208,8 +208,10 @@
                     </tr>
                     <!-- Attempts row -->
                     <tr class="border-b border-gray-50">
-                        <td class="sticky left-0 z-10 bg-white px-4 py-3 font-medium text-gray-700">
+                        <td class="sticky left-0 z-10 bg-white px-4 py-3 font-medium text-gray-700"
+                            title="Сколько раз нажимали «Проверить». У решённой задачи – с какой попытки она получилась: после верного ответа счётчик не растёт.">
                             Попытки
+                            <div class="text-[10px] font-normal text-gray-400 leading-tight">с какой получилось</div>
                         </td>
                         {% for stat in personal_stats %}
                         <td class="px-2 py-3 text-center text-xs text-gray-600">

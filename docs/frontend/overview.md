@@ -28,8 +28,6 @@
 | Файл | Строк | Назначение |
 |------|-------|------------|
 | `quiz-async.js` | 285 | `QuizCodeChecker` — WebSocket клиент для проверки кода |
-| `help-requests.js` | 533 | `HelpRequestManager` — inline-треды в CodeMirror |
-| `notifications.js` | 162 | `NotificationManager` — badge + dropdown уведомлений |
 | `ege-timer.js` | 180 | `EgeTimer` + `TaskTimeTracker` + `EgeAnswerStore` |
 
 ### Инвентарь по функциональности
@@ -38,17 +36,11 @@
 graph TB
     subgraph "Тестирование"
         QA[quiz-async.js\nQuizCodeChecker]
-        HR[help-requests.js\nHelpRequestManager]
-        NT[notifications.js\nNotificationManager]
         ET[ege-timer.js\nEgeTimer + TimeTracker]
     end
 
-    QA -->|"WS результаты"| HR
-    HR -->|"новый комментарий"| NT
     ET -->|"время задачи"| QA
 ```
-
----
 
 ---
 
@@ -99,7 +91,6 @@ base.html
 - **Задачи** → `/quizzes/`
 - **Тренажёр ЕГЭ** → `/ege/` (если `is_ege`)
 - **Об авторе** → `/about/`
-- **🔔** — badge уведомлений (`NotificationManager`)
 - **User** — dropdown: профиль, выход
 - Mobile: hamburger → Alpine `mobileMenu` toggle
 
@@ -112,7 +103,6 @@ base.html
 | `sessionStorage` | Ответы quiz (текст, код) | До закрытия вкладки |
 | `localStorage` | Ответы EGE, таймер EGE | Постоянно |
 | Django session | `quiz_start_time` | Серверная сессия |
-| URL query params | `?open_help=qId` | Одноразово |
 
 ---
 

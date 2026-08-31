@@ -1,0 +1,293 @@
+{% load textbook_tags %}
+{% comment %}
+Блок личного прогресса ЕГЭ. Ожидает переменную `overview` из quizzes.ege_stats.
+
+Вынесен в партиал, потому что показывается в двух местах: вкладка «Мой прогресс»
+на /ege/ и отчёт учителя по ученику. Цифры в них должны совпадать буквально –
+расхождение ученик прочитает как ошибку в данных.
+
+Два раздела намеренно разведены и названы теми же словами, что вкладки хаба:
+«Задания» – работа по одной теме, «Варианты» – работа целиком за 235 минут.
+Числа из них не складываются: это разные измерения одной подготовки. У каждого
+раздела свой прогноз, и карточки прогноза одинаковые (_ege_forecast.html) –
+меряют они одно и то же, различается только источник.
+
+Внутри каждого раздела режимы разложены одинаково: голубое – тренировка,
+фиолетовое – экзамен, и колонки в обеих таблицах стоят в одном порядке. Один
+словарь цветов на страницу: ученику не приходится дважды учить, что где.
+Прогноз при этом строится только по экзаменам – в обоих разделах.
+
+Подписи здесь урезаны до минимума: длинные абзацы «почему так считается» жили
+в комментариях к ege_stats и на странице только мешали – ученик читает цифры,
+а не методичку. Всё, что нужно для понимания, осталось в заголовке блока и в
+подсказках, которые всплывают при наведении на ячейку.
+{% endcomment %}
+{% comment %}
+Всплывающие подсказки таблиц. Один тултип на весь блок, а не свой div в каждой
+ячейке: ячеек с подсказками дюжина, и двенадцать копий рано или поздно
+разъедутся. Ячейке остаётся только data-tip – чистые данные, без обработчиков.
+
+position: fixed выбран не для красоты: таблицы лежат внутри overflow-x-auto, и
+абсолютно спозиционированный тултип этот контейнер обрезал бы – у первой строки
+сверху, у крайних колонок сбоку. Фиксированный выходит из потока совсем,
+поэтому обрезать его нечему; below разворачивает его вниз, когда ячейка стоит
+слишком близко к верху окна.
+
+Отступ от ячейки по умолчанию 10px – столько и нужно ячейке таблицы, у
+которой есть свой py-2.5. Там, где подсказка висит на голой строке текста
+без внутренних отступов, зазор задаётся на месте: data-tip-gap="20".
+
+mouseover/mouseout всплывают (в отличие от mouseenter), поэтому хватает двух
+обработчиков на обёртке: closest('[data-tip]') сам находит нужную ячейку.
+{% endcomment %}
+<div class="space-y-6"
+     x-data="{ tip: '', x: 0, y: 0, gap: 10, below: false, show(e) { const el = e.target.closest('[data-tip]'); if (!el) { this.tip = ''; return; } const r = el.getBoundingClientRect(); this.tip = el.dataset.tip; this.x = Math.min(Math.max(r.left + r.width / 2, 150), window.innerWidth - 150); this.gap = +(el.dataset.tipGap || 10); this.below = r.top < 120; this.y = this.below ? r.bottom : r.top; } }"
+     @mouseover="show($event)"
+     @mouseleave="tip = ''">
+
+<!-- ══════════ РАЗДЕЛ 1: ЗАДАНИЯ ══════════ -->
+<section class="space-y-4">
+    <div class="flex items-center gap-3">
+        <span class="shrink-0 w-9 h-9 rounded-xl bg-brand-100 dark:bg-brand-900/40 text-brand-700 dark:text-cyan-300 flex items-center justify-center">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+            </svg>
+        </span>
+        <div class="min-w-0">
+            <h2 class="text-lg font-bold text-gray-900 dark:text-white leading-tight">Задания</h2>
+            <p class="text-xs text-gray-400 dark:text-slate-500">тренировки и экзамены по отдельным темам</p>
+        </div>
+        <div class="flex-1 h-px bg-gradient-to-r from-brand-200 dark:from-brand-800 to-transparent"></div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+        {% include 'quizzes/_ege_forecast.html' with forecast=overview.score hint="цена задания × точность на экзамене" empty="Появится после первого экзамена в тренажёре. По тренировкам прогноз не строится: там можно подсмотреть теорию и ответить дважды." %}
+
+        {% if overview.weak %}
+        <div class="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-5 sm:p-6">
+            <h3 class="font-semibold text-gray-900 dark:text-white mb-4">Что подтянуть</h3>
+            {% comment %}
+            Здесь ни подписи, ни подсказок: список из пяти строк «номер –
+            название – процент» читается без пояснений. Цена задания в баллах
+            по-прежнему решает порядок строк (weak_tasks сортирует по потере),
+            но своей колонки больше не занимает – выбирать, что открыть, ученик
+            всё равно будет по названию и проценту.
+            {% endcomment %}
+            <div class="space-y-1.5">
+                {% for task in overview.weak %}
+                <a href="{% url 'ege:ege_task' task.number %}"
+                   class="group flex items-center gap-3 p-2 -mx-2 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors">
+                    <span class="shrink-0 w-8 h-8 rounded-lg bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300 flex items-center justify-center font-bold text-sm">{{ task.number }}</span>
+                    <span class="min-w-0 flex-1 text-sm text-gray-900 dark:text-white truncate group-hover:text-brand-600 dark:group-hover:text-cyan-400">{{ task.title }}</span>
+                    <span class="shrink-0 text-xs tabular-nums text-gray-400 dark:text-slate-500">
+                        {% if task.attempted %}{{ task.accuracy }}%{% else %}не начато{% endif %}
+                    </span>
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    {% if overview.by_task.rows %}
+    <div class="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-5 sm:p-6">
+        {% comment %}
+        Подписи над таблицей нет намеренно: «верных / попыток · точность» в
+        одну строку всё равно приходилось расшифровывать. Вместо неё каждая
+        ячейка объясняет себя сама во всплывающей подсказке (data-tip) – там
+        помещается целая фраза, и читает её только тот, кому она нужна.
+        cursor-help на ячейке – единственный намёк, что подсказка есть.
+        {% endcomment %}
+        <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2 mb-4">
+            <h3 class="font-semibold text-gray-900 dark:text-white">По каждому заданию</h3>
+            <div class="flex items-center gap-3 text-[11px] text-gray-400 dark:text-slate-500">
+                <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-sm bg-green-400"></span>в норме</span>
+                <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-sm bg-amber-400"></span>до 1,5 нормы</span>
+                <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-sm bg-red-400"></span>дольше</span>
+            </div>
+        </div>
+
+        <div class="overflow-x-auto -mx-5 px-5 sm:-mx-6 sm:px-6">
+            <table class="w-full text-sm min-w-[560px]">
+                <thead>
+                    <tr class="text-xs text-gray-400 dark:text-slate-500">
+                        <th class="text-left font-medium pb-2 pr-3 w-full">Задание</th>
+                        <th colspan="2" class="font-medium pb-2 px-3 text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/30 rounded-t-lg cursor-help w-px whitespace-nowrap"
+                            data-tip="Задачи, решённые в режиме «Тренировка» – с проверкой каждого ответа и возможностью попробовать ещё раз">Тренировка</th>
+                        <th colspan="2" class="font-medium pb-2 px-3 text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-950/30 rounded-t-lg cursor-help w-px whitespace-nowrap"
+                            data-tip="Задачи, решённые в режиме «Экзамен» – без проверок по ходу и с таймером на час">Экзамен</th>
+                        <th class="text-center font-medium pb-2 px-2 w-px whitespace-nowrap">Норма ФИПИ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in overview.by_task.rows %}
+                    <tr class="border-t border-gray-50 dark:border-slate-700/50 group/row">
+                        <td class="py-2.5 pr-3 group-hover/row:bg-gray-50 dark:group-hover/row:bg-slate-700/40 transition-colors">
+                            <a href="{% url 'ege:ege_task' row.number %}" class="flex items-center gap-2 group">
+                                <span class="shrink-0 w-7 h-7 rounded-lg bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300 flex items-center justify-center text-xs font-bold">{{ row.number }}</span>
+                                <span class="text-gray-900 dark:text-white group-hover:text-brand-600 dark:group-hover:text-cyan-400 truncate max-w-[220px]">{{ row.title }}</span>
+                            </a>
+                        </td>
+                        <td class="py-2.5 px-3 text-right tabular-nums whitespace-nowrap bg-sky-50/60 dark:bg-sky-950/20 cursor-help group-hover/row:bg-sky-100 dark:group-hover/row:bg-sky-900/40 transition-colors"
+                            data-tip="{% if row.study.attempted %}{{ row.study.correct }} верн{{ row.study.correct|plural:"ая,ые,ых" }} попыт{{ row.study.correct|plural:"ка,ки,ок" }} из {{ row.study.attempted }}. Точность {{ row.study.accuracy }}% – это верные попытки, делённые на все.{% if row.number >= 26 %} За задания 26 и 27 бывает половина балла, поэтому верных может быть дробным числом.{% endif %}{% else %}Вы ещё не решали это задание{% endif %}">
+                            {% if row.study.attempted %}
+                            <span class="text-gray-900 dark:text-white">{{ row.study.correct }}/{{ row.study.attempted }}</span>
+                            <span class="text-xs text-sky-600 dark:text-sky-400 ml-1">{{ row.study.accuracy }}%</span>
+                            {% else %}<span class="text-gray-300 dark:text-slate-600">–</span>{% endif %}
+                        </td>
+                        <td class="py-2.5 pr-3 text-right tabular-nums text-xs whitespace-nowrap bg-sky-50/60 dark:bg-sky-950/20 cursor-help group-hover/row:bg-sky-100 dark:group-hover/row:bg-sky-900/40 transition-colors
+                            {% if row.study.color == 'green' %}text-green-600 dark:text-green-400
+                            {% elif row.study.color == 'yellow' %}text-amber-600 dark:text-amber-400
+                            {% elif row.study.color == 'red' %}text-red-600 dark:text-red-400
+                            {% else %}text-gray-400 dark:text-slate-500{% endif %}"
+                            data-tip="{% if row.study.avg_mm_ss %}Среднее время на одну задачу в режиме тренировки{% else %}Время в тренировке не засечено{% endif %}">
+                            {{ row.study.avg_mm_ss|default:"" }}
+                        </td>
+                        <td class="py-2.5 px-3 text-right tabular-nums whitespace-nowrap bg-violet-50/60 dark:bg-violet-950/20 cursor-help group-hover/row:bg-violet-100 dark:group-hover/row:bg-violet-900/40 transition-colors"
+                            data-tip="{% if row.exam.attempted %}{{ row.exam.correct }} верн{{ row.exam.correct|plural:"ая,ые,ых" }} попыт{{ row.exam.correct|plural:"ка,ки,ок" }} из {{ row.exam.attempted }}. Точность {{ row.exam.accuracy }}% – это верные попытки, делённые на все.{% if row.number >= 26 %} За задания 26 и 27 бывает половина балла, поэтому верных может быть дробным числом.{% endif %}{% else %}Вы ещё не писали экзамен по этому заданию{% endif %}">
+                            {% if row.exam.attempted %}
+                            <span class="text-gray-900 dark:text-white">{{ row.exam.correct }}/{{ row.exam.attempted }}</span>
+                            <span class="text-xs text-violet-600 dark:text-violet-400 ml-1">{{ row.exam.accuracy }}%</span>
+                            {% else %}<span class="text-gray-300 dark:text-slate-600">–</span>{% endif %}
+                        </td>
+                        <td class="py-2.5 pr-3 text-right tabular-nums text-xs whitespace-nowrap bg-violet-50/60 dark:bg-violet-950/20 cursor-help group-hover/row:bg-violet-100 dark:group-hover/row:bg-violet-900/40 transition-colors
+                            {% if row.exam.color == 'green' %}text-green-600 dark:text-green-400
+                            {% elif row.exam.color == 'yellow' %}text-amber-600 dark:text-amber-400
+                            {% elif row.exam.color == 'red' %}text-red-600 dark:text-red-400
+                            {% else %}text-gray-400 dark:text-slate-500{% endif %}"
+                            data-tip="{% if row.exam.avg_mm_ss %}Среднее время на одну задачу в режиме экзамена{% else %}Время на экзамене не засечено{% endif %}">
+                            {{ row.exam.avg_mm_ss|default:"" }}
+                        </td>
+                        <td class="py-2.5 px-2 text-center tabular-nums text-xs text-gray-400 dark:text-slate-500 group-hover/row:bg-gray-50 dark:group-hover/row:bg-slate-700/40 transition-colors">{{ row.recommended_min }} мин</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+</section>
+
+<!-- ══════════ РАЗДЕЛ 2: ВАРИАНТЫ ══════════ -->
+<section class="space-y-4 pt-4">
+    <div class="flex items-center gap-3">
+        <span class="shrink-0 w-9 h-9 rounded-xl bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 flex items-center justify-center">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+        </span>
+        <div class="min-w-0">
+            <h2 class="text-lg font-bold text-gray-900 dark:text-white leading-tight">Варианты</h2>
+            {% comment %}
+            Режимы разведены так же, как у заданий, и прогноз честно обещает
+            меньше, чем показывает статистика: тренировочный вариант решают с
+            открытой теорией и без таймера, его балл в прогноз не идёт.
+            {% endcomment %}
+            <p class="text-xs text-gray-400 dark:text-slate-500">работа целиком за 235 минут; прогноз – только по экзаменационным</p>
+        </div>
+        <div class="flex-1 h-px bg-gradient-to-r from-amber-200 dark:from-amber-800 to-transparent"></div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+        {% include 'quizzes/_ege_forecast.html' with forecast=overview.variants.forecast hint="результат последней экзаменационной работы" empty="Появится после первого варианта в режиме экзамена. Тренировочные в прогноз не идут: их пишут с теорией под рукой и без таймера." %}
+
+        <div class="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-5 sm:p-6">
+            <h3 class="font-semibold text-gray-900 dark:text-white mb-4">Написано</h3>
+            <div class="space-y-5">
+                {% include 'quizzes/_ege_variant_group.html' with bucket=overview.variants.exam label="Экзамен" is_exam=True %}
+                {% include 'quizzes/_ege_variant_group.html' with bucket=overview.variants.study label="Тренировка" is_exam=False %}
+                {% if not overview.variants.exam.total and not overview.variants.study.total %}
+                <p class="text-sm text-gray-400 dark:text-slate-500">Опубликованных вариантов пока нет</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    {% if overview.variants.by_number %}
+    <div class="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 p-5 sm:p-6">
+        <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2 mb-4">
+            <h3 class="font-semibold text-gray-900 dark:text-white">Темп по номерам</h3>
+            {% comment %}
+            Та же таблица, что «По каждому заданию», и колонки те же – только
+            цифры не из тренажёра, а из вариантов. Что в ячейке, объясняет её
+            подсказка; здесь остался лишь цвет – его наведением не прочитаешь,
+            а смотрят на него как раз издалека, всю таблицу разом.
+            {% endcomment %}
+            <div class="flex items-center gap-3 text-[11px] text-gray-400 dark:text-slate-500">
+                <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-sm bg-green-400"></span>в норме</span>
+                <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-sm bg-amber-400"></span>до 1,5 нормы</span>
+                <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-sm bg-red-400"></span>дольше</span>
+            </div>
+        </div>
+
+        <div class="overflow-x-auto -mx-5 px-5 sm:-mx-6 sm:px-6">
+            <table class="w-full text-sm min-w-[560px]">
+                <thead>
+                    <tr class="text-xs text-gray-400 dark:text-slate-500">
+                        <th class="text-left font-medium pb-2 pr-3 w-full">Задание</th>
+                        <th colspan="2" class="font-medium pb-2 px-3 text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/30 rounded-t-lg cursor-help w-px whitespace-nowrap"
+                            data-tip="Варианты, открытые в режиме тренировки – без таймера и с теорией под рукой. В прогноз они не идут">Тренировка</th>
+                        <th colspan="2" class="font-medium pb-2 px-3 text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-950/30 rounded-t-lg cursor-help w-px whitespace-nowrap"
+                            data-tip="Варианты, написанные в режиме экзамена – один раз и за 235 минут. Только они дают прогноз балла">Экзамен</th>
+                        <th class="text-center font-medium pb-2 px-2 w-px whitespace-nowrap">Норма ФИПИ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in overview.variants.by_number %}
+                    <tr class="border-t border-gray-50 dark:border-slate-700/50 group/row">
+                        <td class="py-2.5 pr-3 group-hover/row:bg-gray-50 dark:group-hover/row:bg-slate-700/40 transition-colors">
+                            <a href="{% url 'ege:ege_task' row.number %}" class="flex items-center gap-2 group">
+                                <span class="shrink-0 w-7 h-7 rounded-lg bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300 flex items-center justify-center text-xs font-bold">{{ row.number }}</span>
+                                <span class="text-gray-900 dark:text-white group-hover:text-brand-600 dark:group-hover:text-cyan-400 truncate max-w-[220px]">{{ row.title }}</span>
+                            </a>
+                        </td>
+                        <td class="py-2.5 px-3 text-right tabular-nums whitespace-nowrap bg-sky-50/60 dark:bg-sky-950/20 cursor-help group-hover/row:bg-sky-100 dark:group-hover/row:bg-sky-900/40 transition-colors"
+                            data-tip="{% if row.study.total %}Решено {{ row.study.solved }} задач{{ row.study.solved|plural:"а,и," }} из {{ row.study.total }} с этим номером{% else %}В тренировочных вариантах задания {{ row.number }} нет{% endif %}">
+                            {% if row.study.total %}
+                            <span class="text-gray-900 dark:text-white">{{ row.study.solved }}</span><span class="text-gray-400">/{{ row.study.total }}</span>
+                            {% else %}<span class="text-gray-300 dark:text-slate-600">–</span>{% endif %}
+                        </td>
+                        <td class="py-2.5 pr-3 text-right tabular-nums text-xs whitespace-nowrap bg-sky-50/60 dark:bg-sky-950/20 cursor-help group-hover/row:bg-sky-100 dark:group-hover/row:bg-sky-900/40 transition-colors
+                            {% if row.study.color == 'green' %}text-green-600 dark:text-green-400
+                            {% elif row.study.color == 'yellow' %}text-amber-600 dark:text-amber-400
+                            {% elif row.study.color == 'red' %}text-red-600 dark:text-red-400
+                            {% else %}text-gray-400 dark:text-slate-500{% endif %}"
+                            data-tip="{% if row.study.avg_mm_ss %}Среднее время на одну задачу в тренировочных вариантах{% else %}В тренировочных вариантах это задание ещё не решено{% endif %}">
+                            {{ row.study.avg_mm_ss|default:"" }}
+                        </td>
+                        <td class="py-2.5 px-3 text-right tabular-nums whitespace-nowrap bg-violet-50/60 dark:bg-violet-950/20 cursor-help group-hover/row:bg-violet-100 dark:group-hover/row:bg-violet-900/40 transition-colors"
+                            data-tip="{% if row.exam.total %}Решено {{ row.exam.solved }} задач{{ row.exam.solved|plural:"а,и," }} из {{ row.exam.total }} с этим номером{% else %}В экзаменационных вариантах задания {{ row.number }} нет{% endif %}">
+                            {% if row.exam.total %}
+                            <span class="text-gray-900 dark:text-white">{{ row.exam.solved }}</span><span class="text-gray-400">/{{ row.exam.total }}</span>
+                            {% else %}<span class="text-gray-300 dark:text-slate-600">–</span>{% endif %}
+                        </td>
+                        <td class="py-2.5 pr-3 text-right tabular-nums text-xs whitespace-nowrap bg-violet-50/60 dark:bg-violet-950/20 cursor-help group-hover/row:bg-violet-100 dark:group-hover/row:bg-violet-900/40 transition-colors
+                            {% if row.exam.color == 'green' %}text-green-600 dark:text-green-400
+                            {% elif row.exam.color == 'yellow' %}text-amber-600 dark:text-amber-400
+                            {% elif row.exam.color == 'red' %}text-red-600 dark:text-red-400
+                            {% else %}text-gray-400 dark:text-slate-500{% endif %}"
+                            data-tip="{% if row.exam.avg_mm_ss %}Среднее время на одну задачу в экзаменационных вариантах{% else %}В экзаменационных вариантах это задание ещё не решено{% endif %}">
+                            {{ row.exam.avg_mm_ss|default:"" }}
+                        </td>
+                        <td class="py-2.5 px-2 text-center tabular-nums text-xs text-gray-400 dark:text-slate-500 group-hover/row:bg-gray-50 dark:group-hover/row:bg-slate-700/40 transition-colors">{{ row.recommended_min }} мин</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+</section>
+
+{% comment %}
+Сам тултип: тот же тёмный прямоугольник, что у столбиков динамики выше.
+
+:style задан объектом, а не строкой. Alpine на строке делает
+setAttribute('style', ...) и переписал бы атрибут целиком – вместе с
+display:none, который туда кладёт x-show. Объект правит отдельные свойства и
+display не трогает.
+{% endcomment %}
+<div x-show="tip" x-cloak x-text="tip"
+     :style="{ left: x + 'px', top: y + 'px', transform: 'translate(-50%, ' + (below ? gap + 'px' : 'calc(-100% - ' + gap + 'px)') + ')' }"
+     class="fixed z-50 max-w-xs px-3 py-2 rounded-lg bg-gray-900 text-white text-xs leading-snug shadow-lg pointer-events-none"></div>
+</div>

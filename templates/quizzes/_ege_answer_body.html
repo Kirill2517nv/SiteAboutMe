@@ -1,0 +1,40 @@
+{% comment %}
+Правильный ответ задачи для учителя. Ожидает `question`.
+
+Одна разметка на три места, где учитель смотрит ответ: карточка задачи в
+сессии, банк задач и разбор ошибок ученика. Скопированная в каждый шаблон, она
+уже успела разъехаться – и молча: в двух копиях ожидаемый вывод теста читался
+как `tc.expected_output`, а поле называется `output_data`. Django на неизвестный
+атрибут не ругается, он подставляет пустую строку, поэтому панель показывала
+пустой прямоугольник, и выглядело это как «у задачи нет ответа».
+
+Для задач на код ответ и есть ожидаемый вывод теста: в заданиях вроде второго
+программа печатает готовую строку ответа («zyxw»), и никакого отдельного
+correct_text_answer у такой задачи нет.
+{% endcomment %}
+{% if question.question_type == 'code' %}
+<p class="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wide mb-3">Тест-кейсы</p>
+{% for tc in question.test_cases.all %}
+<div class="mb-3 last:mb-0 grid grid-cols-2 gap-2 text-xs">
+    <div>
+        <p class="text-gray-500 dark:text-slate-400 font-medium mb-1">Вход{% if question.test_cases.count > 1 %} #{{ forloop.counter }}{% endif %}</p>
+        <pre class="bg-white dark:bg-slate-900 rounded-lg border border-amber-200 dark:border-slate-700 p-2 font-mono text-gray-800 dark:text-slate-200 overflow-x-auto whitespace-pre-wrap">{% if tc.input_data %}{{ tc.input_data }}{% else %}нет входных данных{% endif %}</pre>
+    </div>
+    <div>
+        <p class="text-gray-500 dark:text-slate-400 font-medium mb-1">Ожидаемый вывод</p>
+        <pre class="bg-white dark:bg-slate-900 rounded-lg border border-amber-200 dark:border-slate-700 p-2 font-mono text-gray-800 dark:text-slate-200 overflow-x-auto whitespace-pre-wrap">{{ tc.output_data|default:"пусто" }}</pre>
+    </div>
+</div>
+{% empty %}
+<p class="text-xs text-gray-500 dark:text-slate-400">Тест-кейсы не заданы – проверять решение нечем.</p>
+{% endfor %}
+
+{% else %}
+<p class="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wide mb-2">Правильный ответ</p>
+<p class="font-mono text-gray-900 dark:text-white font-semibold">{{ question.correct_text_answer|default:"не задан" }}</p>
+{% if question.alternative_answers %}
+<p class="text-xs text-gray-500 dark:text-slate-400 mt-2">
+    Также принимается: <span class="font-mono">{{ question.alternative_answers|join:", " }}</span>
+</p>
+{% endif %}
+{% endif %}

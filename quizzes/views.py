@@ -6,9 +6,10 @@ from django.contrib.auth.models import User
 from django.db.models import Max, Count, Sum
 from django.http import FileResponse, Http404, JsonResponse
 from django.conf import settings
+from django.core.exceptions import PermissionDenied
 from django.views.decorators.http import require_POST, require_GET
 from django.views.decorators.csrf import csrf_protect
-from .models import Quiz, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, Question, CodeSubmission, HelpRequest, HelpComment, QuestionFile, ExamTaskProgress, SolutionAttachment, SolutionLike, HintChoice
+from .models import PracticeItem, Quiz, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, Question, CodeSubmission, QuestionFile, ExamTaskProgress, SolutionAttachment, SolutionLike, HintChoice
 from accounts.models import StudentGroup
 import datetime
 import os
@@ -16,48 +17,19 @@ import json
 import mimetypes
 import re
 from urllib.parse import quote
-from .utils import run_code_in_docker
+from .utils import js_json, run_code_in_docker
 from .tasks import check_code_task
 
-# Перевод первичных баллов ЕГЭ по информатике в тестовые (2024)
-EGE_SCORE_CONVERSION = {
-    0: 0,
-    1: 7, 2: 14, 3: 20, 4: 27, 5: 34,
-    6: 40, 7: 43, 8: 46, 9: 48, 10: 51,
-    11: 54, 12: 56, 13: 59, 14: 62, 15: 64,
-    16: 67, 17: 70, 18: 72, 19: 75, 20: 78,
-    21: 80, 22: 83, 23: 85, 24: 88, 25: 90,
-    26: 93, 27: 95, 28: 98, 29: 100,
-}
-
-# Рекомендуемое время на задачу ЕГЭ по информатике (минуты)
-EGE_RECOMMENDED_TIME = {
-    1: 3, 2: 3, 3: 3, 4: 2, 5: 4, 6: 4, 7: 5, 8: 4,
-    9: 6, 10: 3, 11: 3, 12: 6, 13: 3, 14: 3, 15: 3, 16: 5,
-    17: 14, 18: 8, 19: 6, 20: 8, 21: 11, 22: 7, 23: 8,
-    24: 18, 25: 20, 26: 35, 27: 40,
-}
-
-
-def ege_time_color(seconds, ege_number):
-    """
-    Цвет времени над задачей ЕГЭ относительно рекомендованного:
-    зелёный — уложился в норму, жёлтый — до полутора норм, красный — дольше.
-    Пустая строка — задача не решалась, красить нечего.
-
-    Одна функция на все три места, где показывается время ЕГЭ (результаты
-    варианта, отчёт по ученику, профиль): расхождение цветов между ними
-    ученик читал бы как ошибку в данных.
-    """
-    if not seconds:
-        return ''
-    rec_min = EGE_RECOMMENDED_TIME.get(ege_number or 0, 5)
-    minutes = seconds // 60
-    if minutes <= rec_min:
-        return 'green'
-    if minutes <= rec_min * 1.5:
-        return 'yellow'
-    return 'red'
+# Константы ЕГЭ переехали в ege_constants.py – их делят между собой views,
+# ege_practice, ege_stats и accounts. Импорт оставлен здесь, чтобы старые
+# `from quizzes.views import EGE_RECOMMENDED_TIME` продолжали работать.
+from .ege_constants import (  # noqa: F401
+    EGE_SCORE_CONVERSION, EGE_RECOMMENDED_TIME, EGE_TASK_POINTS,
+    EGE_MAX_PRIMARY, EGE_EXAM_MINUTES, EGE_CODE_TASKS,
+    ege_time_color, test_score_for,
+)
+from .ege_constants import EXCLUDED_KINDS, PRACTICE_QUIZ_TYPES
+from .ege_scoring import grade as ege_grade
 
 
 def _natural_sort_key(text):
@@ -91,7 +63,7 @@ def _attachment_content_disposition(filename: str) -> str:
     ascii_fallback = re.sub(r"[^A-Za-z0-9.\-_]", "_", safe) or "download"
     return f'attachment; filename="{ascii_fallback}"; filename*=UTF-8\'\'{quote(safe)}'
 
-from .tasks import normalize_output
+from .ege_scoring import outputs_match
 
 
 def get_effective_quiz_settings(user, quiz):
@@ -235,7 +207,153 @@ def build_ege_results_matrix(quiz):
     return matrix, questions, best_answer_map
 
 
+def _student_list():
+    """Ученики для панели учителя – тот же список и порядок, что в профиле."""
+    return (
+        User.objects.filter(is_superuser=False)
+        .select_related('profile__group')
+        .order_by('profile__group__name', 'last_name', 'username')
+    )
+
+
+def _viewed_student(request):
+    """
+    Чей прогресс открыт на хабе: None – свой, иначе ученик из ?student=<id>.
+
+    Критерий доступа тот же, что у чужого профиля (accounts.ProfileView):
+    смотреть чужие цифры может только суперпользователь.
+    """
+    student_id = request.GET.get('student')
+    if not student_id:
+        return None
+    if not request.user.is_superuser:
+        raise PermissionDenied('Чужой прогресс открыт учителю')
+    if not student_id.isdigit():
+        raise Http404('Нет такого ученика')
+    return get_object_or_404(User, id=int(student_id), is_superuser=False)
+
+
+@user_passes_test(lambda user: user.is_superuser)
+def ege_class_view(request):
+    """
+    Сравнительная таблица класса: по строке на ученика, по разделу на группу.
+
+    Существует затем, что переключаться между двумя десятками личных страниц,
+    держа цифры в голове, невозможно. В строке ровно то, по чему принимают
+    решение перед занятием: прогноз балла и на скольких заданиях он держится,
+    последний написанный вариант, долг по ошибкам, три самые дорогие дыры и
+    график активности по неделям.
+
+    Числа считает ege_stats.class_rows теми же формулами, что и личная вкладка:
+    учитель держит таблицу и карточку ученика открытыми рядом.
+
+    Показывается один класс за раз (?group=<id>), а не все сразу: классов со
+    временем становится много, и страница из пяти таблиц по два десятка строк
+    перестаёт отвечать на свой единственный вопрос – «с кем работать сегодня».
+    ?group=all остаётся для тех редких случаев, когда сравнить нужно поперёк
+    классов, ?group=none – для учеников, которых ещё никуда не записали.
+    """
+    from . import ege_stats
+
+    students = _student_list()
+    groups = list(
+        StudentGroup.objects
+        .filter(students__user__is_superuser=False).distinct().order_by('name')
+    )
+    loose = students.filter(profile__group__isnull=True).exists()
+
+    # По умолчанию – первый класс списка: конкретный класс перед глазами полезнее
+    # общего свода, а «все» и «без класса» стоят рядом отдельными вкладками.
+    current = request.GET.get('group') or (str(groups[0].id) if groups else 'all')
+    # id класса приходит из адреса: нечисловой ?group= уронил бы фильтр по
+    # profile__group_id пятисоткой. Мусор трактуем как «все».
+    if not (current in ('all', 'none') or current.isdigit()):
+        current = 'all'
+    if current == 'none':
+        students = students.filter(profile__group__isnull=True)
+    elif current != 'all':
+        students = students.filter(profile__group_id=current)
+
+    return render(request, 'quizzes/ege_class.html', {
+        'rows': ege_stats.class_rows(students),
+        'students': _student_list(),
+        'groups': groups,
+        'has_loose': loose,
+        'current_group': current,
+    })
+
+
+@user_passes_test(lambda user: user.is_superuser)
+def ege_student_mistakes_view(request, user_id):
+    """
+    Долг ученика по ошибкам глазами учителя: условие задачи и что он ответил.
+
+    Это не сессия: сессию нельзя открыть чужую и «просто посмотреть» – её
+    задачи выбираются в момент старта и попадают в статистику того, кто её
+    завёл. Здесь тот же набор задач, что получит ученик, нажав «Работа над
+    ошибками», но в режиме чтения: условие, ответ ученика, и под кнопкой –
+    правильный ответ, как на остальных страницах учителя.
+
+    Отбор повторяет ege_practice.mistake_count буквально – счётчик в таблице
+    класса ведёт сюда, и число задач на странице обязано совпасть с числом на
+    кнопке, иначе ссылке перестанут верить.
+    """
+    student = get_object_or_404(User, id=user_id, is_superuser=False)
+
+    items = (
+        PracticeItem.objects
+        .filter(session__user=student, answered_at__isnull=False,
+                question__quiz__quiz_type__in=PRACTICE_QUIZ_TYPES)
+        .exclude(session__kind__in=EXCLUDED_KINDS)
+        .exclude(carried=True)
+        .select_related('question', 'submission', 'session')
+        .prefetch_related('question__images', 'question__test_cases')
+        .order_by('question_id', '-answered_at')
+    )
+
+    # Первая строка по задаче – её последняя попытка. Ошибкой задача считается
+    # только по ней: провал, закрытый более поздним решением, из долга уходит.
+    rows = []
+    seen = set()
+    for item in items:
+        if item.question_id in seen:
+            continue
+        seen.add(item.question_id)
+        if item.is_correct is not False:
+            continue
+        rows.append(item)
+
+    # Группируем по заданию: учитель разбирает тему целиком, а не задачу за
+    # задачей вразнобой. Внутри задания сверху свежие ошибки.
+    by_task = {}
+    for item in rows:
+        by_task.setdefault(item.question.ege_number or 0, []).append(item)
+    groups = [
+        {'number': number, 'items': sorted(items_, key=lambda i: i.answered_at, reverse=True)}
+        for number, items_ in sorted(by_task.items())
+    ]
+
+    return render(request, 'quizzes/ege_student_mistakes.html', {
+        'student': student,
+        'groups': groups,
+        'total': len(rows),
+    })
+
+
 def ege_list_view(request):
+    """
+    Хаб тренажёра: карта 27 заданий, варианты и личный прогресс.
+
+    Сетка заданий стоит первой вкладкой намеренно. Вариант целиком – это почти
+    четыре часа, и как ежедневный режим подготовки он не работает; тренировка по
+    отдельному заданию помещается в один присест.
+    """
+    student = _viewed_student(request)
+    # Чьи цифры показываем. Учитель открывает ту же страницу с ?student=<id> –
+    # отдельного шаблона для чужого прогресса нет намеренно: расхождение между
+    # «своей» и «учительской» вёрсткой читалось бы как расхождение в данных.
+    target = student or request.user
+
     quizzes = Quiz.objects.filter(
         quiz_type='exam', is_public=True,
     ).annotate(
@@ -244,9 +362,9 @@ def ege_list_view(request):
     ).order_by('title')
 
     user_stats = {}
-    if request.user.is_authenticated:
+    if target.is_authenticated:
         quiz_ids = [q.id for q in quizzes]
-        user_stats = get_user_ege_stats(request.user, quiz_ids) or {}
+        user_stats = get_user_ege_stats(target, quiz_ids) or {}
 
     variants = []
     for quiz in quizzes:
@@ -263,14 +381,27 @@ def ege_list_view(request):
             'best_score': best_score,
         })
 
-    # Теория ЕГЭ переехала сюда с главной учебника: задачи и теория по
-    # одному заданию должны лежать рядом, а не в разных разделах сайта.
-    from textbook.services import ege_theory_groups
+    from . import ege_stats
 
-    return render(request, 'quizzes/ege_list.html', {
-        'variants': variants,
-        'ege_tasks': ege_theory_groups(),
-    })
+    context = {'variants': variants, 'student': student}
+
+    # Панель учителя: список учеников для переключения и ссылка на таблицу класса.
+    if request.user.is_superuser:
+        context['students'] = _student_list()
+
+    if target.is_authenticated:
+        context['overview'] = ege_stats.overview(target)
+    else:
+        # Гостю показываем ту же сетку заданий, но без личных цифр: карта тем –
+        # это ещё и оглавление теории, прятать её за логином незачем. Вкладку
+        # прогресса он получает заполненной примером (`is_demo`): пустые
+        # карточки не объясняют, ради чего заводить аккаунт.
+        context['overview'] = {
+            'tasks': ege_stats.task_stats(request.user),
+            **ege_stats.demo_overview(),
+        }
+
+    return render(request, 'quizzes/ege_list.html', context)
 
 
 # --- EGE DETAIL / CHECK / FINISH / RESULT / SAVE-TIME ---
@@ -375,8 +506,8 @@ def ege_detail_view(request, quiz_id):
     context = {
         'quiz': quiz,
         'questions': questions,
-        'tasks_json': json.dumps(tasks_data),
-        'last_submissions_json': json.dumps(last_submissions),
+        'tasks_json': js_json(tasks_data),
+        'last_submissions_json': js_json(last_submissions),
         'total_points': sum(q.points for q in questions),
     }
     return render(request, 'quizzes/ege_detail.html', context)
@@ -412,8 +543,13 @@ def ege_check_answer_view(request, quiz_id):
     progress, _ = ExamTaskProgress.objects.get_or_create(
         user=request.user, quiz=quiz, question=question,
     )
-    progress.attempts_to_solve += 1
-    fields_to_update = ['attempts_to_solve']
+    fields_to_update = []
+    # Счётчик отвечает на вопрос «с какой попытки решена задача», поэтому после
+    # решения он замирает: проверки, сделанные из любопытства после верного
+    # ответа, к трудности задачи отношения не имеют.
+    if not progress.is_solved:
+        progress.attempts_to_solve += 1
+        fields_to_update.append('attempts_to_solve')
 
     if is_correct and not progress.is_solved:
         progress.is_solved = True
@@ -470,6 +606,7 @@ def ege_finish_view(request, quiz_id):
     for question in questions:
         user_input = answers_data.get(str(question.id), '')
         is_correct = False
+        score = None
         text_answer = None
         code_answer = None
         error_log = None
@@ -478,9 +615,16 @@ def ege_finish_view(request, quiz_id):
         if question.question_type == 'text':
             text_answer = user_input
             if user_input:
-                is_correct = question.check_text_answer(user_input)
-                if is_correct:
-                    total_score += question.points
+                # За задания 26 и 27 бывает 1 балл из 2: числа перепутаны
+                # местами или верна половина ответа.
+                score = ege_grade(question, user_input, question.correct_text_answer or '')
+                if score is not None:
+                    is_correct = score >= question.points
+                    total_score += score
+                else:
+                    is_correct = question.check_text_answer(user_input)
+                    if is_correct:
+                        total_score += question.points
 
         elif question.question_type == 'code':
             # Берём последний completed CodeSubmission
@@ -494,7 +638,12 @@ def ege_finish_view(request, quiz_id):
                 if latest_sub.status in ('success', 'failed'):
                     is_correct = latest_sub.is_correct or False
                     error_log = latest_sub.error_log
-                    if is_correct:
+                    # За задания 26 и 27 бывает 1 балл из 2 – он уже посчитан
+                    # проверкой и лежит в отправке.
+                    score = latest_sub.score
+                    if score is not None:
+                        total_score += score
+                    elif is_correct:
                         total_score += question.points
                 elif latest_sub.status in ('pending', 'running'):
                     # Ещё проверяется — Celery обновит позже
@@ -524,6 +673,7 @@ def ege_finish_view(request, quiz_id):
             code_answer=code_answer,
             error_log=error_log,
             is_correct=is_correct,
+            score=submission.score if submission else score,
             submission=submission,
         ))
 
@@ -532,16 +682,33 @@ def ege_finish_view(request, quiz_id):
     user_result.score = total_score
     user_result.save(update_fields=['score'])
 
-    # Обновляем ExamTaskProgress для всех верно решённых задач
+    # Обновляем ExamTaskProgress по каждой отвеченной задаче – не только по
+    # решённым. Неверный ответ тоже часть работы: без него точность по вариантам
+    # считалась бы по одним удачам.
     for ua in user_answers_to_create:
-        if ua.is_correct:
-            progress, _ = ExamTaskProgress.objects.get_or_create(
-                user=request.user, quiz=quiz, question=ua.question,
-            )
-            if not progress.is_solved:
-                progress.is_solved = True
-                progress.first_solved_at = timezone.now()
-                progress.save(update_fields=['is_solved', 'first_solved_at'])
+        answered = bool(ua.text_answer or ua.code_answer or ua.selected_choice_id)
+        if not answered:
+            continue
+        progress, _ = ExamTaskProgress.objects.get_or_create(
+            user=request.user, quiz=quiz, question=ua.question,
+        )
+        fields = []
+        # Попытку засчитываем, только если её ещё никто не засчитал: проверки
+        # ответа и отправки кода уже увеличили счётчик, и завершение варианта
+        # не должно добавлять к ним лишнюю.
+        if not progress.attempts_to_solve:
+            progress.attempts_to_solve = 1
+            fields.append('attempts_to_solve')
+        # Частичный балл задачу не закрывает, но заработанное фиксирует.
+        if ua.score is not None and ua.score > (progress.score or 0):
+            progress.score = ua.score
+            fields.append('score')
+        if ua.is_correct and not progress.is_solved:
+            progress.is_solved = True
+            progress.first_solved_at = timezone.now()
+            fields += ['is_solved', 'first_solved_at']
+        if fields:
+            progress.save(update_fields=fields)
 
     # Pending code submissions count
     pending_checks = sum(
@@ -672,8 +839,8 @@ def ege_results_view(request, quiz_id):
             'time': time_map.get((uid, qid)),
         }
 
-    question_types_json = json.dumps(question_types)
-    sort_data_json = json.dumps(sort_data)
+    question_types_json = js_json(question_types)
+    sort_data_json = js_json(sort_data)
 
     # Личная статистика из ExamTaskProgress
     personal_stats = None
@@ -760,7 +927,7 @@ def ege_student_stats_view(request, quiz_id, user_id):
         'full_name': full_name,
         'questions': questions,
         'stats': stats,
-        'stats_json': json.dumps(stats),
+        'stats_json': js_json(stats),
     })
 
 
@@ -1178,7 +1345,7 @@ def quiz_detail_view(request, quiz_id):
                                 error_log = error
                                 break
 
-                            if normalize_output(output) != normalize_output(test_case.output_data):
+                            if not outputs_match(output, test_case.output_data):
                                 all_tests_passed = False
                                 # Скрываем правильный ответ от пользователя
                                 error_log = f"Неверный ответ на тесте.\nВходные данные: {test_case.input_data}\nВаш ответ: {output}"
@@ -1238,7 +1405,7 @@ def quiz_detail_view(request, quiz_id):
 
     request.session[f'quiz_{quiz_id}_start'] = timezone.now().isoformat()
     # Конвертируем ключи в строки для JSON сериализации
-    last_attempt_codes_json = json.dumps({str(k): v for k, v in last_attempt_codes.items()})
+    last_attempt_codes_json = js_json({str(k): v for k, v in last_attempt_codes.items()})
 
     # Все вопросы теста, отсортированные натурально по заголовку
     all_questions = list(quiz.questions.all())
@@ -1343,8 +1510,8 @@ def quiz_detail_view(request, quiz_id):
         'last_attempt_codes_json': last_attempt_codes_json,
         'end_date': end_date,
         'is_admin': request.user.is_superuser,
-        'tasks_json': json.dumps(tasks_data),
-        'last_submissions_json': json.dumps(last_submissions),
+        'tasks_json': js_json(tasks_data),
+        'last_submissions_json': js_json(last_submissions),
         'total_points': sum(q.points for q in all_questions),
     })
 
@@ -1387,6 +1554,36 @@ def question_hint_view(request, question_id):
         from textbook.templatetags.textbook_tags import markdownify
         payload['hint'] = str(markdownify(question.hint))
     return JsonResponse(payload)
+
+
+@login_required
+@require_POST
+def question_check_view(request, question_id):
+    """AJAX: вердикт по одному текстовому ответу, без записи результата.
+
+    Мгновенная обратная связь была только у задач на код: текстовый ответ ученик
+    узнавал верным или нет лишь после «Сохранить результат». Балл по-прежнему
+    выставляет finish_quiz_view – здесь только «верно/неверно», ничего не
+    сохраняем и правильный ответ наружу не отдаём.
+    """
+    question = get_object_or_404(Question.objects.select_related('quiz'), id=question_id)
+    # Тот же гейт, что у страницы теста и у подсказки: без него перебором
+    # question_id проверяются задачи чужой группы.
+    if not get_effective_quiz_settings(request.user, question.quiz):
+        return JsonResponse({'error': 'Тест не назначен'}, status=403)
+
+    if question.question_type != 'text':
+        return JsonResponse({'error': 'Проверяется только текстовый ответ'}, status=400)
+
+    try:
+        answer = (json.loads(request.body or '{}').get('answer') or '').strip()
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Невалидный JSON'}, status=400)
+
+    if not answer:
+        return JsonResponse({'error': 'Ответ пуст'}, status=400)
+
+    return JsonResponse({'is_correct': question.check_text_answer(answer)})
 
 
 # --- СТАТИСТИКА (без изменений) ---
@@ -1630,6 +1827,8 @@ def submission_status_view(request, submission_id):
         'question_id': submission.question_id,
         'status': submission.status,
         'is_correct': submission.is_correct,
+        'score': submission.score,
+        'points': submission.question.points,
         'error_log': submission.error_log,
         'cpu_time_ms': submission.cpu_time_ms,
         'memory_kb': submission.memory_kb,
@@ -1852,326 +2051,3 @@ def finish_quiz_view(request, quiz_id):
         # Тест учебника закрываем возвратом в учебник, там итог показан бейджем.
         'redirect_url': after_finish_url or '/quizzes/'
     })
-
-
-# --- HELP REQUEST SYSTEM ---
-
-def _serialize_comment(comment):
-    """Сериализация HelpComment в dict для JSON."""
-    return {
-        'id': comment.id,
-        'author': comment.author.get_full_name() or comment.author.username,
-        'author_id': comment.author_id,
-        'is_teacher': comment.author.is_superuser,
-        'text': comment.text,
-        'line_number': comment.line_number,
-        'code_snapshot': comment.code_snapshot,
-        'created_at': comment.created_at.isoformat(),
-    }
-
-
-@login_required
-def help_request_view(request, quiz_id, question_id):
-    """
-    GET: Получить тред + все комментарии (JSON).
-    POST: Создать/дополнить HelpRequest, добавить HelpComment.
-    """
-    quiz = get_object_or_404(Quiz, id=quiz_id)
-    question = get_object_or_404(Question, id=question_id, quiz=quiz)
-
-    # Только для code-вопросов
-    if question.question_type != 'code':
-        return JsonResponse({'error': 'Помощь доступна только для задач с кодом'}, status=400)
-
-    # Проверяем доступ
-    eff_settings = get_effective_quiz_settings(request.user, quiz)
-    if not eff_settings and not request.user.is_superuser:
-        return JsonResponse({'error': 'Тест не назначен'}, status=403)
-
-    if request.method == 'GET':
-        try:
-            hr = HelpRequest.objects.get(student=request.user, question=question)
-            comments = hr.comments.select_related('author').all()
-            # Отмечаем как прочитанное только при явном открытии диалога
-            if hr.has_unread_for_student and request.GET.get('mark_read') == '1':
-                hr.has_unread_for_student = False
-                hr.save(update_fields=['has_unread_for_student'])
-            return JsonResponse({
-                'help_request_id': hr.id,
-                'status': hr.status,
-                'comments': [_serialize_comment(c) for c in comments],
-            })
-        except HelpRequest.DoesNotExist:
-            return JsonResponse({
-                'help_request_id': None,
-                'status': None,
-                'comments': [],
-            })
-
-    elif request.method == 'POST':
-        try:
-            data = json.loads(request.body)
-        except json.JSONDecodeError:
-            return JsonResponse({'error': 'Невалидный JSON'}, status=400)
-
-        text = data.get('text', '').strip()
-        if not text:
-            return JsonResponse({'error': 'Текст комментария не может быть пустым'}, status=400)
-        if len(text) > 10000:
-            return JsonResponse({'error': 'Комментарий не может превышать 10000 символов'}, status=400)
-
-        line_number = data.get('line_number')
-        code_snapshot = data.get('code_snapshot')
-
-        # Создаём или получаем HelpRequest
-        hr, created = HelpRequest.objects.get_or_create(
-            student=request.user,
-            question=question,
-            defaults={'quiz': quiz}
-        )
-
-        # Если запрос был решён — переоткрываем
-        if hr.status == 'resolved':
-            hr.status = 'open'
-
-        hr.has_unread_for_teacher = True
-        hr.save(update_fields=['status', 'has_unread_for_teacher', 'updated_at'])
-
-        # Создаём комментарий
-        comment = HelpComment.objects.create(
-            help_request=hr,
-            author=request.user,
-            text=text,
-            line_number=line_number,
-            code_snapshot=code_snapshot,
-        )
-
-        # WebSocket-нотификация учителю
-        _send_help_ws_notification(hr, comment, is_teacher_reply=False)
-
-        comments = hr.comments.select_related('author').all()
-        return JsonResponse({
-            'help_request_id': hr.id,
-            'status': hr.status,
-            'comment': _serialize_comment(comment),
-            'comments': [_serialize_comment(c) for c in comments],
-        })
-
-    return JsonResponse({'error': 'Method not allowed'}, status=405)
-
-
-@user_passes_test(lambda u: u.is_superuser)
-def help_requests_list_view(request):
-    """Дашборд учителя: список запросов помощи."""
-    status_filter = request.GET.get('status', 'open')
-
-    qs = HelpRequest.objects.select_related('student', 'question', 'quiz').order_by('-updated_at')
-
-    if status_filter == 'open':
-        qs = qs.filter(status='open')
-    elif status_filter == 'answered':
-        qs = qs.filter(status='answered')
-    elif status_filter == 'resolved':
-        qs = qs.filter(status='resolved')
-    # 'all' — без фильтра
-
-    # Добавляем последний комментарий для превью
-    help_requests = list(qs)
-    for hr in help_requests:
-        hr.last_comment = hr.comments.select_related('author').last()
-
-    return render(request, 'quizzes/help_requests_list.html', {
-        'help_requests': help_requests,
-        'status_filter': status_filter,
-    })
-
-
-@user_passes_test(lambda u: u.is_superuser)
-def help_request_review_view(request, help_request_id):
-    """Страница code review для учителя."""
-    hr = get_object_or_404(
-        HelpRequest.objects.select_related('student', 'question', 'quiz'),
-        id=help_request_id
-    )
-    comments = hr.comments.select_related('author').all()
-
-    # Отмечаем как прочитанное для учителя
-    if hr.has_unread_for_teacher:
-        hr.has_unread_for_teacher = False
-        hr.save(update_fields=['has_unread_for_teacher'])
-
-    # Получаем код: из последнего снапшота или из последней CodeSubmission
-    code = ''
-    for c in reversed(list(comments)):
-        if c.code_snapshot:
-            code = c.code_snapshot
-            break
-    if not code:
-        last_sub = CodeSubmission.objects.filter(
-            user=hr.student, question=hr.question
-        ).order_by('-created_at').first()
-        if last_sub:
-            code = last_sub.code
-
-    # Группируем line-комментарии по строкам
-    line_comments = {}
-    general_comments = []
-    for c in comments:
-        if c.line_number:
-            line_comments.setdefault(c.line_number, []).append(c)
-        else:
-            general_comments.append(c)
-
-    return render(request, 'quizzes/help_request_review.html', {
-        'hr': hr,
-        'comments': comments,
-        'code': code,
-        'line_comments_json': json.dumps({
-            str(k): [_serialize_comment(c) for c in v]
-            for k, v in line_comments.items()
-        }),
-        'general_comments': general_comments,
-    })
-
-
-@user_passes_test(lambda u: u.is_superuser)
-@require_POST
-def help_request_reply_view(request, help_request_id):
-    """Учитель отправляет ответ."""
-    hr = get_object_or_404(HelpRequest, id=help_request_id)
-
-    try:
-        data = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse({'error': 'Невалидный JSON'}, status=400)
-
-    text = data.get('text', '').strip()
-    if not text:
-        return JsonResponse({'error': 'Текст не может быть пустым'}, status=400)
-    if len(text) > 10000:
-        return JsonResponse({'error': 'Комментарий не может превышать 10000 символов'}, status=400)
-
-    line_number = data.get('line_number')
-
-    comment = HelpComment.objects.create(
-        help_request=hr,
-        author=request.user,
-        text=text,
-        line_number=line_number,
-    )
-
-    hr.has_unread_for_student = True
-    hr.has_unread_for_teacher = False
-    hr.status = 'answered'
-    hr.save(update_fields=['status', 'has_unread_for_student', 'has_unread_for_teacher', 'updated_at'])
-
-    # WebSocket-нотификация ученику
-    _send_help_ws_notification(hr, comment, is_teacher_reply=True)
-
-    return JsonResponse({
-        'comment': _serialize_comment(comment),
-        'status': hr.status,
-    })
-
-
-@user_passes_test(lambda u: u.is_superuser)
-@require_POST
-def help_request_resolve_view(request, help_request_id):
-    """Учитель помечает запрос как решённый."""
-    hr = get_object_or_404(HelpRequest, id=help_request_id)
-    hr.status = 'resolved'
-    hr.has_unread_for_student = True
-    hr.has_unread_for_teacher = False
-    hr.save(update_fields=['status', 'has_unread_for_student', 'has_unread_for_teacher', 'updated_at'])
-
-    # Нотификация ученику
-    _send_help_ws_notification(hr, None, is_teacher_reply=True, resolved=True)
-
-    return JsonResponse({'status': 'resolved'})
-
-
-@login_required
-def help_unread_count_view(request):
-    """Счётчик непрочитанных (polling fallback)."""
-    if request.user.is_superuser:
-        count = HelpRequest.objects.filter(has_unread_for_teacher=True).exclude(status='resolved').count()
-    else:
-        count = HelpRequest.objects.filter(student=request.user, has_unread_for_student=True).count()
-    return JsonResponse({'unread_count': count})
-
-
-@login_required
-def help_my_notifications_view(request):
-    """Список уведомлений ученика: непрочитанные ответы учителя (JSON)."""
-    if request.user.is_superuser:
-        return JsonResponse({'notifications': []})
-
-    hrs = HelpRequest.objects.filter(
-        student=request.user,
-        has_unread_for_student=True,
-    ).select_related('question', 'quiz').order_by('-updated_at')[:20]
-
-    notifications = []
-    for hr in hrs:
-        last_teacher_comment = hr.comments.filter(
-            author__is_superuser=True
-        ).order_by('-created_at').first()
-
-        notifications.append({
-            'id': hr.id,
-            'quiz_id': hr.quiz_id,
-            'quiz_title': hr.quiz.title,
-            'question_id': hr.question_id,
-            'question_title': hr.question.get_title(),
-            'status': hr.status,
-            'preview': last_teacher_comment.text[:100] if last_teacher_comment else '',
-            'teacher_name': (last_teacher_comment.author.get_full_name()
-                             or last_teacher_comment.author.username) if last_teacher_comment else '',
-            'updated_at': hr.updated_at.isoformat(),
-        })
-
-    return JsonResponse({'notifications': notifications})
-
-
-def _send_help_ws_notification(hr, comment, is_teacher_reply, resolved=False):
-    """Отправляет WebSocket-нотификацию через channel layer."""
-    try:
-        from channels.layers import get_channel_layer
-        from asgiref.sync import async_to_sync
-
-        channel_layer = get_channel_layer()
-        if not channel_layer:
-            return
-
-        comment_data = _serialize_comment(comment) if comment else None
-
-        if is_teacher_reply:
-            # Ученику через quiz-consumer (inline на quiz_detail)
-            quiz_group = f"user_{hr.student_id}_quiz_{hr.quiz_id}"
-            async_to_sync(channel_layer.group_send)(quiz_group, {
-                'type': 'help_comment_update',
-                'question_id': hr.question_id,
-                'comment': comment_data,
-                'status': hr.status,
-                'resolved': resolved,
-            })
-            # Ученику через notification consumer (бейдж)
-            notif_group = f"notifications_{hr.student_id}"
-            async_to_sync(channel_layer.group_send)(notif_group, {
-                'type': 'help_notification',
-                'help_request_id': hr.id,
-                'question_id': hr.question_id,
-                'quiz_id': hr.quiz_id,
-            })
-        else:
-            # Учителям через notification consumer (бейдж)
-            async_to_sync(channel_layer.group_send)('notifications_teachers', {
-                'type': 'help_notification',
-                'help_request_id': hr.id,
-                'question_id': hr.question_id,
-                'quiz_id': hr.quiz_id,
-                'student_name': hr.student.get_full_name() or hr.student.username,
-            })
-    except Exception:
-        # WS нотификации не критичны — есть polling fallback
-        pass

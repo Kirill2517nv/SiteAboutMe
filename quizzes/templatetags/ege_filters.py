@@ -9,6 +9,16 @@ IMG_MARKER_RE = re.compile(r'\[img:(\d+)\]')
 SUP_MARKER_RE = re.compile(r'\[sup:([^\]]+)\]')
 SUB_MARKER_RE = re.compile(r'\[sub:([^\]]+)\]')
 
+# Хвостовой таб – это пустая ячейка, а не мусор: строка «Синий\t» в задании 4
+# и есть та клетка, которую ученик должен заполнить. Обычный rstrip() съедал
+# таб, строка переставала быть строкой таблицы, и таблица разваливалась надвое:
+# «Синий» уезжал в абзац между двумя обрубками. Режем что угодно, кроме табов.
+LINE_RSTRIP = ' \r\v\f\xa0'
+
+
+def _rstrip(line):
+    return line.rstrip(LINE_RSTRIP)
+
 
 def _render_table(rows):
     """Convert list of tab-separated strings to a styled HTML table."""
@@ -106,18 +116,18 @@ def render_question_text(text, question=None):
     processed = []
     i = 0
     while i < len(lines):
-        line = lines[i].rstrip()
+        line = _rstrip(lines[i])
         stripped = line.replace('\xa0', '').strip()
         # Only short lines (≤ 30 chars) can be a split table-row first cell.
         # Long lines are paragraph text that happens to precede a table.
         if stripped and '\t' not in line and len(stripped) <= 30:
             # Look ahead past blank/nbsp-only lines
             j = i + 1
-            while j < len(lines) and not lines[j].rstrip().replace('\xa0', '').strip():
+            while j < len(lines) and not _rstrip(lines[j]).replace('\xa0', '').strip():
                 j += 1
-            if j < len(lines) and lines[j].rstrip().startswith('\t'):
+            if j < len(lines) and _rstrip(lines[j]).startswith('\t'):
                 # Merge: prepend this cell to the \t-starting continuation
-                processed.append(stripped + lines[j].rstrip())
+                processed.append(stripped + _rstrip(lines[j]))
                 i = j + 1
                 continue
         processed.append(line)
@@ -140,7 +150,7 @@ def render_question_text(text, question=None):
             table_rows.clear()
 
     for line in lines:
-        line = line.rstrip()
+        line = _rstrip(line)
         stripped = line.replace('\xa0', '').strip()
 
         if '\t' in line:
@@ -188,3 +198,20 @@ def has_image_markers(text):
     if not text:
         return False
     return bool(IMG_MARKER_RE.search(text))
+
+
+@register.filter
+def question_source(question):
+    """
+    Откуда задача: «ЕГКР 18.04.26», «Основная волна 19.06.26».
+
+    Парсер кладёт в title строку вида «Задание 1 – Основная волна 19.06.26»:
+    номер задания и так стоит в шапке, интересен только хвост. Заголовка нет
+    или он без разделителя – показывать нечего, возвращаем пустую строку.
+    """
+    title = (question.title or '').strip()
+    for dash in ('\u2013', '\u2014', '-'):
+        head, sep, tail = title.partition(f' {dash} ')
+        if sep:
+            return tail.strip()
+    return ''

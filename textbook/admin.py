@@ -56,8 +56,11 @@ class SectionAdmin(admin.ModelAdmin):
 
 @admin.register(EgeTask)
 class EgeTaskAdmin(admin.ModelAdmin):
-    list_display = ('number', 'title', 'order')
-    list_editable = ('order',)
+    # Порог правится прямо в списке: это настройка на каждый день,
+    # ради неё заходить в карточку задания незачем.
+    list_display = ('number', 'title', 'classroom_enabled', 'exam_unlock_threshold',
+                    'exam_size', 'order')
+    list_editable = ('classroom_enabled', 'exam_unlock_threshold', 'exam_size', 'order')
     ordering = ('number',)
 
 

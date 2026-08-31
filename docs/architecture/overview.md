@@ -87,14 +87,6 @@ graph TB
        Daphne → QuizConsumer → WebSocket → Браузер (UI update)
 ```
 
-### Real-time (Notifications)
-
-```
-Ученик POST → Django View → HelpComment (DB)
-                          → channel_layer → NotificationConsumer
-                          → WebSocket → Учитель (badge update)
-```
-
 ---
 
 ## Ключевые паттерны
@@ -112,7 +104,6 @@ graph TB
 WebSocket-каналы имеют HTTP-polling fallback:
 
 - `QuizCodeChecker`: polling каждые 2 сек при потере WS
-- `NotificationManager`: polling каждые 30 сек при потере WS
 
 ### Docker Sandbox
 

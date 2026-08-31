@@ -1,0 +1,59 @@
+{% load profile_tags %}
+{% comment %}
+Панель учителя над хабом тренажёра. Ожидает `students` (все ученики) и
+необязательный `student` – чей прогресс сейчас открыт.
+
+Вёрстка намеренно повторяет такую же панель в профиле (registration/profile.html):
+это один и тот же режим работы – «смотрю чужие цифры», – и выглядеть он должен
+одинаково, в каком бы разделе ни включился. Список свёрнут по классам: групп
+мало, а учеников много.
+
+Ссылка ведёт на тот же /ege/ с ?student=<id>#progress – отдельной страницы для
+чужого прогресса нет, иначе пришлось бы держать две вёрстки одних и тех же цифр.
+{% endcomment %}
+{# z-30 нужен самому контейнеру: data-aos вешает transform, а он создаёт stacking context #}
+<div class="relative z-30 mb-6 flex flex-wrap items-center gap-3">
+    <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 text-sm font-medium">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+        Режим учителя
+    </span>
+
+    {% if students %}
+    <details class="relative">
+        <summary class="cursor-pointer list-none px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-gray-700 dark:text-slate-300 hover:border-brand-400">
+            {% if student %}{{ student|surname_first }} ▾{% else %}Открыть прогресс ученика ▾{% endif %}
+        </summary>
+        <div class="absolute z-30 mt-2 w-72 max-h-96 overflow-y-auto rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-lg p-2">
+            {# Сначала группа, потом ученик: групп мало, а учеников много #}
+            {% regroup students by profile.group as grouped_students %}
+            {% for group_entry in grouped_students %}
+            <details class="rounded-lg" {% if student and group_entry.grouper == student.profile.group %}open{% endif %}>
+                {# Маркер нативный: сам поворачивается. display:flex его бы скрыл #}
+                <summary class="cursor-pointer px-2 py-1.5 rounded-lg text-sm font-medium text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700 marker:text-gray-400">
+                    {{ group_entry.grouper|default:"Без группы" }}
+                    <span class="text-xs font-normal text-gray-400 dark:text-slate-500">· {{ group_entry.list|length }}</span>
+                </summary>
+                <div class="pl-2 border-l border-gray-200 dark:border-slate-600 ml-2 mt-1 mb-1">
+                    {% for entry in group_entry.list %}
+                    <a href="{% url 'ege:ege_list' %}?student={{ entry.id }}#progress"
+                       class="block px-2 py-1.5 rounded-lg text-sm text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-700 {% if student and entry.id == student.id %}bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-300 font-medium{% endif %}">
+                        {{ entry|student_name }}
+                    </a>
+                    {% endfor %}
+                </div>
+            </details>
+            {% endfor %}
+        </div>
+    </details>
+    {% endif %}
+
+    <a href="{% url 'ege:ege_class' %}"
+       class="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-gray-700 dark:text-slate-300 hover:border-brand-400">
+        Таблица класса
+    </a>
+
+    {% if student %}
+    <a href="{% url 'ege:ege_list' %}#progress" class="text-sm text-gray-500 dark:text-slate-400 hover:text-brand-600">← к своему прогрессу</a>
+    <a href="{% url 'accounts:student_profile' student.id %}" class="text-sm text-gray-500 dark:text-slate-400 hover:text-brand-600">профиль ученика →</a>
+    {% endif %}
+</div>

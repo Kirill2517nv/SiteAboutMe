@@ -181,9 +181,10 @@ def article_detail_view(request, slug):
         siblings = list(article.ege_task.articles.filter(track='ege', is_published=True))
         group_title = f'Задание {article.ege_task.number}. {article.ege_task.title}'
         article_number = ''
-        # Теория ЕГЭ живёт на странице тренажёра, вкладка «Теория»
-        back_url = reverse('ege:ege_list') + '#theory'
-        back_label = 'Тренажёр ЕГЭ'
+        # Назад – на карточку своего задания: там же и задачи по этой теме.
+        # Прежняя вкладка «Теория» на /ege/ упразднена.
+        back_url = reverse('ege:ege_task', kwargs={'number': article.ege_task.number})
+        back_label = f'Задание {article.ege_task.number}'
     elif article.section_id:
         siblings = list(article.section.articles.filter(track='material', is_published=True))
         group_title = article.section.title

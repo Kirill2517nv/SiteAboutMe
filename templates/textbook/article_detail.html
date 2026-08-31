@@ -249,6 +249,45 @@
             <!-- Маркер конца статьи для трекинга «прочитано» -->
             <div id="article-end" class="h-px"></div>
 
+            {% comment %}
+            У статей ЕГЭ вместо самопроверки – переход в тренировку по этому
+            заданию. Фиксированного набора задач у теории ЕГЭ нет: банк
+            пополняется, и практикум из него собирается каждый раз заново.
+            {% endcomment %}
+            {% if article.track == 'ege' and article.ege_task %}
+            <section class="mt-16 pt-8 border-t border-gray-200 dark:border-slate-800 md:pl-2">
+                <div class="rounded-2xl bg-brand-50 dark:bg-slate-800 border border-brand-100 dark:border-slate-700 p-6">
+                    <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">Теперь порешаем</h2>
+                    <p class="text-gray-600 dark:text-slate-400 mb-5">
+                        Разбор без практики забывается за неделю. Возьмите несколько задач
+                        на задание {{ article.ege_task.number }} прямо сейчас – сессия
+                        рассчитана примерно на 45 минут.
+                    </p>
+                    {% if user.is_authenticated %}
+                    <form method="post" action="{% url 'ege:ege_practice_start' %}" class="flex flex-wrap items-center gap-3">
+                        {% csrf_token %}
+                        <input type="hidden" name="kind" value="topic">
+                        <input type="hidden" name="ege_number" value="{{ article.ege_task.number }}">
+                        <input type="hidden" name="mode" value="study">
+                        <button type="submit"
+                                class="px-5 py-2.5 bg-brand-600 text-white font-medium rounded-lg hover:bg-brand-700 transition-colors">
+                            Решать задачи
+                        </button>
+                        <a href="{% url 'ege:ege_task' article.ege_task.number %}"
+                           class="px-5 py-2.5 bg-white dark:bg-slate-700 text-gray-700 dark:text-slate-200 font-medium rounded-lg border border-gray-200 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600 transition-colors">
+                            Настроить сложность
+                        </a>
+                    </form>
+                    {% else %}
+                    <a href="{% url 'login' %}?next={{ request.path }}"
+                       class="inline-block px-5 py-2.5 bg-brand-600 text-white font-medium rounded-lg hover:bg-brand-700 transition-colors">
+                        Войти, чтобы решать
+                    </a>
+                    {% endif %}
+                </div>
+            </section>
+            {% endif %}
+
             <!-- Самопроверка -->
             {% if self_checks %}
             <section id="self-check" class="mt-16 pt-8 border-t border-gray-200 dark:border-slate-800 md:pl-2">

@@ -81,7 +81,7 @@ graph TB
        → Unix socket /run/daphne/site.sock
        → Daphne (daphne.service)
        → Django Channels ASGI (config/asgi.py)
-       → QuizConsumer / NotificationConsumer
+       → QuizConsumer
        → Двусторонняя связь
 ```
 

@@ -1,161 +1,356 @@
 {% extends 'base.html' %}
+{% load textbook_tags profile_tags %}
 
 {% block title %}Тренажёр ЕГЭ{% endblock title %}
 
 {% block content %}
 {% comment %}
-Две вкладки: варианты для решения и теория по заданиям 1–27. Теория переехала
-сюда с главной учебника – задачи и разбор одного задания должны лежать рядом.
-Ссылка вида /ege/#theory открывает сразу вкладку теории: на неё ведут хлебные
-крошки из статей ЕГЭ.
+Хаб тренажёра ЕГЭ. Три вкладки: карта 27 заданий, готовые варианты, личный
+прогресс.
+
+Карта заданий стоит первой намеренно. Вариант целиком – это 235 минут, как
+ежедневный режим подготовки он не работает. Тренировка по одному заданию
+помещается в один присест, поэтому именно она и есть главный вход.
+
+Прежняя вкладка «Теория» убрана: разбор задания переехал на его карточку
+/ege/task/<N>/, чтобы теория и задачи по теме лежали на одной странице.
 {% endcomment %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8"
-     x-data="{ tab: (location.hash === '#theory' ? 'theory' : 'tasks') }">
-    <!-- Заголовок страницы -->
+     x-data="{ tab: (location.hash === '#variants' ? 'variants' : (location.hash === '#progress' ? 'progress' : 'tasks')) }">
+
+    {% if students %}{% include 'quizzes/_ege_teacher_bar.html' %}{% endif %}
+
     <div class="text-center mb-8" data-aos="fade-down">
-        <h1 class="text-4xl font-bold text-gray-900 dark:text-white mb-4">Тренажёр ЕГЭ</h1>
+        <h1 class="text-4xl font-bold text-gray-900 dark:text-white mb-3">Тренажёр ЕГЭ</h1>
+        {% if student %}
+        {% comment %}
+        Открыт чужой прогресс. Подпись стоит на месте обычной, а не рядом с ней:
+        учитель должен видеть, чьи цифры перед ним, не отводя глаз от заголовка –
+        иначе разговор с учеником пойдёт по чужой статистике.
+        {% endcomment %}
         <p class="text-lg text-gray-600 dark:text-slate-400 max-w-2xl mx-auto">
-            Варианты ЕГЭ по информатике для подготовки и проверки знаний
+            Прогресс ученика: <span class="font-semibold text-gray-900 dark:text-white">{{ student|surname_first }}</span>
         </p>
+        {% else %}
+        <p class="text-lg text-gray-600 dark:text-slate-400 max-w-2xl mx-auto">
+            Разбор всех 27 заданий, тренировка по темам и готовые варианты
+        </p>
+        {% endif %}
     </div>
+
+    {% if user.is_authenticated and overview.score %}
+    <!-- Сводка -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+        {% comment %}
+        Карточка прогноза. Число крупное и цветное – от красного к зелёному по
+        стобалльной шкале (ege_constants.ege_score_color): балл сам по себе
+        ничего не говорит тому, кто не помнит границы, а цвет говорит сразу.
+        «/100» рядом даёт масштаб, поэтому подпись сократилась до двух слов.
+        {% endcomment %}
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 p-4 flex items-center justify-center gap-3">
+            {% if overview.score.has_data %}
+            <div class="flex items-baseline gap-0.5">
+                <span class="text-6xl font-bold leading-none tabular-nums {% include 'quizzes/_ege_scale_color.html' with color=overview.score.color %}">{{ overview.score.test }}</span>
+                <span class="text-xl font-medium text-gray-300 dark:text-slate-600">/100</span>
+            </div>
+            {% else %}
+            <div class="text-6xl font-bold leading-none text-gray-300 dark:text-slate-600">–</div>
+            {% endif %}
+            <div class="text-base font-medium text-gray-500 dark:text-slate-400 leading-tight text-left">прогноз балла</div>
+        </div>
+        {% comment %}
+        Динамика стоит здесь, а не во вкладке прогресса: два числа («решено» и
+        «дней подряд») она заменяет собой – по столбикам видно и сколько решено,
+        и были ли перерывы.
+        {% endcomment %}
+        <div class="col-span-2 bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 p-4">
+            {% comment %}
+            Три столбика на неделю: тренировка, экзамен, вариант. Цвет отвечает
+            за источник, залитая часть – за верные ответы, серая – за неверные.
+            У варианта неверных нет: ExamTaskProgress хранит дату только первого
+            верного решения, провалы там без даты.
+            {% endcomment %}
+            <div class="flex items-end gap-1.5 h-12">
+                {% for week in overview.dynamics %}
+                <div class="flex-1 flex items-end justify-center gap-px h-full">
+                    {% for bar in week.bars %}
+                    <div class="flex-1 h-full flex items-end group relative">
+                        <div class="w-full rounded-t bg-gray-200 dark:bg-slate-600"
+                             style="height: {{ bar.height_pct }}%">
+                            <div class="w-full h-full flex items-end">
+                                <div class="w-full rounded-t
+                                    {% if bar.key == 'study' %}bg-brand-500
+                                    {% elif bar.key == 'exam' %}bg-violet-500
+                                    {% else %}bg-amber-400{% endif %}"
+                                     style="height: {{ bar.correct_pct }}%"></div>
+                            </div>
+                        </div>
+                        {% if bar.attempted %}
+                        <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 opacity-0
+                                    group-hover:opacity-100 transition-opacity pointer-events-none
+                                    px-2 py-1 rounded bg-gray-900 text-white text-xs whitespace-nowrap z-10">
+                            {{ bar.title }}: {{ bar.correct }} из {{ bar.attempted }}
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endfor %}
+            </div>
+            <div class="flex gap-1.5 mt-1">
+                {% for week in overview.dynamics %}
+                <div class="flex-1 text-center text-[9px] text-gray-400">{{ week.label }}</div>
+                {% endfor %}
+            </div>
+            <div class="flex items-center justify-center gap-3 text-[11px] text-gray-500 dark:text-slate-400 mt-1.5">
+                <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-sm bg-brand-500"></span>тренировки</span>
+                <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-sm bg-violet-500"></span>экзамены</span>
+                <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-sm bg-amber-400"></span>варианты</span>
+            </div>
+        </div>
+        {% if overview.mistakes and student %}
+        {% comment %}
+        В чужом прогрессе счётчик – это цифра, а не кнопка: нажатие завело бы
+        учителю его собственную работу над ошибками с числом ученика на кнопке.
+        {% endcomment %}
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 p-4 flex items-center justify-center gap-3">
+            <span class="text-6xl font-bold leading-none tabular-nums {% include 'quizzes/_ege_scale_color.html' with color=overview.mistakes_color %}">{{ overview.mistakes }}</span>
+            <span class="text-base font-medium text-gray-500 dark:text-slate-400 leading-tight text-left">ошиб{{ overview.mistakes|plural:"ка,ки,ок" }}</span>
+        </div>
+        {% elif overview.mistakes %}
+        <form method="post" action="{% url 'ege:ege_practice_start' %}">
+            {% csrf_token %}
+            <input type="hidden" name="kind" value="mistakes">
+            <input type="hidden" name="mode" value="study">
+            {% comment %}
+            Счётчик ошибок. Цвет ведёт в другую сторону, чем у балла: ноль –
+            зелёный, тридцать задач долга – самый красный. Карточка осталась
+            кнопкой, поэтому подпись – действие со стрелкой, а не название.
+            {% endcomment %}
+            <button type="submit"
+                    class="w-full h-full bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl p-4 flex items-center justify-center gap-3 hover:border-gray-300 dark:hover:border-slate-500 transition-colors">
+                <span class="text-6xl font-bold leading-none tabular-nums {% include 'quizzes/_ege_scale_color.html' with color=overview.mistakes_color %}">{{ overview.mistakes }}</span>
+                <span class="text-base font-medium text-gray-500 dark:text-slate-400 leading-tight text-left">ошиб{{ overview.mistakes|plural:"ка,ки,ок" }}</span>
+            </button>
+        </form>
+        {% else %}
+        {% comment %}
+        Долга по ошибкам нет – показываем теорию. Вёрстка та же, что у соседей:
+        крупное число, знаменатель приглушён, подпись в два слова.
+        {% endcomment %}
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 p-4 flex items-center justify-center gap-3">
+            <div class="flex items-baseline gap-0.5">
+                <span class="text-6xl font-bold leading-none tabular-nums text-gray-900 dark:text-white">{{ overview.theory.read }}</span>
+                <span class="text-xl font-medium text-gray-300 dark:text-slate-600">/{{ overview.theory.total }}</span>
+            </div>
+            <div class="text-base font-medium text-gray-500 dark:text-slate-400 leading-tight text-left">статей прочитано</div>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
 
     <!-- Вкладки -->
     <div class="flex justify-center gap-2 border-b border-gray-200 dark:border-slate-700 mb-8">
-        <button @click="tab = 'tasks'; history.replaceState(null, '', location.pathname)"
+        {% comment %}
+        Хеш убираем, а ?student= сохраняем. Пока здесь стоял голый
+        location.pathname, вкладка «Задания» стирала из адреса и ученика: адрес
+        становился /ege/, страница продолжала показывать чужие цифры, а ссылка
+        «к своему прогрессу» вела на /ege/#progress – тот же адрес с точностью
+        до хеша, и браузер никуда не переходил.
+        {% endcomment %}
+        <button @click="tab = 'tasks'; history.replaceState(null, '', location.pathname + location.search)"
                 :class="tab === 'tasks' ? 'border-brand-600 text-brand-600 dark:text-cyan-400 dark:border-cyan-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-slate-400'"
                 class="px-4 py-2 -mb-px border-b-2 font-medium transition-colors">
-            Задачи
+            Задания
         </button>
-        <button @click="tab = 'theory'; location.hash = 'theory'"
-                :class="tab === 'theory' ? 'border-brand-600 text-brand-600 dark:text-cyan-400 dark:border-cyan-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-slate-400'"
+        <button @click="tab = 'variants'; location.hash = 'variants'"
+                :class="tab === 'variants' ? 'border-brand-600 text-brand-600 dark:text-cyan-400 dark:border-cyan-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-slate-400'"
                 class="px-4 py-2 -mb-px border-b-2 font-medium transition-colors">
-            Теория
+            Варианты
         </button>
+        {% comment %}
+        Гостю вкладка тоже открыта – с примером вместо своих цифр. Название
+        честно говорит, что внутри: «Мой прогресс» у гостя обещало бы данные,
+        которых у него нет.
+        {% endcomment %}
+        <button @click="tab = 'progress'; location.hash = 'progress'"
+                :class="tab === 'progress' ? 'border-brand-600 text-brand-600 dark:text-cyan-400 dark:border-cyan-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-slate-400'"
+                class="px-4 py-2 -mb-px border-b-2 font-medium transition-colors">
+            {% if student %}Прогресс: {{ student.last_name|default:student.username }}{% elif user.is_authenticated %}Мой прогресс{% else %}Прогресс – пример{% endif %}
+        </button>
+    </div>
+
+    <!-- Вкладка: карта 27 заданий -->
+    <div x-show="tab === 'tasks'">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {% for task in overview.tasks %}
+            {% if task.linked_first %}
+            {% comment %}
+            Связка 19–21: одно условие игры на три задания. Рамка на всю ширину
+            сетки, внутри – своя такая же сетка, поэтому тройка держится вместе
+            на любой ширине экрана.
+            {% endcomment %}
+            <div class="sm:col-span-2 lg:col-span-3 rounded-xl border-2 border-dashed border-indigo-200 dark:border-indigo-800 bg-indigo-50/40 dark:bg-indigo-950/20 p-3">
+                <div class="flex items-center gap-2 mb-2 px-1 text-xs font-medium text-indigo-700 dark:text-indigo-300">
+                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 010 5.656l-3 3a4 4 0 11-5.656-5.656l1.5-1.5m4.5-4.5l1.5-1.5a4 4 0 115.656 5.656l-3 3a4 4 0 01-5.656 0"/>
+                    </svg>
+                    Связка: одна игра на три задания – выдаются только тройками
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {% endif %}
+            <a href="{% url 'ege:ege_task' task.page_number %}"
+               class="group bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 p-4 hover:border-brand-300 dark:hover:border-cyan-500 hover:shadow-md transition-all">
+                <div class="flex items-start gap-3">
+                    {# Цвет – по последнему экзамену, как на карточке задания; без экзамена серый. #}
+                    <span class="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center font-bold
+                        {% if not task.exam.last or task.exam.last.accuracy is None %}bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400
+                        {% elif task.exam.last.accuracy >= 75 %}bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300
+                        {% elif task.exam.last.accuracy >= 50 %}bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300
+                        {% else %}bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300{% endif %}">
+                        {{ task.number }}
+                    </span>
+
+                    <div class="min-w-0 flex-1">
+                        <div class="font-medium text-gray-900 dark:text-white text-sm leading-snug group-hover:text-brand-600 dark:group-hover:text-cyan-400 transition-colors">
+                            {{ task.title }}
+                        </div>
+
+                        <div class="flex items-center gap-2 mt-2 text-xs">
+                            {% if task.bank_size %}
+                            <span class="font-medium text-gray-700 dark:text-slate-300">{{ task.progress }}%</span>
+                            <span class="text-gray-400">решено {{ task.solved }} из {{ task.bank_size }}</span>
+                            {% else %}
+                            <span class="text-gray-400">нет задач</span>
+                            {% endif %}
+
+                            {% if task.avg_mm_ss %}
+                            <span class="{% if task.color == 'green' %}text-emerald-600 dark:text-emerald-400{% elif task.color == 'yellow' %}text-amber-600 dark:text-amber-400{% elif task.color == 'red' %}text-red-600 dark:text-red-400{% else %}text-gray-400{% endif %}">
+                                · {{ task.avg_mm_ss }}
+                            </span>
+                            {% else %}
+                            <span class="text-gray-400">· норма {{ task.recommended_min }} мин</span>
+                            {% endif %}
+                        </div>
+
+                        <div class="flex items-center gap-3 mt-2 text-xs text-gray-400">
+                            {% if task.theory.total %}
+                            <span class="inline-flex items-center gap-1 {% if task.theory.read %}text-emerald-600 dark:text-emerald-400{% endif %}">
+                                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                                </svg>
+                                теория
+                            </span>
+                            {% endif %}
+                            {% if task.solved %}
+                            <span>{{ task.first_try }} с первой попытки</span>
+                            {% elif task.linked %}
+                            <span>{{ task.groups }} связок</span>
+                            {% elif task.bank_size %}
+                            <span>{{ task.bank_size }} задач</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </a>
+            {% if task.linked_last %}
+                </div>
+            </div>
+            {% endif %}
+            {% endfor %}
+        </div>
     </div>
 
     <!-- Вкладка: варианты -->
-    <div x-show="tab === 'tasks'">
-    {% if variants %}
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {% for item in variants %}
-        <div class="group bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-all duration-300"
-             data-aos="fade-up" data-aos-delay="{{ forloop.counter0 }}50">
-            <div class="p-5">
-                <!-- Заголовок и бейдж режима -->
-                <div class="flex items-start justify-between mb-3">
-                    <div class="flex-1">
+    <div x-show="tab === 'variants'" x-cloak>
+        {% if variants %}
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {% for item in variants %}
+            <div class="group bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden hover:shadow-md transition-all duration-300">
+                <div class="p-5">
+                    <div class="flex items-start justify-between mb-3">
                         <a href="{% url 'ege:ege_detail' item.quiz.id %}"
-                           class="text-lg font-semibold text-gray-900 hover:text-brand-600 transition-colors">
+                           class="flex-1 text-lg font-semibold text-gray-900 dark:text-white hover:text-brand-600 dark:hover:text-cyan-400 transition-colors">
                             {{ item.quiz.title }}
                         </a>
-                    </div>
-                    {% if item.exam_mode == 'exam' %}
-                    <span class="ml-2 flex-shrink-0 px-2.5 py-1 text-xs font-medium rounded-full bg-orange-100 text-orange-700">
-                        Экзамен
-                    </span>
-                    {% else %}
-                    <span class="ml-2 flex-shrink-0 px-2.5 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-700">
-                        Тренировка
-                    </span>
-                    {% endif %}
-                </div>
-
-                <!-- Информация о варианте -->
-                <div class="space-y-2 text-sm">
-                    <div class="flex items-center text-gray-500">
-                        <svg class="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
-                        </svg>
-                        {{ item.num_questions }} задач · {{ item.total_points }} баллов
-                    </div>
-
-                    {% if item.exam_mode == 'exam' %}
-                    <div class="flex items-center text-gray-500">
-                        <svg class="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                        </svg>
-                        Время: 235 мин
-                    </div>
-                    {% endif %}
-
-                    {% if user.is_authenticated %}
-                        {% if item.best_score is not None %}
-                        <div class="flex items-center text-green-600">
-                            <svg class="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                            </svg>
-                            Лучший результат: {{ item.best_score }}/{{ item.total_points }}
-                        </div>
+                        {% if item.exam_mode == 'exam' %}
+                        <span class="ml-2 shrink-0 px-2.5 py-1 text-xs font-medium rounded-full bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">Экзамен</span>
                         {% else %}
-                        <div class="flex items-center text-gray-400">
-                            <svg class="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                            </svg>
-                            Не начат
-                        </div>
+                        <span class="ml-2 shrink-0 px-2.5 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">Тренировка</span>
                         {% endif %}
-                    {% endif %}
-                </div>
+                    </div>
 
-                <!-- Кнопки -->
-                <div class="mt-4 flex flex-col gap-2">
-                    {% if user.is_authenticated %}
-                    <a href="{% url 'ege:ege_detail' item.quiz.id %}"
-                       class="text-center px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors">
-                        {% if item.best_score is not None %}Пройти снова{% else %}Начать{% endif %}
-                    </a>
-                    <a href="{% url 'ege:ege_results' item.quiz.id %}"
-                       class="text-center px-4 py-2 bg-gray-100 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors">
-                        Результаты
-                    </a>
-                    {% else %}
-                    <a href="{% url 'login' %}?next={% url 'ege:ege_list' %}"
-                       class="flex-1 text-center px-4 py-2 bg-gray-100 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors">
-                        Войти для прохождения
-                    </a>
-                    {% endif %}
+                    <div class="space-y-2 text-sm text-gray-500 dark:text-slate-400">
+                        <div>{{ item.num_questions }} задач · {{ item.total_points }} баллов</div>
+                        {% if item.exam_mode == 'exam' %}
+                        <div>Время: 235 мин</div>
+                        {% endif %}
+                        {% if user.is_authenticated %}
+                            {% if item.best_score is not None %}
+                            <div class="text-emerald-600 dark:text-emerald-400">Лучший результат: {{ item.best_score }}/{{ item.total_points }}</div>
+                            {% else %}
+                            <div class="text-gray-400">Не начат</div>
+                            {% endif %}
+                        {% endif %}
+                    </div>
+
+                    <div class="mt-4 flex flex-col gap-2">
+                        {% if user.is_authenticated %}
+                        <a href="{% url 'ege:ege_detail' item.quiz.id %}"
+                           class="text-center px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors">
+                            {% if item.best_score is not None %}Пройти снова{% else %}Начать{% endif %}
+                        </a>
+                        <a href="{% url 'ege:ege_results' item.quiz.id %}"
+                           class="text-center px-4 py-2 bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300 text-sm font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors">
+                            Результаты
+                        </a>
+                        {% else %}
+                        <a href="{% url 'login' %}?next={% url 'ege:ege_list' %}"
+                           class="text-center px-4 py-2 bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300 text-sm font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors">
+                            Войти для прохождения
+                        </a>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
+            {% endfor %}
         </div>
-        {% endfor %}
-    </div>
-    {% else %}
-    <div class="bg-gray-50 rounded-xl p-8 text-center" data-aos="fade-up">
-        <div class="text-gray-400 mb-2">
-            <svg class="w-12 h-12 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
-            </svg>
+        {% else %}
+        <div class="bg-gray-50 dark:bg-slate-800 rounded-xl p-8 text-center">
+            <p class="text-gray-500 dark:text-slate-400">Нет доступных вариантов</p>
         </div>
-        <p class="text-gray-500">Нет доступных вариантов</p>
-    </div>
-    {% endif %}
+        {% endif %}
     </div>
 
-    <!-- Вкладка: теория по заданиям 1–27 -->
-    <div x-show="tab === 'theory'" x-cloak class="space-y-8">
-        {% for group in ege_tasks %}
-        <section>
-            <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-1">
-                Задание {{ group.task.number }}. {{ group.task.title }}
-            </h2>
-            {% if group.task.short_description %}
-            <p class="text-sm text-gray-500 dark:text-slate-400 mb-4">{{ group.task.short_description }}</p>
-            {% endif %}
-            <div class="grid gap-3">
-                {% for article in group.articles %}
-                <a href="{{ article.get_absolute_url }}"
-                   class="flex items-center justify-between p-4 bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 hover:border-brand-300 dark:hover:border-cyan-500 transition-colors">
-                    <div class="font-medium text-gray-900 dark:text-white">{{ article.title }}</div>
-                    <svg class="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-                    </svg>
-                </a>
-                {% endfor %}
+    <!-- Вкладка: мой прогресс -->
+    <div x-show="tab === 'progress'" x-cloak class="space-y-6">
+        {% if overview.is_demo %}
+        {% comment %}
+        Плашка стоит над блоком, а не внутри партиала: тот же партиал рисует
+        настоящий прогресс ученика и отчёт учителя, и предупреждение про пример
+        там было бы ложью. Цифры ниже – выдуманный ученик из ege_stats.DEMO_ROWS.
+        {% endcomment %}
+        <div class="flex flex-wrap items-center gap-4 rounded-2xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-5">
+            <span class="shrink-0 w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 flex items-center justify-center">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+            </span>
+            <div class="min-w-0 flex-1">
+                <div class="font-semibold text-amber-900 dark:text-amber-200">Это пример, а не ваши результаты</div>
+                <p class="text-sm text-amber-800/80 dark:text-amber-200/70 mt-0.5">
+                    Так выглядит прогресс ученика, который прошёл несколько тренировок,
+                    экзаменов и вариантов. Войдите – и здесь будут ваши цифры.
+                </p>
             </div>
-        </section>
-        {% empty %}
-        <p class="text-center text-gray-400 dark:text-slate-500 py-16">Теория ЕГЭ пока не добавлена.</p>
-        {% endfor %}
+            <a href="{% url 'login' %}?next={% url 'ege:ege_list' %}%23progress"
+               class="shrink-0 px-4 py-2 bg-amber-600 text-white text-sm font-medium rounded-lg hover:bg-amber-700 transition-colors">
+                Войти
+            </a>
+        </div>
+        {% endif %}
+
+        {% include 'quizzes/_ege_progress.html' with overview=overview %}
     </div>
 </div>
 {% endblock content %}

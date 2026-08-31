@@ -1,0 +1,273 @@
+{% extends 'base.html' %}
+{% load textbook_tags profile_tags %}
+
+{% block title %}Класс: подготовка к ЕГЭ{% endblock title %}
+
+{% block content %}
+{% comment %}
+Сравнительная таблица класса. Строка – ученик, страница – один класс.
+
+Страница отвечает на один вопрос: с кем и над чем работать на ближайшем
+занятии. Поэтому в строке стоит не всё, что умеет считать ege_stats, а только
+то, по чему принимают решение:
+
+  прогноз      – балл, собранный из отдельных заданий, и на скольких заданиях
+                 он держится (60 баллов, снятые с двух номеров, обещание
+                 ненадёжное)
+  вариант      – балл за последнюю работу целиком: единственная проверка в
+                 условиях настоящего экзамена
+  ошибки       – сколько задач ждёт разбора; ссылка ведёт на сами задачи
+  подтянуть    – три самые дорогие дыры, отсортированные по цене ошибки
+  динамика     – четыре последние недели активности
+
+Обе колонки с баллом – тестовые, из 100, и меряют они одно и то же, отличаясь
+источником: слева балл собран из работы по одному заданию, справа снят с целой
+работы за 235 минут. Ровно та же пара живёт на вкладке прогресса ученика
+(_ege_forecast.html), и расходиться они не должны.
+
+Колонок «тренировка» и «экзамен» здесь намеренно нет: два процента на строку
+учитель всё равно сводил в один вопрос «где дыры», а на него отвечают ошибки
+и «что подтянуть» – сразу с номерами заданий.
+
+Сортировка внутри класса – по прогнозу вниз (ege_stats.class_rows): таблицу
+читают сверху, а искать в ней надо отставших, и теряться в середине алфавита
+они не должны.
+
+Числа считаются теми же формулами, что и на личной вкладке прогресса, – учитель
+держит таблицу и карточку ученика открытыми рядом.
+{% endcomment %}
+{% comment %}
+Подсказка столбиков динамики – тот же механизм, что в блоке прогресса
+(_ege_progress.html), и по той же причине: таблица лежит в overflow-x-auto, и
+абсолютно спозиционированную подсказку этот контейнер обрезал бы – у первой
+строки сверху, у крайних колонок сбоку. position: fixed из потока выходит
+совсем. :style задан объектом, а не строкой: строковая форма в Alpine делает
+setAttribute('style', …) и стёрла бы display:none, который ставит x-show.
+{% endcomment %}
+<div class="max-w-full mx-auto px-4 sm:px-6 lg:px-8 py-8"
+     x-data="{ tip: '', x: 0, y: 0, below: false, show(e) { const el = e.target.closest('[data-tip]'); if (!el) { this.tip = ''; return; } const r = el.getBoundingClientRect(); this.tip = el.dataset.tip; this.x = Math.min(Math.max(r.left + r.width / 2, 150), window.innerWidth - 150); this.below = r.top < 120; this.y = this.below ? r.bottom : r.top; } }"
+     @mouseover="show($event)"
+     @mouseleave="tip = ''">
+
+    {% include 'quizzes/_ege_teacher_bar.html' %}
+
+    <div class="mb-6">
+        <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Класс: подготовка к ЕГЭ</h1>
+        <p class="text-gray-500 dark:text-slate-400 mt-1">
+            Фамилия – ссылка на полный прогресс ученика, число ошибок – на их разбор
+        </p>
+    </div>
+
+    {% comment %}
+    Выбор класса. Показывается один класс за раз: классов со временем становится
+    много, и страница из пяти таблиц по два десятка строк перестаёт отвечать на
+    свой единственный вопрос. «Все» остаётся для редкого сравнения поперёк
+    классов, «без класса» – для тех, кого ещё никуда не записали.
+    {% endcomment %}
+    <div class="flex flex-wrap items-center gap-2 mb-6">
+        {% for group in groups %}
+        <a href="?group={{ group.id }}"
+           class="px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors
+            {% if current_group == group.id|stringformat:'s' %}bg-brand-600 border-brand-600 text-white{% else %}bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-300 hover:border-brand-400{% endif %}">
+            {{ group.name }}
+        </a>
+        {% endfor %}
+        {% if has_loose %}
+        <a href="?group=none"
+           class="px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors
+            {% if current_group == 'none' %}bg-brand-600 border-brand-600 text-white{% else %}bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-gray-500 dark:text-slate-400 hover:border-brand-400{% endif %}">
+            Без класса
+        </a>
+        {% endif %}
+        <a href="?group=all"
+           class="px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors
+            {% if current_group == 'all' %}bg-brand-600 border-brand-600 text-white{% else %}bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-gray-500 dark:text-slate-400 hover:border-brand-400{% endif %}">
+            Все
+        </a>
+    </div>
+
+    {% regroup rows by group as grouped_rows %}
+    {% for group_entry in grouped_rows %}
+    <section class="mb-10">
+        <div class="flex items-center gap-3 mb-3">
+            <h2 class="text-lg font-bold text-gray-900 dark:text-white">
+                {{ group_entry.grouper|default:"Без класса" }}
+            </h2>
+            <span class="text-sm text-gray-400 dark:text-slate-500">{{ group_entry.list|length }} ученик{{ group_entry.list|length|plural:",а,ов" }}</span>
+            <div class="flex-1 h-px bg-gray-200 dark:bg-slate-700"></div>
+        </div>
+
+        {# Таблица шире экрана на узких мониторах – прокрутка своя, страница не едет #}
+        <div class="overflow-x-auto rounded-xl border border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-gray-100 dark:border-slate-700 text-left align-bottom">
+                        <th class="px-4 py-3 font-medium text-gray-500 dark:text-slate-400">Ученик</th>
+                        <th class="px-3 py-3 font-medium text-gray-500 dark:text-slate-400 text-center">
+                            Прогноз
+                            <div class="text-[11px] font-normal text-gray-400">из заданий · /100</div>
+                        </th>
+                        <th class="px-3 py-3 font-medium text-gray-500 dark:text-slate-400 text-center">
+                            Вариант
+                            <div class="text-[11px] font-normal text-gray-400">последний · /100</div>
+                        </th>
+                        <th class="px-3 py-3 font-medium text-gray-500 dark:text-slate-400 text-center">
+                            Ошибки
+                            <div class="text-[11px] font-normal text-gray-400">ждут разбора</div>
+                        </th>
+                        <th class="px-3 py-3 font-medium text-gray-500 dark:text-slate-400">
+                            Что подтянуть
+                            <div class="text-[11px] font-normal text-gray-400">номер и точность</div>
+                        </th>
+                        <th class="px-3 py-3 font-medium text-gray-500 dark:text-slate-400 w-64">
+                            Динамика
+                            <div class="text-[11px] font-normal text-gray-400">4 недели, с понедельника</div>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in group_entry.list %}
+                    <tr class="border-b border-gray-50 dark:border-slate-700/50 last:border-0 hover:bg-gray-50 dark:hover:bg-slate-700/30">
+                        <td class="px-4 py-3">
+                            <a href="{% url 'ege:ege_list' %}?student={{ row.user.id }}#progress"
+                               class="font-medium text-gray-900 dark:text-white hover:text-brand-600 dark:hover:text-cyan-400">
+                                {{ row.user|surname_first }}
+                            </a>
+                            {% comment %}
+                            Дата последней работы стоит под фамилией, а не отдельной
+                            колонкой: она читается не сама по себе, а вместе с именем –
+                            «этот пропал две недели назад».
+                            {% endcomment %}
+                            <div class="text-xs mt-0.5 {% if not row.last_active %}text-gray-400{% elif row.days_ago <= 2 %}text-emerald-600 dark:text-emerald-400{% elif row.days_ago <= 7 %}text-gray-400{% else %}text-red-500 dark:text-red-400{% endif %}">
+                                {% if not row.last_active %}не занимался
+                                {% elif row.days_ago == 0 %}сегодня
+                                {% elif row.days_ago == 1 %}вчера
+                                {% else %}{{ row.days_ago }} дн{{ row.days_ago|plural:"ь,я,ей" }} назад{% endif %}
+                            </div>
+                        </td>
+
+                        <td class="px-3 py-3 text-center">
+                            {% if row.score.has_data %}
+                            <div class="text-2xl font-bold leading-none tabular-nums {% include 'quizzes/_ege_scale_color.html' with color=row.score.color %}">{{ row.score.test }}</div>
+                            {# На скольких заданиях держится прогноз: два номера и двадцать – обещания разной надёжности #}
+                            <div class="text-[11px] text-gray-400 mt-1">{{ row.score.covered }} из {{ row.score.covered_total }} зад.</div>
+                            {% else %}
+                            <span class="text-gray-300 dark:text-slate-600">–</span>
+                            {% endif %}
+                        </td>
+
+                        <td class="px-3 py-3 text-center">
+                            {% if row.variant.written %}
+                            <div class="text-2xl font-bold leading-none tabular-nums {% include 'quizzes/_ege_scale_color.html' with color=row.variant.color %}">{{ row.variant.test }}</div>
+                            <div class="text-[11px] text-gray-400 mt-1">{{ row.variant.date|date:"d.m" }} · {{ row.variant.written }} шт.</div>
+                            {% else %}
+                            <span class="text-gray-300 dark:text-slate-600">–</span>
+                            {% endif %}
+                        </td>
+
+                        <td class="px-3 py-3 text-center">
+                            {% comment %}
+                            Ссылка ведёт на тот же набор задач, который выпадет ученику
+                            в «Работе над ошибками», но в режиме чтения: условие,
+                            ответ ученика и правильный ответ под кнопкой.
+                            {% endcomment %}
+                            {% if row.mistakes %}
+                            <a href="{% url 'ege:ege_student_mistakes' row.user.id %}"
+                               class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors">
+                                <span class="text-xl font-bold tabular-nums {% include 'quizzes/_ege_scale_color.html' with color=row.mistakes_color %}">{{ row.mistakes }}</span>
+                                <svg class="w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                                </svg>
+                            </a>
+                            {% else %}
+                            <span class="text-gray-300 dark:text-slate-600">–</span>
+                            {% endif %}
+                        </td>
+
+                        <td class="px-3 py-3">
+                            {% comment %}
+                            Три номера, отсортированные по цене ошибки, а не по голой
+                            точности: провал на 27-м (2 балла) дороже провала на 4-м.
+                            Ссылка ведёт на карточку задания – оттуда и начинается разбор.
+                            {% endcomment %}
+                            <div class="flex flex-wrap gap-1">
+                                {% for item in row.weak %}
+                                <a href="{% url 'ege:ege_task' item.number %}"
+                                   class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium
+                                    {% if item.accuracy >= 50 %}bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300{% else %}bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300{% endif %}">
+                                    {{ item.number }}
+                                    <span class="opacity-60 tabular-nums">{{ item.accuracy }}%</span>
+                                </a>
+                                {% empty %}
+                                <span class="text-gray-300 dark:text-slate-600">–</span>
+                                {% endfor %}
+                            </div>
+                        </td>
+
+                        <td class="px-3 py-3">
+                            {% comment %}
+                            Тот же график, что в виджете на хабе: цвет – источник задачи,
+                            залитая часть столбика – верные ответы, серая – неверные.
+                            Две разницы. Масштаб высот общий на весь класс
+                            (_class_dynamics): иначе три задачи за неделю у одного и
+                            тридцать у другого дали бы одинаковые столбики, а таблицу
+                            читают именно поперёк строк. И недель четыре, а не восемь –
+                            в строке таблицы восемь троек столбиков превращаются в
+                            штриховку, по которой ничего не прочесть.
+
+                            Подпись под столбиками – понедельник этой недели, то есть её
+                            начало; в подсказке стоит весь отрезок целиком.
+                            {% endcomment %}
+                            <div class="flex items-end gap-2 h-12">
+                                {% for week in row.dynamics %}
+                                <div class="flex-1 flex items-end justify-center gap-0.5 h-full">
+                                    {% for bar in week.bars %}
+                                    <div class="flex-1 h-full flex items-end {% if bar.attempted %}cursor-help{% endif %}"
+                                         {% if bar.attempted %}data-tip="{{ week.range }} · {{ bar.title }}: {{ bar.correct }} из {{ bar.attempted }}"{% endif %}>
+                                        <div class="w-full rounded-t bg-gray-200 dark:bg-slate-600"
+                                             style="height: {{ bar.height_pct }}%">
+                                            <div class="w-full h-full flex items-end">
+                                                <div class="w-full rounded-t
+                                                    {% if bar.key == 'study' %}bg-brand-500
+                                                    {% elif bar.key == 'exam' %}bg-violet-500
+                                                    {% else %}bg-amber-400{% endif %}"
+                                                     style="height: {{ bar.correct_pct }}%"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                                {% endfor %}
+                            </div>
+                            <div class="flex gap-2 mt-1">
+                                {% for week in row.dynamics %}
+                                <div class="flex-1 text-center text-[10px] text-gray-400 tabular-nums">{{ week.label }}</div>
+                                {% endfor %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    {% empty %}
+    <div class="bg-gray-50 dark:bg-slate-800 rounded-xl p-8 text-center text-gray-500 dark:text-slate-400">
+        В этом классе пока никого нет
+    </div>
+    {% endfor %}
+
+    <div class="flex items-center justify-center gap-4 text-xs text-gray-500 dark:text-slate-400">
+        <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-sm bg-brand-500"></span>тренировки</span>
+        <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-sm bg-violet-500"></span>экзамены</span>
+        <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-sm bg-amber-400"></span>варианты</span>
+        <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-sm bg-gray-200 dark:bg-slate-600"></span>неверные</span>
+    </div>
+
+    {# Подсказка одна на страницу: ячеек с data-tip десятки, и десятки копий разъедутся #}
+    <div x-show="tip" x-cloak
+         class="fixed z-50 px-3 py-2 rounded-lg bg-gray-900 text-white text-xs leading-snug shadow-lg pointer-events-none max-w-xs text-center"
+         :style="{ left: x + 'px', top: y + 'px', transform: below ? 'translate(-50%, 10px)' : 'translate(-50%, calc(-100% - 10px))' }"
+         x-text="tip"></div>
+</div>
+{% endblock content %}

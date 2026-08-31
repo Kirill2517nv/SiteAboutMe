@@ -1,0 +1,164 @@
+{% extends 'base.html' %}
+{% load textbook_tags %}
+{% load ege_filters %}
+
+{% block title %}Решённые задачи – задание {{ number }}{% endblock title %}
+
+{% block content %}
+{% comment %}
+Архив решённых задач одного задания.
+
+Решённая задача больше не выпадает в тренировках, поэтому ей нужно место, где
+её можно перечитать вместе со своим решением. Для задач на код здесь же вход
+на второй заход: алгоритм можно переписать быстрее или экономнее по памяти.
+{% endcomment %}
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8" x-data="{ open: null }">
+
+    <a href="{% url 'ege:ege_task' number %}"
+       class="inline-flex items-center gap-1 text-sm text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200 mb-4">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+        </svg>
+        Задание {{ number }}
+    </a>
+
+    <div class="flex items-center gap-3 mb-6">
+        <span class="w-11 h-11 rounded-xl bg-emerald-500 text-white flex items-center justify-center shrink-0">
+            <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+            </svg>
+        </span>
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Решённые задачи</h1>
+            <p class="text-sm text-gray-500 dark:text-slate-400">
+                {% if task %}{{ task.title }}{% else %}Задание {{ number }}{% endif %} ·
+                всего {{ rows|length }}
+            </p>
+        </div>
+    </div>
+
+    {% if rows %}
+    <p class="text-sm text-gray-500 dark:text-slate-400 mb-5">
+        Эти задачи больше не выпадают в тренировках. Задачу на код можно переписать
+        заново – например, чтобы решение работало быстрее или занимало меньше памяти.
+    </p>
+
+    <div class="space-y-3">
+        {% for row in rows %}
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 overflow-hidden">
+
+            <button type="button" @click="open = (open === {{ forloop.counter }} ? null : {{ forloop.counter }})"
+                    class="w-full flex items-center justify-between gap-4 p-4 text-left hover:bg-gray-50 dark:hover:bg-slate-700/40 transition-colors">
+                <div class="flex items-center gap-3 min-w-0">
+                    <span class="shrink-0 w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+                        </svg>
+                    </span>
+                    <div class="min-w-0">
+                        <div class="font-medium text-gray-900 dark:text-white truncate">
+                            {{ row.question.get_title }}
+                        </div>
+                        <div class="text-xs text-gray-400">
+                            {{ row.answered_at|date:"d.m.Y" }} ·
+                            {% if row.attempts > 1 %}с попытки {{ row.attempts }}{% else %}с первой попытки{% endif %}
+                            {% if row.is_code %} · задача на код{% endif %}
+                        </div>
+                    </div>
+                </div>
+                <div class="shrink-0 flex items-center gap-3">
+                    <span class="text-sm tabular-nums
+                        {% if row.color == 'green' %}text-emerald-600 dark:text-emerald-400
+                        {% elif row.color == 'yellow' %}text-amber-600 dark:text-amber-400
+                        {% elif row.color == 'red' %}text-red-600 dark:text-red-400
+                        {% else %}text-gray-400{% endif %}">{{ row.mm_ss }}</span>
+                    <svg class="w-5 h-5 text-gray-400 transition-transform"
+                         :class="open === {{ forloop.counter }} ? 'rotate-180' : ''"
+                         fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </div>
+            </button>
+
+            <div x-show="open === {{ forloop.counter }}" x-cloak
+                 class="px-4 pb-4 border-t border-gray-100 dark:border-slate-700">
+
+                <div class="pt-4">
+                    {% include 'quizzes/_ege_question_body.html' with question=row.question %}
+                </div>
+
+                <div class="mt-4">
+                    <div class="text-xs font-medium text-gray-500 dark:text-slate-400 mb-1.5">Ваше решение</div>
+                    {% if row.is_code and row.item.submission %}
+                    <pre class="p-3 rounded-lg bg-slate-900 text-slate-100 text-xs overflow-x-auto"><code>{{ row.item.submission.code }}</code></pre>
+                    <div class="mt-2 flex flex-wrap gap-3 text-xs text-gray-500 dark:text-slate-400">
+                        {% if row.item.submission.cpu_time_ms %}
+                        <span>эта версия: <span class="tabular-nums">{{ row.item.submission.cpu_time_ms }} мс</span></span>
+                        {% endif %}
+                        {% if row.item.submission.memory_kb %}
+                        <span class="tabular-nums">{{ row.item.submission.memory_kb }} КБ</span>
+                        {% endif %}
+                    </div>
+                    {% if row.best %}
+                    {% comment %}
+                    Лучшее время и лучшая память могут быть из разных попыток:
+                    вариант бывает быстрее, но прожорливее. Показываем оба рекорда.
+                    {% endcomment %}
+                    <div class="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                        <span class="text-gray-500 dark:text-slate-400">Лучшее из {{ row.best.attempts }} верн{{ row.best.attempts|plural:"ой,ых,ых" }}:</span>
+                        {% if row.best.best_cpu %}
+                        <span class="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 tabular-nums">
+                            {{ row.best.best_cpu }} мс
+                        </span>
+                        {% endif %}
+                        {% if row.best.best_memory %}
+                        <span class="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 tabular-nums">
+                            {{ row.best.best_memory }} КБ
+                        </span>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                    {% elif row.item.text_answer %}
+                    <div class="inline-block px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 font-medium">
+                        {{ row.item.text_answer }}
+                    </div>
+                    {% else %}
+                    <p class="text-sm text-gray-400">Ответ не сохранился.</p>
+                    {% endif %}
+                </div>
+
+                {% if row.is_code %}
+                {% comment %}
+                Повторный заход только для кода: у текстовой задачи «переписать
+                решение» означало бы ввести уже известный ответ.
+                {% endcomment %}
+                <form method="post" action="{% url 'ege:ege_practice_retry' row.question.id %}" class="mt-4">
+                    {% csrf_token %}
+                    <button type="submit"
+                            class="px-4 py-2 text-sm font-medium rounded-lg border border-brand-600 text-brand-700 dark:text-cyan-400 dark:border-cyan-500 hover:bg-brand-50 dark:hover:bg-slate-700 transition-colors">
+                        Переписать решение
+                    </button>
+                    <span class="ml-2 text-xs text-gray-400">
+                        Неудачная попытка не отменит зачёт – сохранятся только лучшие показатели
+                    </span>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-8 text-center">
+        <p class="text-gray-500 dark:text-slate-400">
+            По этому заданию пока нет решённых задач.
+        </p>
+        <a href="{% url 'ege:ege_task' number %}"
+           class="inline-block mt-4 px-4 py-2.5 bg-brand-600 text-white font-medium rounded-lg hover:bg-brand-700 transition-colors">
+            Начать тренировку
+        </a>
+    </div>
+    {% endif %}
+</div>
+{% endblock content %}
+
+{% block pre_alpine_js %}{% include 'quizzes/_mathjax.html' %}{% endblock pre_alpine_js %}

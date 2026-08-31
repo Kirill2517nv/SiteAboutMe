@@ -97,11 +97,6 @@ class QuizCodeChecker {
             this.handleSubmissionUpdate(data);
         } else if (data.type === 'active_submissions') {
             this.handleActiveSubmissions(data.submissions);
-        } else if (data.type === 'help_comment') {
-            // Делегируем HelpRequestManager (если инициализирован)
-            if (window.helpManager) {
-                window.helpManager.handleTeacherReply(data);
-            }
         }
     }
 

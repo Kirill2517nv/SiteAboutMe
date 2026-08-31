@@ -83,13 +83,12 @@ graph TD
 | Тесты | 3 типа вопросов: choice, text, code |
 | Назначения | Группе или индивидуально с переопределением лимитов |
 | Async код | Celery → Docker → WebSocket pipeline |
-| Помощь | Inline-треды в CodeMirror с WS-уведомлениями |
 | EGE | Exam/Practice режимы, метрики производительности |
 | Лайки | Toggle-лайки на решения учеников |
 
-**Endpoints:** 27 (17 quizzes + 10 ege)
-**WebSocket:** 2 consumer'а (`QuizConsumer`, `NotificationConsumer`)
-**JS:** `quiz-async.js`, `help-requests.js`, `notifications.js`, `ege-timer.js`
+**Endpoints:** 20 (10 quizzes + 10 ege)
+**WebSocket:** 1 consumer (`QuizConsumer`)
+**JS:** `quiz-async.js`, `ege-timer.js`
 
 ### Подсистемы quizzes
 
@@ -107,12 +106,6 @@ graph LR
         DOCKER[Docker Sandbox]
     end
 
-    subgraph Help["Система помощи"]
-        REQUEST[HelpRequest]
-        COMMENT[HelpComment]
-        NOTIFY[Notifications WS]
-    end
-
     subgraph EGE["EGE Тренажёр"]
         PROGRESS[ExamTaskProgress]
         SOLUTION[SolutionAttachment]
@@ -120,7 +113,6 @@ graph LR
     end
 
     Core --> CodeExec
-    Core --> Help
     Core --> EGE
 ```
 

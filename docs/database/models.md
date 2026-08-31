@@ -1,6 +1,6 @@
 # Модели
 
-Детальное описание всех **23 моделей** проекта с диаграммами классов и пояснениями.
+Детальное описание всех **33 моделей** проекта с диаграммами классов и пояснениями.
 
 ---
 
@@ -226,14 +226,14 @@ classDiagram
 
 ## quizzes — Тесты
 
-Основной домен приложения — **13 моделей**.
+Основной домен приложения — **16 моделей**.
 
 ```mermaid
 classDiagram
     class Quiz {
         +int id
         +str title
-        +str quiz_type
+        +str quiz_type "standard|exam|bank"
         +str exam_mode
         +bool is_public
         +slug slug
@@ -252,7 +252,42 @@ classDiagram
         +int ege_number
         +str topic
         +int points
+        +int difficulty
+        +float solve_rate
+        +str external_id
+        +str group_id
+        +int group_order
+        +bool classroom_only
+        +bool exam_only
         +json alternative_answers
+        +effective_difficulty() int
+    }
+
+    class PracticeSession {
+        +int id
+        +User user [FK]
+        +str kind
+        +str mode
+        +int ege_number
+        +datetime created_at
+        +datetime finished_at
+        +deadline() datetime
+        +is_expired() bool
+    }
+
+    class PracticeItem {
+        +int id
+        +PracticeSession session [FK]
+        +Question question [FK]
+        +int order
+        +str text_answer
+        +bool is_correct
+        +int score
+        +int attempts
+        +bool gave_up
+        +bool carried
+        +int seconds
+        +is_locked() bool
     }
 
     class Choice {
@@ -397,42 +432,13 @@ classDiagram
 | `code` | TextField | Исходный код |
 | `status` | CharField | `pending` → `running` → `success`/`failed`/`error` |
 | `is_correct` | BooleanField | Все тесты пройдены, nullable |
+| `score` | PositiveSmallIntegerField | Частичный балл (задания 26 и 27), nullable |
 | `error_log` | TextField | Лог ошибок, blank |
 | `celery_task_id` | CharField | ID задачи Celery, blank |
 | `created_at` | DateTimeField | auto_now_add |
 | `completed_at` | DateTimeField | Время завершения, nullable |
 | `cpu_time_ms` | FloatField | Время CPU в мс, nullable |
 | `memory_kb` | IntegerField | Использование памяти в КБ, nullable |
-
-### HelpRequest
-
-Запрос помощи от ученика по конкретному вопросу.
-
-| Поле | Тип | Описание |
-|------|-----|----------|
-| `student` | ForeignKey(User) | Ученик, CASCADE |
-| `question` | ForeignKey(Question) | Вопрос, CASCADE |
-| `quiz` | ForeignKey(Quiz) | Тест, CASCADE |
-| `status` | CharField | `open` → `answered` → `resolved` |
-| `created_at` | DateTimeField | auto_now_add |
-| `updated_at` | DateTimeField | auto_now |
-| `has_unread_for_teacher` | BooleanField | Есть непрочитанные сообщения для учителя |
-| `has_unread_for_student` | BooleanField | Есть непрочитанные для ученика |
-
-**Constraint:** `unique_together = [student, question]` — один запрос на вопрос на ученика.
-
-### HelpComment
-
-Комментарий в обсуждении запроса помощи. Поддерживает inline-комментарии к строкам кода.
-
-| Поле | Тип | Описание |
-|------|-----|----------|
-| `help_request` | ForeignKey(HelpRequest) | Запрос, CASCADE |
-| `author` | ForeignKey(User) | Автор |
-| `text` | TextField | Текст, max 10000 символов |
-| `line_number` | PositiveIntegerField | Номер строки для inline-комментария, nullable |
-| `code_snapshot` | TextField | Снимок кода на момент комментария, blank |
-| `created_at` | DateTimeField | auto_now_add |
 
 ### ExamTaskProgress
 
@@ -446,6 +452,7 @@ classDiagram
 | `time_spent_seconds` | PositiveIntegerField | Общее время, default=0 |
 | `attempts_to_solve` | PositiveIntegerField | Количество попыток, default=0 |
 | `is_solved` | BooleanField | Решена ли задача, default=False |
+| `score` | PositiveSmallIntegerField | Частичный балл (задания 26 и 27), nullable |
 | `first_solved_at` | DateTimeField | Первое решение, nullable |
 | `best_cpu_time_ms` | FloatField | Лучшее время CPU, nullable |
 | `best_cpu_code` | TextField | Код лучшего по CPU, blank |
@@ -453,6 +460,53 @@ classDiagram
 | `best_memory_code` | TextField | Код лучшего по памяти, blank |
 
 **Constraint:** `unique_together = [user, quiz, question]`
+
+### PracticeSession
+
+Сессия тренировки ЕГЭ — короткая пачка задач, отобранная под одну цель.
+Единственный журнал тренажёра: из `PracticeItem` считается вся аналитика
+(точность по заданию, среднее время, динамика по неделям, пул ошибок).
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `user` | ForeignKey(User) | Ученик, CASCADE, related_name=`practice_sessions` |
+| `kind` | CharField | `topic` / `mistakes` / `mixed` / `classroom` / `retry` — правило отбора задач |
+| `mode` | CharField | `study` (в UI «Тренировка») / `exam` |
+| `ege_number` | PositiveSmallIntegerField | Номер задания, пусто у смешанной сессии и работы над ошибками |
+| `difficulty` | PositiveSmallIntegerField | Сложность отбора, пусто — любая |
+| `created_at` | DateTimeField | auto_now_add |
+| `finished_at` | DateTimeField | Завершена, nullable |
+
+**Свойства:** `deadline` = `created_at + EXAM_MINUTES` (только у `mode='exam'`),
+`is_expired` — время вышло, а сессия открыта. Просроченный экзамен закрывается
+сервером моментом дедлайна, а не «сейчас».
+
+**Index:** `[user, -created_at]`
+
+### PracticeItem
+
+Одна задача внутри сессии — и запись о попытке.
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `session` | ForeignKey(PracticeSession) | CASCADE, related_name=`items` |
+| `question` | ForeignKey(Question) | CASCADE, related_name=`practice_items` |
+| `order` | PositiveSmallIntegerField | Порядок в сессии |
+| `text_answer` | CharField(200) | Ответ ученика, blank |
+| `submission` | ForeignKey(CodeSubmission) | Отправка кода, SET_NULL, nullable |
+| `is_correct` | BooleanField | nullable — пусто, пока ученик не отвечал |
+| `score` | PositiveSmallIntegerField | Частичный балл (задания 26 и 27), nullable |
+| `attempts` | PositiveSmallIntegerField | Сколько раз нажата «Проверить», default=0 |
+| `gave_up` | BooleanField | Открыл ответ, не решив — считается нерешённой |
+| `carried` | BooleanField | Ответ перенесён из прошлой сессии (связка 19–21); в статистику не идёт |
+| `seconds` | PositiveIntegerField | Время на задачу |
+| `answered_at` | DateTimeField | Момент ответа, nullable |
+
+**Свойство:** `is_locked` — задача решена или ответ открыт; повторная отправка
+отклоняется (409). В сессии `kind='retry'` замка нет.
+
+**Constraint:** `unique_together = [session, question]`
+**Indexes:** `[session, order]`, `[question, is_correct]`, `[answered_at]`
 
 ### SolutionAttachment
 

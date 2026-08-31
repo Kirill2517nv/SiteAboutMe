@@ -1,0 +1,64 @@
+{% load static %}
+{% comment %}
+Режим проектора: стили, панель управления и скрипт компонента. Включается
+первым элементом внутри корневого контейнера страницы, который объявлен как
+
+    <div class="present-root ..." x-data="presentMode()">
+
+Всё, чего на проекторе быть не должно (шапка страницы, сайдбар с сеткой задач,
+мобильные полосы), помечается классом present-hide. Кнопка входа – отдельный
+партиал _present_button.html, она живёт в шапке страницы.
+
+Скрипт подключён здесь, а не в блоке pre_alpine_js: блок content выводится
+раньше, чем сам Alpine в конце body, поэтому компонент к его старту уже объявлен,
+а страницам не приходится помнить про два включения вместо одного.
+{% endcomment %}
+<style>
+    .present-root:fullscreen { overflow-y: auto; background: #fff; padding: 1rem 2rem; }
+    html.dark .present-root:fullscreen { background: #0f172a; }
+    .present-root:fullscreen .present-hide { display: none !important; }
+    /* Картинка условия живёт в своих пикселях и на rem не реагирует. Внутри
+       <img> ничего не меряется, поэтому здесь zoom безопасен. */
+    .present-root:fullscreen img { zoom: var(--present-zoom, 1); }
+    /* Каретка редактора – полоска в 1px: рядом с крупным кодом на проекторе её
+       не видно с задних парт. Толщина в px, а не в rem: 3px хватает на любом
+       масштабе, а растущая вместе с кеглем каретка закрывала бы букву. */
+    .present-root:fullscreen .CodeMirror-cursor { border-left-width: 3px; }
+</style>
+
+{% comment %}
+Панель проектора: у доски нужны ровно три вещи – размер шрифта, переход к
+соседней задаче и выход.
+
+Переход к соседней задаче у каждой страницы свой, поэтому имена передаются
+включением: nav_goto – метод перехода, nav_index – поле с номером текущей задачи,
+nav_list – массив задач. Например, для тренировки:
+
+    {% include '_present_mode.html' with nav_goto="goTo" nav_index="current" nav_list="items" %}
+
+Без них панель остаётся с одним масштабом и выходом.
+{% endcomment %}
+<div x-show="presenting" x-cloak class="flex items-center gap-3 mb-3">
+    <div class="flex items-center gap-1">
+        <button @click="setZoom(zoom - 0.2)" class="w-9 h-9 rounded-lg border border-gray-300 dark:border-slate-600 text-lg leading-none">−</button>
+        <span class="w-16 text-center text-sm tabular-nums text-gray-500 dark:text-slate-400"
+              x-text="Math.round(zoom * 100) + '%'"></span>
+        <button @click="setZoom(zoom + 0.2)" class="w-9 h-9 rounded-lg border border-gray-300 dark:border-slate-600 text-lg leading-none">+</button>
+    </div>
+    {% if nav_goto %}
+    <div class="flex items-center gap-1">
+        <button @click="{{ nav_goto }}({{ nav_index }} - 1)" :disabled="{{ nav_index }} === 0"
+                class="px-3 h-9 rounded-lg border border-gray-300 dark:border-slate-600 text-sm disabled:opacity-40">←</button>
+        <span class="px-2 text-sm text-gray-500 dark:text-slate-400"
+              x-text="({{ nav_index }} + 1) + ' / ' + {{ nav_list }}.length"></span>
+        <button @click="{{ nav_goto }}({{ nav_index }} + 1)" :disabled="{{ nav_index }} === {{ nav_list }}.length - 1"
+                class="px-3 h-9 rounded-lg border border-gray-300 dark:border-slate-600 text-sm disabled:opacity-40">→</button>
+    </div>
+    {% endif %}
+    <button @click="togglePresent()"
+            class="ml-auto px-3 h-9 rounded-lg border border-gray-300 dark:border-slate-600 text-sm text-gray-600 dark:text-slate-300">
+        Выйти (Esc)
+    </button>
+</div>
+
+<script src="{% static 'js/present-mode.js' %}"></script>

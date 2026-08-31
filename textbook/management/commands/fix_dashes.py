@@ -23,8 +23,6 @@ SKIP_PATHS = {
     "quizzes.UserAnswer.code_answer",
     "quizzes.UserAnswer.text_answer",
     "quizzes.UserAnswer.error_log",
-    "quizzes.HelpComment.text",
-    "quizzes.HelpComment.code_snapshot",
 }
 
 

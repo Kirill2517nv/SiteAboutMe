@@ -30,7 +30,6 @@ sequenceDiagram
         V->>DB: ExamTaskProgress (solved/total)
     end
     V->>DB: Last 5 attempts
-    V->>DB: HelpRequest count (total/resolved)
     V->>DB: SolutionLike count received
     V-->>B: profile.html с метриками
 ```
@@ -49,7 +48,6 @@ sequenceDiagram
 | `quiz_stats` | list[dict] | Лучший результат по каждому тесту |
 | `ege_progress` | dict | Прогресс EGE (если is_ege) |
 | `last_attempts` | QuerySet | Последние 5 попыток |
-| `help_stats` | dict | Запросы помощи (total/resolved) |
 | `likes_received` | int | Получено лайков на решения |
 
 ---

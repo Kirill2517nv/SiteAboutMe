@@ -1,0 +1,128 @@
+{% extends 'base.html' %}
+{% load ege_filters %}
+
+{% block title %}{% if session.mode == 'exam' %}Итог экзамена{% else %}Итог тренировки{% endif %}{% endblock title %}
+
+{% block content %}
+{% comment %}
+Разбор сессии. Главное здесь – не балл, а две вещи, которые ученик не видит
+в процессе: где он ошибся и куда ушло время относительно норматива ЕГЭ.
+{% endcomment %}
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+    <div class="text-center mb-8">
+        <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+            {% if session.ege_number %}Задание {{ session.ege_number }}{% else %}{{ session.get_kind_display }}{% endif %}
+        </h1>
+        <p class="text-gray-500 dark:text-slate-400">
+            {% if session.mode == 'exam' %}Экзамен завершён{% else %}Тренировка завершена{% endif %}
+        </p>
+    </div>
+
+    <!-- Сводка -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 p-4 text-center">
+            <div class="text-3xl font-bold text-gray-900 dark:text-white">{{ correct }}<span class="text-lg text-gray-400">/{{ total }}</span></div>
+            <div class="text-xs text-gray-500 dark:text-slate-400 mt-1">решено верно</div>
+        </div>
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 p-4 text-center">
+            <div class="text-3xl font-bold text-gray-900 dark:text-white">{{ accuracy }}<span class="text-lg text-gray-400">%</span></div>
+            <div class="text-xs text-gray-500 dark:text-slate-400 mt-1">точность</div>
+        </div>
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 p-4 text-center">
+            <div class="text-3xl font-bold text-gray-900 dark:text-white">{{ avg_mm_ss }}</div>
+            <div class="text-xs text-gray-500 dark:text-slate-400 mt-1">в среднем на задачу</div>
+        </div>
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 p-4 text-center">
+            <div class="text-3xl font-bold {% if total_minutes > norm_minutes %}text-amber-600 dark:text-amber-400{% else %}text-emerald-600 dark:text-emerald-400{% endif %}">
+                {{ total_minutes }}<span class="text-lg text-gray-400"> мин</span>
+            </div>
+            <div class="text-xs text-gray-500 dark:text-slate-400 mt-1">норматив {{ norm_minutes }} мин</div>
+        </div>
+    </div>
+
+    <!-- Разбор по задачам -->
+    <div class="space-y-3 mb-8">
+        {% for row in rows %}
+        <div class="bg-white dark:bg-slate-800 rounded-xl border p-4
+            {% if row.status == 'correct' %}border-emerald-200 dark:border-emerald-800
+            {% elif row.status == 'wrong' or row.status == 'revealed' %}border-red-200 dark:border-red-800
+            {% else %}border-gray-100 dark:border-slate-700{% endif %}">
+
+            <div class="flex items-start justify-between gap-4">
+                <div class="flex items-center gap-3 min-w-0">
+                    {% if row.status == 'correct' %}
+                    <span class="shrink-0 w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                    </span>
+                    {% elif row.status == 'wrong' or row.status == 'revealed' %}
+                    <span class="shrink-0 w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 flex items-center justify-center">
+                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </span>
+                    {% else %}
+                    <span class="shrink-0 w-8 h-8 rounded-full bg-gray-100 dark:bg-slate-700 text-gray-400 flex items-center justify-center text-sm">–</span>
+                    {% endif %}
+
+                    <div class="min-w-0">
+                        <div class="font-medium text-gray-900 dark:text-white">
+                            Задача {{ forloop.counter }}{% if not session.ege_number %} · задание {{ row.number }}{% endif %}
+                        </div>
+                        <div class="text-sm text-gray-500 dark:text-slate-400">
+                            {% if row.status == 'correct' %}
+                                {% if row.attempts > 1 %}Решено с попытки {{ row.attempts }}{% else %}Решено с первой попытки{% endif %}
+                                {% if row.correct_answer %} · ответ: {{ row.correct_answer }}{% endif %}
+                            {% elif row.status == 'revealed' %}
+                                Открыт ответ: <span class="font-medium text-gray-700 dark:text-slate-200">{{ row.correct_answer }}</span>
+                                {% if row.attempts %} · попыток до этого: {{ row.attempts }}{% endif %}
+                            {% elif row.status == 'wrong' %}
+                                {% if row.item.text_answer %}Ваш ответ: <span class="text-red-600 dark:text-red-400">{{ row.item.text_answer }}</span>,
+                                верный: <span class="font-medium text-gray-700 dark:text-slate-200">{{ row.correct_answer }}</span>{% else %}Задача не решена{% endif %}
+                                {% if row.attempts > 1 %} · попыток: {{ row.attempts }}{% endif %}
+                            {% else %}
+                                Задача осталась без ответа
+                            {% endif %}
+                            {% comment %}
+                            Задания 26 и 27: неполный ответ всё равно стоит балла,
+                            и на экзамене ученик его получит – значит должен видеть.
+                            {% endcomment %}
+                            {% if row.item.score %} · засчитано {{ row.item.score }} из {{ row.question.points }} баллов{% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="shrink-0 text-right">
+                    <div class="text-sm tabular-nums font-medium
+                        {% if row.color == 'green' %}text-emerald-600 dark:text-emerald-400
+                        {% elif row.color == 'yellow' %}text-amber-600 dark:text-amber-400
+                        {% elif row.color == 'red' %}text-red-600 dark:text-red-400
+                        {% else %}text-gray-400{% endif %}">{{ row.mm_ss }}</div>
+                    <div class="text-xs text-gray-400">норма {{ row.recommended_min }} мин</div>
+                </div>
+            </div>
+
+            {% if row.theory_slug and row.status != 'correct' %}
+            <a href="{% url 'textbook:article_detail' row.theory_slug %}"
+               class="inline-flex items-center gap-1 mt-3 text-sm text-brand-600 dark:text-cyan-400 hover:underline">
+                Разобрать теорию задания {{ row.number }}
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+            </a>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Что дальше -->
+    <div class="flex flex-wrap gap-3 justify-center">
+        {% if session.ege_number %}
+        <a href="{% url 'ege:ege_task' session.ege_number %}"
+           class="px-5 py-2.5 bg-brand-600 text-white font-medium rounded-lg hover:bg-brand-700 transition-colors">
+            К заданию {{ session.ege_number }}
+        </a>
+        {% endif %}
+        <a href="{% url 'ege:ege_list' %}"
+           class="px-5 py-2.5 bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-200 font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors">
+            К тренажёру
+        </a>
+    </div>
+</div>
+{% endblock content %}

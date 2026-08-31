@@ -171,7 +171,7 @@
                 {{ textbook.avg_grade|default:"–" }}
             </div>
             <div class="text-[11px] text-gray-400 dark:text-slate-500">
-                {% if textbook.graded_count %}по {{ textbook.graded_count }} блок{{ textbook.graded_count|pluralize:"у,ам,ам" }}{% else %}оценок нет{% endif %}
+                {% if textbook.graded_count %}по {{ textbook.graded_count }} блок{{ textbook.graded_count|plural:"у,ам,ам" }}{% else %}оценок нет{% endif %}
             </div>
         </div>
         <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 px-4 py-3.5">
@@ -222,7 +222,7 @@
                     <a href="{{ item.practicum_url|default:'#' }}" class="font-medium text-gray-900 dark:text-white hover:text-brand-600">{{ item.section.title }}</a>
                     <span class="text-gray-600 dark:text-slate-400">
                         решено {{ item.practicum_done }} из {{ item.practicum_total }}{% if item.next_step %},
-                        до «{{ item.next_step.grade }}» – {{ item.next_step.left }} задач{{ item.next_step.left|pluralize:"а,и," }}{% endif %}
+                        до «{{ item.next_step.grade }}» – {{ item.next_step.left }} задач{{ item.next_step.left|plural:"а,и," }}{% endif %}
                     </span>
                     {% if item.section.deadline %}
                     <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 text-xs font-medium">
@@ -288,129 +288,10 @@
         </div>
     </section>
 
-    <!-- ===================== БЛОК: ЕГЭ ===================== -->
-    {% if is_ege or ege.has_data %}
-    <section class="mb-12" data-aos="fade-up" data-aos-delay="200">
-        <h2 class="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-4">
-            <svg class="w-6 h-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/></svg>
-            ЕГЭ
-        </h2>
-
-        <div class="grid md:grid-cols-3 gap-6 mb-4">
-            <!-- Общий прогресс тренажёра -->
-            <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 p-6 flex items-center gap-5">
-                <div class="relative w-24 h-24 flex-shrink-0">
-                    <svg class="w-24 h-24 transform -rotate-90" viewBox="0 0 36 36">
-                        <path class="text-gray-200 dark:text-slate-700" stroke="currentColor" stroke-width="3" fill="none" d="M18 2.0845a 15.9155 15.9155 0 0 1 0 31.831 15.9155 15.9155 0 0 1 0 -31.831"/>
-                        <path class="text-indigo-500" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-dasharray="{{ ege.pct }}, 100" d="M18 2.0845a 15.9155 15.9155 0 0 1 0 31.831 15.9155 15.9155 0 0 1 0 -31.831"/>
-                    </svg>
-                    <div class="absolute inset-0 flex items-center justify-center">
-                        <span class="text-lg font-bold text-gray-900 dark:text-white">{{ ege.pct }}%</span>
-                    </div>
-                </div>
-                <div class="space-y-1 text-sm">
-                    <div class="text-gray-600 dark:text-slate-400">Задач решено: <span class="font-bold text-gray-900 dark:text-white">{{ ege.solved }}</span> из {{ ege.total }}</div>
-                    <div class="text-gray-600 dark:text-slate-400">Время в тренажёре: <span class="font-bold text-gray-900 dark:text-white">{{ ege.time|duration_display }}</span></div>
-                </div>
-            </div>
-
-            <!-- Варианты -->
-            <div class="md:col-span-2 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 p-6">
-                <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-3">Варианты</h3>
-                <div class="space-y-3">
-                    {% for variant in ege.variants %}
-                    <div>
-                        <div class="flex justify-between text-sm mb-1">
-                            <a href="{% url 'ege:ege_detail' variant.id %}" class="text-gray-700 dark:text-slate-300 hover:text-indigo-600 truncate mr-2">{{ variant.title }}</a>
-                            <span class="flex-shrink-0 tabular-nums text-gray-900 dark:text-white font-medium">
-                                {% if variant.attempts %}{{ variant.best_score }}/{{ variant.num_questions }}{% endif %}
-                                {% if variant.spent_seconds %}
-                                    <span class="ml-2 font-normal text-gray-500 dark:text-slate-400 whitespace-nowrap">{{ variant.spent_seconds|time_short }}</span>
-                                {% endif %}
-                                {% if not variant.attempts and not variant.spent_seconds %}
-                                    <span class="text-gray-400 font-normal">не начат</span>
-                                {% endif %}
-                            </span>
-                        </div>
-                        {% if variant.attempts %}
-                        <div class="w-full bg-gray-200 dark:bg-slate-600 rounded-full h-1.5">
-                            <div class="bg-indigo-500 h-1.5 rounded-full" style="width: {% widthratio variant.best_score variant.num_questions 100 %}%"></div>
-                        </div>
-                        {% endif %}
-                    </div>
-                    {% empty %}
-                    <p class="text-sm text-gray-400 dark:text-slate-500">Вариантов пока нет</p>
-                    {% endfor %}
-                </div>
-            </div>
-        </div>
-
-        <!-- По номерам заданий -->
-        {% if ege.by_number %}
-        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 p-6 mb-4">
-            <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-1">По номерам заданий</h3>
-            <p class="text-xs text-gray-400 dark:text-slate-500 mb-4">
-                Под номером – <span class="font-medium text-gray-500 dark:text-slate-400">ваше среднее время</span>,
-                ниже – <span class="font-medium text-gray-500 dark:text-slate-400">цель</span>, к которой стоит стремиться.
-                Зелёный – уложились в цель, жёлтый – до полутора целей, красный – дольше, серый – задача ещё не решена.
-            </p>
-            <div class="flex flex-wrap gap-2">
-                {% for task in ege.by_number %}
-                <div class="w-16 text-center"
-                     title="Задание {{ task.number }}: решено {{ task.solved }} из {{ task.total }}{% if task.avg_mm_ss %}, ваше среднее время {{ task.avg_mm_ss }}{% endif %}, цель – {{ task.recommended_min }} мин">
-                    <div class="h-9 rounded-lg flex items-center justify-center text-sm font-semibold
-                        {% if task.color == 'green' %}bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300
-                        {% elif task.color == 'yellow' %}bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300
-                        {% elif task.color == 'red' %}bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300
-                        {% else %}bg-gray-100 text-gray-400 dark:bg-slate-700 dark:text-slate-500{% endif %}">
-                        {{ task.number }}
-                    </div>
-                    <div class="text-xs font-semibold tabular-nums mt-1 leading-tight
-                        {% if task.color == 'green' %}text-green-600 dark:text-green-400
-                        {% elif task.color == 'yellow' %}text-amber-600 dark:text-amber-400
-                        {% elif task.color == 'red' %}text-red-600 dark:text-red-400
-                        {% else %}text-gray-300 dark:text-slate-600{% endif %}">
-                        {{ task.avg_mm_ss|default:"–" }}
-                    </div>
-                    <div class="text-[10px] text-gray-400 dark:text-slate-500 leading-tight whitespace-nowrap">цель {{ task.recommended_min }} мин</div>
-                    <div class="text-[10px] text-gray-400 dark:text-slate-500 tabular-nums leading-tight">{{ task.solved }}/{{ task.total }}</div>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-        {% endif %}
-
-        <!-- Теория ЕГЭ (появится вместе со статьями вкладки) -->
-        {% if ege.theory_total %}
-        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 p-6">
-            <div class="flex justify-between text-sm mb-2">
-                <h3 class="font-semibold text-gray-900 dark:text-white">Теория ЕГЭ</h3>
-                <span class="tabular-nums text-gray-700 dark:text-slate-300">{{ ege.theory_read }}/{{ ege.theory_total }} прочитано</span>
-            </div>
-            <div class="w-full bg-gray-200 dark:bg-slate-600 rounded-full h-2">
-                <div class="bg-indigo-500 h-2 rounded-full" style="width: {{ ege.theory_pct }}%"></div>
-            </div>
-        </div>
-        {% endif %}
-    </section>
-    {% endif %}
-
-    <!-- ===== Помощь и последняя активность ===== -->
+    <!-- ===== Последняя активность ===== -->
     <div class="grid md:grid-cols-3 gap-6 mb-8">
-        {% if help_open or help_unread %}
-        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 p-6" data-aos="fade-up" data-aos-delay="250">
-            <h2 class="text-sm font-semibold text-gray-900 dark:text-white mb-3">Помощь</h2>
-            {% if help_unread %}
-            <p class="text-sm text-amber-700 dark:text-amber-300 font-medium mb-2">
-                Новых ответов учителя: {{ help_unread }}
-            </p>
-            {% endif %}
-            <p class="text-sm text-gray-600 dark:text-slate-400">Открытых вопросов: {{ help_open }}</p>
-        </div>
-        {% endif %}
-
         {% if recent_results %}
-        <div class="{% if help_open or help_unread %}md:col-span-2{% else %}md:col-span-3{% endif %} bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden" data-aos="fade-up" data-aos-delay="300">
+        <div class="md:col-span-3 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden" data-aos="fade-up" data-aos-delay="300">
             <div class="px-6 py-4 border-b border-gray-100 dark:border-slate-700">
                 <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Последняя активность</h2>
             </div>

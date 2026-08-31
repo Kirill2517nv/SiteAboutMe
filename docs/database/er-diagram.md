@@ -244,43 +244,16 @@ erDiagram
     }
 ```
 
-### Помощь и EGE-прогресс
+### EGE-прогресс
 
 ```mermaid
 erDiagram
-    User ||--o{ HelpRequest : "asks"
-    Question ||--o{ HelpRequest : "about"
-    Quiz ||--o{ HelpRequest : "in"
-    HelpRequest ||--o{ HelpComment : "discussed in"
-    User ||--o{ HelpComment : "writes"
     User ||--o{ ExamTaskProgress : "progresses"
     Quiz ||--o{ ExamTaskProgress : "in exam"
     Question ||--o{ ExamTaskProgress : "on task"
     User ||--o{ SolutionAttachment : "attaches"
     Quiz ||--o{ SolutionAttachment : "for quiz"
     Question ||--o{ SolutionAttachment : "for question"
-
-    HelpRequest {
-        int id PK
-        int student_id FK
-        int question_id FK
-        int quiz_id FK
-        string status "open | answered | resolved"
-        datetime created_at
-        datetime updated_at
-        bool has_unread_for_teacher
-        bool has_unread_for_student
-    }
-
-    HelpComment {
-        int id PK
-        int help_request_id FK
-        int author_id FK
-        text text "max 10000"
-        int line_number "nullable, для inline-комментариев"
-        text code_snapshot
-        datetime created_at
-    }
 
     ExamTaskProgress {
         int id PK
@@ -309,6 +282,47 @@ erDiagram
     }
 ```
 
+### Сессии тренировки ЕГЭ
+
+`ExamTaskProgress` — агрегат по варианту («решена / столько-то попыток»),
+`PracticeItem` — журнал каждой попытки в тренажёре по темам. Наборы задач
+у них не пересекаются: вариант это `quiz_type='exam'`, тренировка — `'bank'`.
+
+```mermaid
+erDiagram
+    User ||--o{ PracticeSession : "trains"
+    PracticeSession ||--o{ PracticeItem : "contains"
+    Question ||--o{ PracticeItem : "asked in"
+    CodeSubmission |o--o{ PracticeItem : "answers"
+
+    PracticeSession {
+        int id PK
+        int user_id FK
+        str kind "topic|mistakes|mixed|classroom|retry"
+        str mode "study|exam"
+        int ege_number
+        int difficulty
+        datetime created_at
+        datetime finished_at
+    }
+
+    PracticeItem {
+        int id PK
+        int session_id FK
+        int question_id FK
+        int submission_id FK
+        int order
+        str text_answer
+        bool is_correct
+        int score
+        int attempts
+        bool gave_up
+        bool carried
+        int seconds
+        datetime answered_at
+    }
+```
+
 ---
 
 ## Сводная таблица связей
@@ -325,18 +339,19 @@ erDiagram
 | QuizAssignment → User | FK | SET_NULL | Индивидуальное назначение |
 | Choice → Question | FK | CASCADE | Варианты ответа |
 | TestCase → Question | FK | CASCADE | Тест-кейсы для кода |
+| PracticeSession → User | FK | CASCADE | Сессии тренировки ЕГЭ |
+| PracticeItem → PracticeSession | FK | CASCADE | Задачи сессии |
+| PracticeItem → Question | FK | CASCADE | Какая задача выдана |
+| PracticeItem → CodeSubmission | FK | SET_NULL | Отправка кода по задаче |
 | UserResult → User, Quiz | FK | CASCADE | Результат прохождения |
 | UserAnswer → UserResult | FK | CASCADE | Ответ на вопрос |
 | UserAnswer → CodeSubmission | FK | SET_NULL | Связь с посылкой кода |
 | CodeSubmission → User, Question, Quiz | FK | CASCADE | Посылка кода |
-| HelpRequest → User, Question, Quiz | FK | CASCADE | Запрос помощи |
-| HelpComment → HelpRequest, User | FK | CASCADE | Комментарий |
 | ExamTaskProgress → User, Quiz, Question | FK | CASCADE | Прогресс EGE |
 | SolutionAttachment → User, Quiz, Question | FK | CASCADE | Прикрепление решения |
 | SolutionLike → User, UserAnswer | FK | CASCADE | Лайк решения |
 
 !!! warning "Уникальные ограничения"
-    - `HelpRequest`: `unique_together = [student, question]` — один запрос на вопрос
     - `ExamTaskProgress`: `unique_together = [user, quiz, question]` — один прогресс на задачу
     - `SolutionAttachment`: `unique_together = [user, quiz, question]` — одно прикрепление на задачу
     - `SolutionLike`: `UniqueConstraint(user, answer)` — один лайк на ответ

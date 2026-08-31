@@ -55,13 +55,6 @@ graph LR
 | GET | `/quizzes/submission/<id>/status/` | Статус проверки кода |
 | POST | `/quizzes/<id>/finish/` | Завершить тест |
 | GET | `/quizzes/question-file/<id>/download/` | Скачать файл вопроса |
-| GET/POST | `/quizzes/<id>/question/<id>/help/` | Запрос помощи |
-| GET | `/quizzes/help-requests/` | Список запросов помощи |
-| GET | `/quizzes/help-requests/unread-count/` | Количество непрочитанных |
-| GET | `/quizzes/help-requests/my-notifications/` | Мои уведомления |
-| GET | `/quizzes/help-requests/<id>/` | Просмотр запроса |
-| POST | `/quizzes/help-requests/<id>/reply/` | Ответ на запрос |
-| POST | `/quizzes/help-requests/<id>/resolve/` | Закрыть запрос |
 
 ### EGE endpoints (login_required)
 
@@ -91,7 +84,6 @@ graph LR
 | URL | Consumer | Описание |
 |-----|----------|----------|
 | `ws/quiz/<quiz_id>/` | `QuizConsumer` | Результаты проверки кода в реальном времени |
-| `ws/notifications/` | `NotificationConsumer` | Уведомления о помощи |
 
 ---
 

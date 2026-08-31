@@ -97,6 +97,23 @@ class EgeTask(models.Model):
     title = models.CharField(max_length=200, verbose_name="Название задания")
     short_description = models.CharField(max_length=300, blank=True, verbose_name="Краткое описание")
     order = models.PositiveIntegerField(default=0, verbose_name="Порядок")
+    classroom_enabled = models.BooleanField(
+        default=False, verbose_name="Показать задачи для урока",
+        help_text="Пока выключено, кнопка «Задачи для урока» ученикам не видна. "
+                  "Включайте перед занятием: набор задаёт учитель галочкой "
+                  "«Только для работы в классе» у нужных задач."
+    )
+    exam_size = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name="Задач на экзамене",
+        help_text="Сколько задач давать в режиме «Экзамен» по этому заданию. "
+                  "Пусто – по нормативу времени (сколько влезает в час, но не "
+                  "больше пяти). Ставьте меньше, если задачи номера тяжёлые."
+    )
+    exam_unlock_threshold = models.PositiveSmallIntegerField(
+        default=10, verbose_name="Задач до открытия экзамена",
+        help_text="Сколько задач этого задания нужно решить верно в режиме «Учёба», "
+                  "чтобы открылся «Экзамен». 0 – экзамен доступен сразу."
+    )
 
     class Meta:
         ordering = ['number']

@@ -1,0 +1,12 @@
+{% comment %}
+Кнопка входа в режим проектора. Живёт в шапке страницы, внутри компонента
+presentMode() (см. _present_mode.html). На телефоне её нет: там полноэкранный
+режим и так, а проектора нет.
+{% endcomment %}
+<button @click="togglePresent()" title="Показать на проекторе"
+        class="hidden md:flex shrink-0 items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-slate-600 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors">
+    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4"/>
+    </svg>
+    На экран
+</button>

@@ -1,7 +1,9 @@
+from datetime import timedelta
+
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 from django.contrib.auth import get_user_model
-from django.core.validators import MaxLengthValidator
 from accounts.models import StudentGroup
 
 User = get_user_model()
@@ -17,7 +19,10 @@ def normalize_text_answer(answer: str) -> str:
 
 
 class Quiz(models.Model):
-    QUIZ_TYPE_CHOICES = [('standard', 'Стандартный'), ('exam', 'ЕГЭ')]
+    # 'bank' – контейнер тематической подборки задач ЕГЭ, импортированной с kompege.
+    # Целиком такой квиз никто не решает: из него сессии тренировки берут задачи по
+    # ege_number. В списке вариантов не появляется – там фильтр quiz_type='exam'.
+    QUIZ_TYPE_CHOICES = [('standard', 'Стандартный'), ('exam', 'ЕГЭ'), ('bank', 'Банк задач ЕГЭ')]
     EXAM_MODE_CHOICES = [('exam', 'Экзамен'), ('practice', 'Тренировка')]
 
     title = models.CharField(max_length=200, verbose_name="Название теста")
@@ -68,6 +73,8 @@ class Question(models.Model):
         ('code', 'Написание кода (Python)'),
     ]
 
+    DIFFICULTY_CHOICES = [(1, 'Базовая'), (2, 'Повышенная'), (3, 'Высокая')]
+
     quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE, related_name='questions', verbose_name="Тест")
     title = models.CharField(max_length=200, verbose_name="Заголовок вопроса", blank=True, help_text="Используется для отображения и сортировки. Если пусто – берётся первая строка текста.")
     text = models.TextField(verbose_name="Текст вопроса")
@@ -78,6 +85,44 @@ class Question(models.Model):
     ege_number = models.PositiveIntegerField(null=True, blank=True, verbose_name="Номер задачи ЕГЭ")
     topic = models.CharField(max_length=200, blank=True, default='', verbose_name="Тема")
     points = models.PositiveIntegerField(default=1, verbose_name="Баллы")
+    difficulty = models.PositiveSmallIntegerField(
+        choices=DIFFICULTY_CHOICES, default=1, verbose_name="Сложность",
+        help_text="Стартовое значение из импорта. Фактическую сложность считает "
+                  "recalc_ege_difficulty по доле верных первых попыток."
+    )
+    solve_rate = models.FloatField(
+        null=True, blank=True, verbose_name="Доля верных первых попыток",
+        help_text="Пересчитывается автоматически, когда наберётся достаточно попыток. "
+                  "Пусто – данных мало, сложность берётся из поля выше."
+    )
+    external_id = models.CharField(
+        max_length=64, blank=True, default='', db_index=True, verbose_name="ID на источнике",
+        help_text="ID задачи на kompege.ru. По нему load_ege обновляет задачу вместо "
+                  "создания дубля при повторном импорте подборки."
+    )
+    source_url = models.URLField(blank=True, default='', verbose_name="Ссылка на оригинал")
+    group_id = models.CharField(
+        max_length=64, blank=True, default='', db_index=True, verbose_name="Связка задач",
+        help_text="Задачи с одинаковым значением выдаются только вместе и в одном "
+                  "порядке. Так устроены задания 19–21: условие игры описано "
+                  "в 19-м, а 20-е и 21-е на него ссылаются. Пусто – задача сама по себе."
+    )
+    group_order = models.PositiveSmallIntegerField(
+        default=0, verbose_name="Место в связке",
+        help_text="Порядок внутри связки: 0 – первая задача, за ней 1, 2. "
+                  "Без связки не используется."
+    )
+    classroom_only = models.BooleanField(
+        default=False, db_index=True, verbose_name="Только для работы в классе",
+        help_text="Задача выдаётся лишь по кнопке «Задачи для урока» и одна и та же "
+                  "у всех учеников. В обычные тренировки и в экзамен не попадает."
+    )
+    exam_only = models.BooleanField(
+        default=False, db_index=True, verbose_name="Только для экзамена",
+        help_text="Задача не попадает в учебные тренировки. Резерв нужен, чтобы "
+                  "режим «Экзамен» проверял знание темы, а не память о задачах, "
+                  "которые ученик уже прорешал на тренировках."
+    )
     alternative_answers = models.JSONField(null=True, blank=True, verbose_name="Альтернативные ответы", help_text='Список строк, например: ["42", "42.0"]')
     hint = models.TextField(
         blank=True, default='', verbose_name="Подсказка",
@@ -86,13 +131,39 @@ class Question(models.Model):
                   "меньше трёх дней до дедлайна блока или рубильник в блоке."
     )
 
+    # Пороги доли верных первых попыток, отделяющие уровни сложности друг от друга.
+    # Держатся здесь, потому что те же числа нужны SQL-выражению в ege_practice.py:
+    # разъехавшись, они дали бы фильтр «повышенная», выдающий базовые задачи.
+    SOLVE_RATE_EASY = 0.7
+    SOLVE_RATE_MEDIUM = 0.4
+
     class Meta:
         verbose_name = "Вопрос"
         verbose_name_plural = "Вопросы"
+        indexes = [
+            # Основной запрос отбора задач для сессии тренировки.
+            models.Index(fields=['ege_number', 'difficulty']),
+        ]
 
     def __str__(self):
         title = self.get_title()
         return title[:50] + "..." if len(title) > 50 else title
+
+    def effective_difficulty(self):
+        """
+        Сложность с поправкой на факт: пока попыток мало, верим разметке импорта,
+        дальше – доле учеников, решивших задачу с первого раза.
+        """
+        if self.solve_rate is None:
+            return self.difficulty
+        if self.solve_rate >= self.SOLVE_RATE_EASY:
+            return 1
+        if self.solve_rate >= self.SOLVE_RATE_MEDIUM:
+            return 2
+        return 3
+
+    def get_effective_difficulty_display(self):
+        return dict(self.DIFFICULTY_CHOICES)[self.effective_difficulty()]
 
     def get_title(self):
         """Возвращает заголовок: поле title или первую строку текста"""
@@ -261,6 +332,10 @@ class CodeSubmission(models.Model):
     code = models.TextField(verbose_name="Код")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending', verbose_name="Статус")
     is_correct = models.BooleanField(null=True, verbose_name="Правильно?")
+    score = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name="Балл",
+        help_text="Заполняется только там, где балл частичный (задания 26 и 27). Пусто – задача оценивается «верно/неверно».",
+    )
     error_log = models.TextField(null=True, blank=True, verbose_name="Лог ошибки")
     celery_task_id = models.CharField(max_length=255, null=True, blank=True, verbose_name="ID задачи Celery")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создано")
@@ -283,57 +358,6 @@ class CodeSubmission(models.Model):
         return f"{self.user.username} - {self.question} ({self.status})"
 
 
-class HelpRequest(models.Model):
-    """Запрос помощи от ученика по конкретному code-вопросу (один тред на ученика × вопрос)."""
-    STATUS_CHOICES = [
-        ('open', 'Открыт'),
-        ('answered', 'Отвечен'),
-        ('resolved', 'Решён'),
-    ]
-
-    student = models.ForeignKey(User, on_delete=models.CASCADE, related_name='help_requests', verbose_name="Ученик")
-    question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name='help_requests', verbose_name="Вопрос")
-    quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE, related_name='help_requests', verbose_name="Тест")
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='open', verbose_name="Статус")
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
-    updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлён")
-    has_unread_for_teacher = models.BooleanField(default=True, verbose_name="Непрочитано учителем")
-    has_unread_for_student = models.BooleanField(default=False, verbose_name="Непрочитано учеником")
-
-    class Meta:
-        verbose_name = "Запрос помощи"
-        verbose_name_plural = "Запросы помощи"
-        unique_together = ['student', 'question']
-        indexes = [
-            models.Index(fields=['status', 'has_unread_for_teacher']),
-        ]
-
-    def __str__(self):
-        return f"Помощь: {self.student.username} → {self.question} ({self.get_status_display()})"
-
-
-class HelpComment(models.Model):
-    """Сообщение в треде запроса помощи."""
-    help_request = models.ForeignKey(HelpRequest, on_delete=models.CASCADE, related_name='comments', verbose_name="Запрос помощи")
-    author = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="Автор")
-    text = models.TextField(
-        verbose_name="Текст комментария",
-        validators=[MaxLengthValidator(10000, message="Комментарий не может превышать 10000 символов")]
-    )
-    line_number = models.PositiveIntegerField(null=True, blank=True, verbose_name="Номер строки")
-    code_snapshot = models.TextField(null=True, blank=True, verbose_name="Снапшот кода")
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
-
-    class Meta:
-        verbose_name = "Комментарий помощи"
-        verbose_name_plural = "Комментарии помощи"
-        ordering = ['created_at']
-
-    def __str__(self):
-        line_info = f" (строка {self.line_number})" if self.line_number else ""
-        return f"{self.author.username}{line_info}: {self.text[:50]}"
-
-
 class ExamTaskProgress(models.Model):
     """Прогресс пользователя по конкретной задаче ЕГЭ (время, попытки, статус)."""
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='exam_progress', verbose_name="Пользователь")
@@ -342,6 +366,11 @@ class ExamTaskProgress(models.Model):
     time_spent_seconds = models.PositiveIntegerField(default=0, verbose_name="Время (секунды)")
     attempts_to_solve = models.PositiveIntegerField(default=0, verbose_name="Количество попыток")
     is_solved = models.BooleanField(default=False, verbose_name="Решена")
+    score = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name="Балл",
+        help_text="Заполняется только там, где балл частичный (задания 26 и 27). Пусто – задача оценивается «верно/неверно».",
+    )
+
     first_solved_at = models.DateTimeField(null=True, blank=True, verbose_name="Время первого решения")
     best_cpu_time_ms = models.FloatField(null=True, blank=True, verbose_name="Лучшее время CPU (мс)")
     best_cpu_code = models.TextField(blank=True, default='', verbose_name="Код лучшей попытки по CPU")
@@ -360,6 +389,168 @@ class ExamTaskProgress(models.Model):
     def __str__(self):
         status = "решена" if self.is_solved else f"{self.attempts_to_solve} попыток"
         return f"{self.user.username} – задача {self.question_id} ({status})"
+
+
+class PracticeSession(models.Model):
+    """
+    Сессия тренировки: короткая пачка задач, отобранная под конкретную цель.
+
+    Одна модель закрывает три сценария, которые отличаются только правилом отбора:
+    практикум после статьи теории, свободная тренировка по теме и работа над
+    ошибками. Плодить под каждый отдельную сущность нечего – различие живёт
+    в поле kind и в ege_practice.pick_questions().
+    """
+
+    KIND_CHOICES = [
+        ('topic', 'По теме'),
+        ('mistakes', 'Работа над ошибками'),
+        ('mixed', 'Смешанная'),
+        # Один и тот же набор задач у всех учеников: на уроке «задача 1»
+        # обязана быть одной задачей для всего класса.
+        ('classroom', 'Работа в классе'),
+        # Задача уже решена, ученик переписывает код ради времени и памяти.
+        # Такая сессия не оценивается: она про качество решения, а не про знание.
+        ('retry', 'Переписать решение'),
+    ]
+    # study – проверка сразу после каждой задачи, можно ответить ещё раз,
+    # exam – ответы сохраняются молча, разбор в конце сессии.
+    # Значение в базе остаётся 'study': переименование чисто словесное, ученику
+    # везде говорим «тренировка», а не «учёба».
+    MODE_CHOICES = [('study', 'Тренировка'), ('exam', 'Экзамен')]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='practice_sessions', verbose_name="Ученик")
+    kind = models.CharField(max_length=10, choices=KIND_CHOICES, default='topic', verbose_name="Тип сессии")
+    mode = models.CharField(max_length=10, choices=MODE_CHOICES, default='study', verbose_name="Режим")
+    ege_number = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name="Номер задания ЕГЭ",
+        help_text="Пусто для работы над ошибками и смешанной сессии – там задачи разных заданий."
+    )
+    difficulty = models.PositiveSmallIntegerField(
+        null=True, blank=True, choices=Question.DIFFICULTY_CHOICES,
+        verbose_name="Сложность", help_text="Пусто – любая."
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Начата")
+    finished_at = models.DateTimeField(null=True, blank=True, verbose_name="Завершена")
+
+    class Meta:
+        verbose_name = "Сессия тренировки ЕГЭ"
+        verbose_name_plural = "Сессии тренировки ЕГЭ"
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', '-created_at']),
+        ]
+
+    def __str__(self):
+        target = f"задание {self.ege_number}" if self.ege_number else self.get_kind_display()
+        return f"{self.user.username} – {target} ({self.created_at:%d.%m.%Y})"
+
+    @property
+    def is_finished(self):
+        return self.finished_at is not None
+
+    @property
+    def deadline(self):
+        """
+        Момент, когда экзамен закрывается сам. У тренировки лимита нет.
+
+        Состав экзамена подбирается так, чтобы уместиться в час по нормативу
+        ЕГЭ, – без жёсткого конца это была бы та же тренировка, только без
+        подсказок. Отсчёт идёт от created_at, а не от первого ответа: часы
+        на реальном экзамене тоже не ждут, пока ученик соберётся.
+        """
+        from .ege_constants import EXAM_MINUTES
+
+        if self.mode != 'exam':
+            return None
+        return self.created_at + timedelta(minutes=EXAM_MINUTES)
+
+    @property
+    def is_expired(self):
+        """Время экзамена вышло, а сессия всё ещё открыта."""
+        deadline = self.deadline
+        return bool(deadline and not self.finished_at and timezone.now() >= deadline)
+
+
+class PracticeItem(models.Model):
+    """
+    Одна задача внутри сессии – и одновременно единственный журнал попыток тренировки.
+
+    Из него считается вся аналитика: точность по заданию, среднее время, динамика
+    по неделям, пул задач для работы над ошибками. ExamTaskProgress для этого не
+    годится – он хранит агрегат («решена / столько-то попыток») без истории, а
+    работа над ошибками должна знать, чем закончилась именно последняя попытка.
+    """
+
+    session = models.ForeignKey(PracticeSession, on_delete=models.CASCADE, related_name='items', verbose_name="Сессия")
+    question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name='practice_items', verbose_name="Задача")
+    order = models.PositiveSmallIntegerField(default=0, verbose_name="Порядок в сессии")
+
+    text_answer = models.CharField(max_length=200, blank=True, default='', verbose_name="Ответ ученика")
+    submission = models.ForeignKey(
+        CodeSubmission, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='practice_items', verbose_name="Отправка кода"
+    )
+    is_correct = models.BooleanField(null=True, verbose_name="Верно?", help_text="Пусто – ученик ещё не отвечал.")
+    score = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name="Балл",
+        help_text="Заполняется только там, где балл частичный (задания 26 и 27). Пусто – задача оценивается «верно/неверно».",
+    )
+
+    attempts = models.PositiveSmallIntegerField(
+        default=0, verbose_name="Попыток",
+        help_text="Сколько раз ученик нажал «Проверить». При is_correct=True – с какой попытки решил."
+    )
+    gave_up = models.BooleanField(
+        default=False, verbose_name="Открыл ответ",
+        help_text="Ученик посмотрел верный ответ, не решив задачу. Считается как нерешённая."
+    )
+    carried = models.BooleanField(
+        default=False, db_index=True, verbose_name="Ответ перенесён",
+        help_text="Задача попала в сессию только как часть связки (19–21): ученик "
+                  "решил её раньше, ответ подставлен, решать заново нечего. "
+                  "В статистику и в работу над ошибками такая запись не идёт."
+    )
+    seconds = models.PositiveIntegerField(default=0, verbose_name="Время на задачу (секунды)")
+    answered_at = models.DateTimeField(null=True, blank=True, verbose_name="Момент ответа")
+
+    class Meta:
+        verbose_name = "Задача сессии"
+        verbose_name_plural = "Задачи сессий"
+        ordering = ['order']
+        unique_together = ['session', 'question']
+        indexes = [
+            models.Index(fields=['session', 'order']),
+            # Пул ошибок и точность по заданию: ищем по задаче и исходу.
+            models.Index(fields=['question', 'is_correct']),
+            models.Index(fields=['answered_at']),
+        ]
+
+    @property
+    def is_locked(self):
+        """
+        Задача закрыта: либо решена, либо ученик открыл ответ.
+
+        Без замка тренировка не измеряет ничего: неверный ответ показывал
+        правильный, ученик вписывал его и получал зачёт. Теперь верный ответ
+        отдаётся только по кнопке «Показать ответ», и это фиксируется.
+
+        В сессии «Переписать решение» замка нет вовсе: там весь смысл в том,
+        чтобы отправлять вариант за вариантом и смотреть на время и память.
+        """
+        if self.session.kind == 'retry':
+            return False
+        return bool(self.is_correct) or self.gave_up
+
+    def __str__(self):
+        if self.is_correct is None:
+            status = "без ответа"
+        elif self.gave_up:
+            status = "открыл ответ"
+        elif self.is_correct:
+            status = f"верно с попытки {self.attempts}" if self.attempts > 1 else "верно"
+        else:
+            status = "неверно"
+        return f"Сессия {self.session_id}, задача {self.question_id} ({status})"
 
 
 class SolutionAttachment(models.Model):
@@ -395,6 +586,10 @@ class UserAnswer(models.Model):
     error_log = models.TextField(null=True, blank=True, verbose_name="Лог ошибки")
 
     is_correct = models.BooleanField(default=False, verbose_name="Верно?")
+    score = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name="Балл",
+        help_text="Заполняется только там, где балл частичный (задания 26 и 27). Пусто – задача оценивается «верно/неверно».",
+    )
     submission = models.ForeignKey(CodeSubmission, null=True, blank=True, on_delete=models.SET_NULL, verbose_name="Отправка кода")
 
     class Meta:

@@ -29,9 +29,6 @@ quizApp() {
   // Редакторы
   codeMirrors: {},            // {qId: CodeMirror instance}
 
-  // Помощь
-  helpManager: null,          // HelpRequestManager
-
   // UI
   finishing: false,
   showFinishConfirm: false,
@@ -216,7 +213,7 @@ ensureCodeMirror(task) {
       theme: 'material-darker',
       lineNumbers: true,
       indentUnit: 4,
-      gutters: ['CodeMirror-linenumbers', 'help-gutter']
+      lineWrapping: true
     })
 
     // 4. Восстановить значение
@@ -241,7 +238,6 @@ ensureCodeMirror(task) {
 ```
 {% block pre_alpine_js %}      ← quizApp() / egeApp() определение
   <script src="quiz-async.js">
-  <script src="help-requests.js">
   <script src="ege-timer.js">
   <script>
     function quizApp() { ... }
@@ -249,8 +245,4 @@ ensureCodeMirror(task) {
 {% endblock %}
 
 <!-- Alpine.js CDN -->          ← Alpine инициализация (подхватит x-data)
-
-{% block extra_js %}            ← пост-загрузочные скрипты
-  <script src="notifications.js">
-{% endblock %}
 ```

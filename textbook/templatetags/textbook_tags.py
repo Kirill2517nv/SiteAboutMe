@@ -109,6 +109,33 @@ def widget_config_json(value):
         return '{}'
 
 
+@register.filter(name='plural')
+def plural(value, forms):
+    """
+    Русское окончание по числу: «1 балл», «2 балла», «5 баллов».
+
+    Встроенный pluralize знает только две формы и на третьей молча отдаёт
+    пустую строку – отсюда «2 балл» и «3 блок» на страницах. Три формы через
+    запятую: для 1, для 2–4 и для 5–20.
+    """
+    try:
+        value = abs(int(value))
+    except (TypeError, ValueError):
+        return ''
+    bits = forms.split(',')
+    if len(bits) != 3:
+        return ''
+    # 11–19 – исключение: «11 баллов», а не «11 балл».
+    if value % 100 // 10 == 1:
+        return bits[2]
+    remainder = value % 10
+    if remainder == 1:
+        return bits[0]
+    if 2 <= remainder <= 4:
+        return bits[1]
+    return bits[2]
+
+
 @register.filter(name='time_short')
 def time_short(seconds):
     """Секунды → «45 с», «12 мин», «1 ч 05 мин». Ноль показываем прочерком."""

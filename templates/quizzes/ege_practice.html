@@ -1,0 +1,801 @@
+{% extends 'base.html' %}
+{% load static ege_filters %}
+
+{% block title %}{% if session.mode == 'exam' %}Экзамен{% else %}Тренировка{% endif %} ЕГЭ{% endblock title %}
+
+{% block extra_css %}
+{% comment %}
+Стили CodeMirror. Скрипты редактора страница подключала и раньше, а стили –
+нет: редактор создавался, но оставался невидимой пустой областью. Пока задачи
+на код жили только в вариантах (ege_detail, где стили есть), это не всплывало.
+{% endcomment %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/theme/material-darker.min.css">
+<style>
+    .CodeMirror {
+        border: 1px solid #374151;
+        border-radius: 8px;
+        /* rem, а не px: на проекторе страница растёт через корневой font-size
+           (см. .present-* ниже), и редактор обязан расти вместе с условием. */
+        font-size: 0.875rem;
+        height: 25rem;
+    }
+    .CodeMirror-gutters { border-right: 1px solid #374151; }
+    .CodeMirror-scroll { overflow-x: hidden !important; }
+</style>
+{% endblock extra_css %}
+
+{% block content %}
+<style>
+    /* Сетка задач – те же стили, что на странице варианта (ege_detail):
+       ученик должен видеть один и тот же элемент управления везде. */
+    .task-btn {
+        width: 100%; aspect-ratio: 1 / 1;
+        border-radius: 8px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 14px; font-weight: 600;
+        cursor: pointer; transition: all 0.15s;
+        border: 2px solid transparent;
+    }
+    .task-btn.default { background: #f1f5f9; color: #64748b; }
+    .task-btn.answered { background: #dbeafe; color: #2563eb; }
+    .task-btn.solved { background: #dcfce7; color: #16a34a; }
+    .task-btn.wrong { background: #fee2e2; color: #ef4444; }
+    .task-btn.active { border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37,99,235,0.2); }
+
+    html.dark .task-btn.default { background: #334155; color: #94a3b8; }
+    html.dark .task-btn.answered { background: #1e3a8a; color: #93c5fd; }
+    html.dark .task-btn.solved { background: #14532d; color: #86efac; }
+    html.dark .task-btn.wrong { background: #7f1d1d; color: #fca5a5; }
+
+    .task-strip .task-btn { width: 40px; }
+    .task-swatch { width: 14px; height: 14px; aspect-ratio: auto; border-radius: 4px; }
+
+</style>
+{% comment %}
+Сессия тренировки. Макет повторяет страницу варианта (ege_detail): сайдбар с
+сеткой задач слева, условие справа. Так ученик видит сразу всю сессию – сколько
+осталось, где он ошибся, куда можно вернуться, – и не гадает, что будет дальше.
+
+Два режима различаются моментом обратной связи. Тренировка проверяет ответ сразу и
+показывает верный, «Экзамен» молча запоминает ответы и раскрывает разбор на
+странице результата. Правильные ответы уходят в браузер только в режиме
+тренировки – в «Экзамене» их в JSON просто нет.
+{% endcomment %}
+{% comment %}
+Внешний слой – режим проектора (общий для вариантов, практикума и тренировки),
+внутренний – сама сессия. Два компонента, а не один: Alpine ищет данные вверх по
+дереву, поэтому кнопки сессии видят и своё состояние, и режим показа.
+{% endcomment %}
+<div id="practice-root" class="present-root max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6" x-data="presentMode()">
+<div x-data="practiceApp()">
+
+    <!-- Шапка -->
+    <div class="present-hide flex flex-wrap items-center justify-between gap-3 mb-5">
+        <div class="flex items-center gap-3 min-w-0">
+            {% comment %}
+            На экзамене выхода со страницы нет: попытка идёт по часам и
+            закрывается только кнопкой «Завершить» или временем.
+            {% endcomment %}
+            {% if session.mode != 'exam' %}
+            <a href="{% if session.ege_number %}{% url 'ege:ege_task' session.ege_number %}{% else %}{% url 'ege:ege_list' %}{% endif %}"
+               class="shrink-0 text-gray-400 hover:text-gray-600 dark:hover:text-slate-300">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+                </svg>
+            </a>
+            {% endif %}
+            <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                    <h1 class="text-lg font-semibold text-gray-900 dark:text-white truncate">
+                        {% if session.ege_number %}Задание {{ session.ege_number }}{% else %}{{ session.get_kind_display }}{% endif %}
+                    </h1>
+                    {% if session.mode == 'exam' %}
+                    <span class="shrink-0 px-2 py-0.5 text-xs font-medium rounded-full bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">
+                        Экзамен
+                    </span>
+                    {% else %}
+                    <span class="shrink-0 px-2 py-0.5 text-xs font-medium rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                        Тренировка
+                    </span>
+                    {% endif %}
+                </div>
+                <div class="text-sm text-gray-500 dark:text-slate-400">
+                    {% if reveal %}Решено <span x-text="solvedCount"></span>{% else %}Отвечено <span x-text="answeredCount"></span>{% endif %}
+                    из {{ items|length }}
+                </div>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+            {% if session.mode == 'exam' %}
+            {% comment %}
+            Экзамен закрывается сам через час – и на сервере тоже, поэтому
+            закрытая вкладка не продлевает контрольную.
+            {% endcomment %}
+            <div class="text-sm font-semibold tabular-nums px-3 py-1.5 rounded-lg"
+                 :class="examLeft <= 300
+                     ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
+                     : 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300'">
+                <span x-text="examClock"></span>
+                <span class="font-normal opacity-70">до конца</span>
+            </div>
+            {% endif %}
+            <div class="text-sm tabular-nums px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-300">
+                <span x-text="clock"></span>
+                <span class="text-gray-400" x-show="item()?.recommended_min"
+                      x-text="' / ' + item()?.recommended_min + ' мин'"></span>
+            </div>
+            {% include '_present_button.html' %}
+            <button @click="showFinishConfirm = true"
+                    class="px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors">
+                Завершить
+            </button>
+        </div>
+    </div>
+
+    {% include '_present_mode.html' with nav_goto="goTo" nav_index="current" nav_list="items" %}
+
+    {% if is_retry %}
+    <div class="mb-5 p-4 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/40">
+        <div class="font-medium text-blue-900 dark:text-blue-200 text-sm">Переписываем решение</div>
+        <p class="mt-1 text-xs text-blue-800/80 dark:text-blue-300/80">
+            Задача уже засчитана. Отправляйте варианты сколько нужно: неудачная попытка
+            ничего не испортит, а из удачных сохранятся лучшее время и лучшая память.
+            В статистику эта сессия не идёт.
+        </p>
+    </div>
+    {% endif %}
+
+    <div class="flex gap-6">
+
+        <!-- Сайдбар с сеткой задач -->
+        <aside class="present-hide hidden md:block w-52 shrink-0">
+            <div class="sticky top-24 bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 p-3">
+                <div class="text-xs font-medium text-gray-400 dark:text-slate-500 mb-2 px-1">Задачи</div>
+                {% comment %}
+                Связка обведена рамкой и занимает ровно одну строку: тройка
+                19–20–21 – это одна игра, и разрывать её между строками нельзя.
+                Без связок остаётся обычная сетка в четыре колонки.
+                {% endcomment %}
+                <div class="space-y-2">
+                    <template x-for="(row, r) in taskRows" :key="r">
+                        <div class="grid gap-2"
+                             :class="row.linked ? 'rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-950/20 p-1.5' : ''"
+                             :style="'grid-template-columns: repeat(' + (row.linked ? row.cells.length : 4) + ', minmax(0, 1fr))'">
+                            <template x-for="i in row.cells" :key="i">
+                                <button @click="goTo(i)" class="task-btn" :class="btnClass(items[i], i)"
+                                        x-text="i + 1"></button>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+
+                <div class="mt-3 pt-3 border-t border-gray-100 dark:border-slate-700 text-xs text-gray-500 dark:text-slate-400 space-y-1.5">
+                    {% if session.mode == 'exam' %}
+                    <div class="flex items-center gap-2">
+                        <span class="task-btn task-swatch answered"></span> есть ответ
+                    </div>
+                    {% else %}
+                    <div class="flex items-center gap-2">
+                        <span class="task-btn task-swatch solved"></span> верно
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="task-btn task-swatch wrong"></span> неверно
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="task-btn task-swatch answered"></span> проверяется
+                    </div>
+                    {% endif %}
+                    <div class="flex items-center gap-2">
+                        <span class="task-btn task-swatch default"></span> без ответа
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Полоса задач для мобильных -->
+        <div class="present-hide md:hidden fixed bottom-0 inset-x-0 z-20 bg-white dark:bg-slate-800 border-t border-gray-200 dark:border-slate-700 px-3 py-2">
+            <div class="task-strip flex gap-1.5 overflow-x-auto">
+                <template x-for="(it, i) in items" :key="'m' + it.item_id">
+                    <button @click="goTo(i)" class="task-btn shrink-0" :class="btnClass(it, i)"
+                            x-text="i + 1"></button>
+                </template>
+            </div>
+        </div>
+
+        <!-- Область задачи -->
+        <div class="flex-1 min-w-0 pb-20 md:pb-0">
+            {% for item in items %}
+            <div x-show="current === {{ forloop.counter0 }}" x-cloak
+                 class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 p-6">
+
+                {% if item.carried %}
+                {% comment %}
+                Задача связки, решённая раньше: она здесь как условие для
+                соседних. Ответ подставлен, перерешивать нечего – иначе работа
+                над ошибками превращалась бы в повторение всей тройки.
+                {% endcomment %}
+                <div class="mb-4 flex items-start gap-2 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 p-3 text-sm">
+                    <svg class="w-4 h-4 mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    <div class="text-emerald-800 dark:text-emerald-300">
+                        Эту задачу вы уже решили – ответ подставлен. Она в сессии как условие
+                        для остальных задач связки.
+                    </div>
+                </div>
+                {% endif %}
+
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-2 text-sm">
+                        {% comment %}
+                        Номер задания дублирует шапку страницы, когда сессия по
+                        одной теме. В работе над ошибками тема у каждой задачи
+                        своя – там подпись нужна.
+                        {% endcomment %}
+                        <span class="font-medium text-gray-400">
+                            Задача {{ forloop.counter }}{% if not session.ege_number %} · задание {{ item.question.ege_number }}{% endif %}
+                        </span>
+                        {% with source=item.question|question_source %}
+                        {% if source %}<span class="text-gray-400">{{ source }}</span>{% endif %}
+                        {% endwith %}
+                        <span class="px-2 py-0.5 rounded-full text-xs
+                            {% if item.question.effective_difficulty == 3 %}bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300
+                            {% elif item.question.effective_difficulty == 2 %}bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300
+                            {% else %}bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300{% endif %}">
+                            {{ item.question.get_effective_difficulty_display }}
+                        </span>
+                        <span class="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-slate-300">
+                            {{ item.question.points }} б.
+                        </span>
+                    </div>
+                </div>
+
+                {% include 'quizzes/_ege_question_body.html' with question=item.question %}
+
+                {% if item.question.question_type == 'code' %}
+                <div class="mt-4">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Код (Python):</label>
+                    <div id="cm-wrap-{{ item.id }}"></div>
+                    <button @click="submitCode({{ item.id }})"
+                            :disabled="busy[{{ item.id }}] || locked[{{ item.id }}]"
+                            class="mt-3 px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                        <span x-show="!busy[{{ item.id }}]">Проверить решение</span>
+                        <span x-show="busy[{{ item.id }}]" class="flex items-center gap-2">
+                            <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                            </svg>
+                            Проверяю...
+                        </span>
+                    </button>
+                </div>
+                {% else %}
+                <div class="mt-4">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Ответ:</label>
+                    <input type="text" x-model="answers[{{ item.id }}]"
+                           autocomplete="off"
+                           @input="dirty[{{ item.id }}] = true"
+                           {% if reveal %}@keydown.enter.prevent="check({{ item.id }})"{% else %}@blur="flushAnswers()"{% endif %}
+                           :disabled="locked[{{ item.id }}]"
+                           class="w-full max-w-md px-4 py-2.5 border rounded-lg focus:ring-2 transition-colors dark:bg-slate-900 dark:text-white disabled:opacity-60"
+                           :class="verdict[{{ item.id }}] === false
+                               ? 'border-red-400 bg-red-50 dark:bg-red-900/20 focus:ring-red-500'
+                               : 'border-gray-300 dark:border-slate-600 focus:ring-brand-500 focus:border-brand-500'"
+                           placeholder="Введите ответ...">
+                    <div class="flex flex-wrap items-center gap-3 mt-3">
+                        {% if reveal %}
+                        <button @click="check({{ item.id }})"
+                                :disabled="!answers[{{ item.id }}] || busy[{{ item.id }}] || locked[{{ item.id }}]"
+                                class="px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                            <span x-show="!attempts[{{ item.id }}]">Проверить</span>
+                            <span x-show="attempts[{{ item.id }}]" x-cloak>Проверить ещё раз</span>
+                        </button>
+                        {% comment %}
+                        Кнопка появляется только после неудачной попытки: показывать
+                        её сразу значит подталкивать к подсказке до попытки решить.
+                        {% endcomment %}
+                        <button x-show="verdict[{{ item.id }}] === false && !locked[{{ item.id }}]" x-cloak
+                                @click="giveUp({{ item.id }})"
+                                class="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-slate-600 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors">
+                            Показать ответ
+                        </button>
+                        <span x-show="attempts[{{ item.id }}] && !locked[{{ item.id }}]" x-cloak
+                              class="text-xs text-gray-400"
+                              x-text="'попыток: ' + attempts[{{ item.id }}]"></span>
+                        {% else %}
+                        <span class="text-xs text-gray-400"
+                              x-text="dirty[{{ item.id }}] ? 'сохраняется...' :
+                                      (saved[{{ item.id }}] || answers[{{ item.id }}] ? 'ответ сохранён' :
+                                       'ответ сохраняется автоматически')"></span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if user.is_superuser %}
+                {% comment %}
+                Панель учителя – та же, что на странице варианта (ege_detail).
+                Рендерится на сервере и в JSON ученика не попадает: правильные
+                ответы не должны лежать в данных страницы даже у админа, иначе
+                любой скрипт на странице увидит их так же легко.
+                {% endcomment %}
+                <div class="mt-5" x-data="{ peek: false }">
+                    <button type="button" @click="peek = !peek"
+                            class="flex items-center gap-2 text-xs font-medium text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30 hover:bg-amber-100 dark:hover:bg-amber-900/50 border border-amber-200 dark:border-amber-900/60 rounded-lg px-3 py-1.5 transition-colors">
+                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                        </svg>
+                        <span x-text="peek ? 'Скрыть ответ' : 'Показать ответ'"></span>
+                    </button>
+
+                    <div x-show="peek" x-cloak x-transition
+                         class="mt-3 rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-900/20 p-4 text-sm">
+                        {% include 'quizzes/_ege_answer_body.html' with question=item.question %}
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if reveal %}
+                <div x-show="verdict[{{ item.id }}] !== undefined" x-cloak class="mt-4">
+                    <div x-show="verdict[{{ item.id }}] === true"
+                         class="flex items-center gap-2 p-3 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 text-sm">
+                        <svg class="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                        </svg>
+                        <span x-text="attempts[{{ item.id }}] > 1
+                            ? 'Верно, с попытки ' + attempts[{{ item.id }}] + '.'
+                            : 'Верно.'"></span>
+                    </div>
+                    <div x-show="verdict[{{ item.id }}] === false"
+                         class="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 text-sm">
+                        <div class="flex items-center gap-2 font-medium">
+                            <svg class="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                            <span x-show="!correct[{{ item.id }}]">Неверно. Попробуйте ещё раз.</span>
+                            <span x-show="correct[{{ item.id }}]" x-cloak>Задача не решена.</span>
+                        </div>
+                        {% comment %}
+                        Задания 26 и 27: ответ неверен, но часть работы засчитана.
+                        Молчать об этом нельзя – на экзамене этот балл ученик получит.
+                        {% endcomment %}
+                        <div class="mt-1 pl-7" x-show="scores[{{ item.id }}]" x-cloak
+                             x-text="'Засчитано ' + scores[{{ item.id }}] + ' из ' + points[{{ item.id }}] + ' баллов.'"></div>
+                        <div class="mt-1 pl-7" x-show="correct[{{ item.id }}]" x-cloak>
+                            Правильный ответ: <span class="font-semibold" x-text="correct[{{ item.id }}]"></span>
+                        </div>
+                    </div>
+                    <div x-show="errors[{{ item.id }}]" x-cloak
+                         class="mt-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300 text-xs whitespace-pre-wrap"
+                         x-text="errors[{{ item.id }}]"></div>
+                </div>
+                {% endif %}
+
+                <div class="flex items-center justify-between mt-6 pt-4 border-t border-gray-100 dark:border-slate-700">
+                    <button @click="goTo(current - 1)" :disabled="current === 0"
+                            class="px-4 py-2 text-sm text-gray-600 dark:text-slate-300 disabled:opacity-40 hover:text-gray-900 dark:hover:text-white">
+                        ← Назад
+                    </button>
+                    <button x-show="current < items.length - 1" @click="goTo(current + 1)"
+                            class="px-4 py-2 bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-200 text-sm font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors">
+                        Следующая →
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Подтверждение завершения -->
+    <div x-show="showFinishConfirm" x-cloak class="fixed inset-0 z-40 flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-black/40" @click="showFinishConfirm = false"></div>
+        <div class="relative bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-sm w-full p-6">
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">Завершить сессию?</h3>
+            <p class="text-sm text-gray-600 dark:text-slate-400 mb-5">
+                <span x-show="unansweredCount > 0"
+                      x-text="'Без ответа осталось задач: ' + unansweredCount + '.'"></span>
+                <span x-show="unansweredCount === 0">Все задачи отвечены.</span>
+                Дальше откроется разбор.
+            </p>
+            <div class="flex gap-2 justify-end">
+                <button @click="showFinishConfirm = false"
+                        class="px-4 py-2 text-sm text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white">
+                    Продолжить решать
+                </button>
+                <button @click="finish()"
+                        class="px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700">
+                    Завершить
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <form method="post" action="{% url 'ege:ege_practice_finish' session.pk %}" x-ref="finishForm" class="hidden">
+        {% csrf_token %}
+    </form>
+</div>
+</div>
+{% endblock content %}
+
+{% block pre_alpine_js %}
+{% include 'quizzes/_mathjax.html' %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/python/python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/edit/matchbrackets.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/edit/closebrackets.min.js"></script>
+
+<script>
+function practiceApp() {
+    return {
+        items: {{ items_json|safe }},
+        taskRows: {{ nav_rows_json|safe }},
+        lastSubs: {{ last_submissions_json|safe }},
+        sessionId: {{ session.pk }},
+        csrf: '{{ csrf_token }}',
+        reveal: {{ reveal|yesno:"true,false" }},
+        isRetry: {{ is_retry|yesno:"true,false" }},
+        isExam: {% if session.mode == 'exam' %}true{% else %}false{% endif %},
+        finishUrl: '{% url 'ege:ege_practice_finish' session.pk %}',
+
+        current: 0,
+        answers: {},
+        verdict: {},     // itemId -> true/false
+        attempts: {},    // itemId -> сколько раз жал «Проверить»
+        locked: {},      // itemId -> задача закрыта (решена или открыт ответ)
+        dirty: {},       // itemId -> ответ введён, но ещё не отправлен
+        saved: {},       // itemId -> ответ принят сервером (режим «Экзамен»)
+        correct: {},     // itemId -> правильный ответ (только после «Показать ответ»)
+        errors: {},      // itemId -> лог провалившегося теста
+        scores: {},      // itemId -> балл, если он частичный (задания 26 и 27)
+        points: {},      // itemId -> сколько баллов стоит задача
+        busy: {},        // itemId -> идёт проверка
+        showFinishConfirm: false,
+
+        editors: {},
+        clock: '0:00',
+        examLeft: {{ seconds_left|default_if_none:"null" }},
+        _examEnd: null,
+        _finishing: false,
+        _taskStart: null,
+        _tick: null,
+        _ticks: 0,
+        _polls: {},
+
+        init() {
+            for (const it of this.items) {
+                if (it.answer) this.answers[it.item_id] = it.answer;
+                if (it.is_correct !== null) this.verdict[it.item_id] = it.is_correct;
+                this.attempts[it.item_id] = it.attempts || 0;
+                this.locked[it.item_id] = !!it.locked;
+                if (it.score !== null && it.score !== undefined) this.scores[it.item_id] = it.score;
+                this.points[it.item_id] = it.points;
+                if (it.correct_answer) this.correct[it.item_id] = it.correct_answer;
+                const sub = this.lastSubs[it.question_id];
+                if (sub && sub.code) this.answers[it.item_id] = sub.code;
+            }
+
+            if (this.examLeft !== null) this._examEnd = Date.now() + this.examLeft * 1000;
+
+            this._startTask();
+            this._tick = setInterval(() => {
+                this._updateClock();
+                // Раз в минуту досылаем время: иначе одна задача, над которой
+                // сидели полчаса, ушла бы на сервер одной огромной порцией.
+                if (++this._ticks % 60 === 0) this._flushTime();
+            }, 1000);
+
+            // Время досылаем и при уходе со страницы: без этого последняя задача
+            // сессии всегда теряла бы свои минуты.
+            this._onHide = () => {
+                if (document.hidden) { this._flushTime(); this.flushAnswers(); }
+                else { this._taskStart = Date.now(); }
+            };
+            document.addEventListener('visibilitychange', this._onHide);
+            window.addEventListener('pagehide', () => {
+                // Уход с экзамена закрывает попытку: держать её открытой,
+                // пока часы идут, значит подарить ученику фон для размышлений.
+                if (this.isExam && !this._finishing) return this._finishByBeacon();
+                this._flushTime();
+                this.flushAnswers();
+            });
+
+            // Экзамен идёт по часам: перезагрузка или уход по «назад» время не
+            // останавливают, поэтому браузер спрашивает подтверждение. Больше
+            // платформа не позволяет – заблокировать навигацию нельзя.
+            if (this.isExam) {
+                this._onLeave = (e) => {
+                    if (this._finishing) return;
+                    e.preventDefault();
+                    e.returnValue = '';
+                };
+                window.addEventListener('beforeunload', this._onLeave);
+                // Кнопка «назад» beforeunload не вызывает, поэтому спрашиваем
+                // сами – и уходим через обычное завершение, с разбором.
+                history.pushState(null, '', location.href);
+                this._onBack = () => {
+                    if (this._finishing) return;
+                    if (confirm('Уйти со страницы? Попытка будет завершена и проверена.')) {
+                        this.finish();
+                        return;
+                    }
+                    history.pushState(null, '', location.href);
+                };
+                window.addEventListener('popstate', this._onBack);
+            }
+
+            this.$nextTick(() => this._ensureEditor());
+        },
+
+        destroy() {
+            clearInterval(this._tick);
+            document.removeEventListener('visibilitychange', this._onHide);
+            if (this._onLeave) window.removeEventListener('beforeunload', this._onLeave);
+            if (this._onBack) window.removeEventListener('popstate', this._onBack);
+            for (const id of Object.keys(this._polls)) clearInterval(this._polls[id]);
+        },
+
+        item() { return this.items[this.current]; },
+
+        btnClass(it, i) {
+            let cls = i === this.current ? ' active' : '';
+            if (this.verdict[it.item_id] === true) return 'solved' + cls;
+            if (this.verdict[it.item_id] === false) return 'wrong' + cls;
+            if (this.answers[it.item_id]) return 'answered' + cls;
+            return 'default' + cls;
+        },
+
+        get solvedCount() {
+            return this.items.filter(it => this.verdict[it.item_id] === true).length;
+        },
+
+        get answeredCount() {
+            return this.items.filter(it => (this.answers[it.item_id] || '').trim()).length;
+        },
+
+        // На экзамене «отвечена» – это просто непустое поле: исход задачи
+        // ученику неизвестен, и считать по нему нельзя.
+        get unansweredCount() {
+            return this.items.filter(it => this.reveal
+                ? this.verdict[it.item_id] === undefined
+                : !(this.answers[it.item_id] || '').trim()).length;
+        },
+
+        goTo(i) {
+            if (i < 0 || i >= this.items.length) return;
+            this._flushTime();
+            this.flushAnswers();
+            this.current = i;
+            this._startTask();
+            this.$nextTick(() => this._ensureEditor());
+        },
+
+        _startTask() {
+            this._taskStart = Date.now();
+            this._updateClock();
+        },
+
+        _updateClock() {
+            const base = this.item()?.seconds || 0;
+            const live = this._taskStart ? Math.floor((Date.now() - this._taskStart) / 1000) : 0;
+            const total = base + live;
+            this.clock = Math.floor(total / 60) + ':' + String(total % 60).padStart(2, '0');
+
+            if (this._examEnd === null) return;
+            this.examLeft = Math.max(0, Math.round((this._examEnd - Date.now()) / 1000));
+            if (this.examLeft === 0 && !this._finishing) {
+                this._finishing = true;
+                this.showFinishConfirm = false;
+                this.finish();
+            }
+        },
+
+        get examClock() {
+            const left = this.examLeft || 0;
+            return Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0');
+        },
+
+        _flushTime() {
+            const it = this.item();
+            if (!it || !this._taskStart) return;
+            const spent = Math.round((Date.now() - this._taskStart) / 1000);
+            this._taskStart = Date.now();
+            // Порог «меньше пяти секунд не шлём» съедал целые сессии: задача,
+            // решённая за три секунды, уходила в статистику с нулём.
+            if (spent <= 0) return;
+            it.seconds += spent;
+            fetch(`/ege/practice/${this.sessionId}/time/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.csrf },
+                body: JSON.stringify({ item_id: it.item_id, seconds: spent }),
+                keepalive: true,
+            }).catch(() => {});
+        },
+
+        // Дописывает введённые, но не отправленные ответы. Вызывается при
+        // переходе к другой задаче, при уходе со страницы и перед завершением:
+        // ответ, который ученик видит в поле, обязан попасть в результат.
+        async flushAnswers() {
+            for (const key of Object.keys(this.dirty)) {
+                const itemId = Number(key);
+                delete this.dirty[itemId];
+                const it = this.items.find(x => x.item_id === itemId);
+                if (!it || it.type === 'code' || this.locked[itemId]) continue;
+                if (!(this.answers[itemId] || '').trim()) continue;
+                await this.check(itemId);
+            }
+        },
+
+        async finish() {
+            this._finishing = true;   // снимает предупреждение об уходе
+            this._flushTime();
+            await this.flushAnswers();
+            this.$refs.finishForm.submit();
+        },
+
+        // Ответы и завершение уходят одним запросом: раздельно сохранение
+        // прилетело бы в уже закрытую сессию и потерялось. sendBeacon –
+        // единственный способ дослать что-то из закрывающейся вкладки.
+        _finishByBeacon() {
+            this._finishing = true;
+            // Время шлём отдельно и до маячка: приём времени закрытой сессии
+            // не смущает, а ответ в неё уже не попадёт.
+            this._flushTime();
+            const pending = [];
+            for (const key of Object.keys(this.dirty)) {
+                const itemId = Number(key);
+                const it = this.items.find(x => x.item_id === itemId);
+                if (!it || it.type === 'code' || this.locked[itemId]) continue;
+                const answer = (this.answers[itemId] || '').trim();
+                if (answer) pending.push({ item_id: itemId, answer: answer });
+            }
+            const body = new FormData();
+            body.append('csrfmiddlewaretoken', this.csrf);
+            body.append('beacon', '1');
+            body.append('answers', JSON.stringify(pending));
+            navigator.sendBeacon(this.finishUrl, body);
+        },
+
+        async check(itemId) {
+            this.busy[itemId] = true;
+            delete this.dirty[itemId];
+            this._flushTime();
+            try {
+                const resp = await fetch(`/ege/practice/${this.sessionId}/answer/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.csrf },
+                    body: JSON.stringify({ item_id: itemId, answer: this.answers[itemId] }),
+                    keepalive: true,   // уход со страницы не должен терять ответ
+                });
+                const data = await resp.json();
+                if (resp.ok && 'is_correct' in data) {
+                    this.verdict[itemId] = data.is_correct;
+                    this.scores[itemId] = data.score;
+                    this.attempts[itemId] = data.attempts;
+                    this.locked[itemId] = !!data.locked;
+                } else if (resp.ok) {
+                    this.saved[itemId] = true;   // экзамен: исход не сообщается
+                }
+            } catch (e) {
+                console.error('Ошибка проверки:', e);
+            }
+            this.busy[itemId] = false;
+        },
+
+        // «Показать ответ» = сдался. Задача закрывается как нерешённая, поэтому
+        // спрашиваем подтверждение: случайный клик не должен стоить задачи.
+        async giveUp(itemId) {
+            if (!confirm('Показать верный ответ? Задача будет засчитана как нерешённая.')) return;
+            this.busy[itemId] = true;
+            try {
+                const resp = await fetch(`/ege/practice/${this.sessionId}/reveal/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.csrf },
+                    body: JSON.stringify({ item_id: itemId }),
+                });
+                const data = await resp.json();
+                if (resp.ok) {
+                    this.correct[itemId] = data.correct_answer;
+                    this.verdict[itemId] = false;
+                    this.locked[itemId] = true;
+                }
+            } catch (e) {
+                console.error('Не удалось показать ответ:', e);
+            }
+            this.busy[itemId] = false;
+        },
+
+        _ensureEditor() {
+            const it = this.item();
+            if (!it || it.type !== 'code') return;
+            const wrap = document.getElementById(`cm-wrap-${it.item_id}`);
+            if (!wrap || wrap.offsetParent === null) return;
+
+            // CM5 портит внутреннее состояние после display:none от x-show –
+            // пересоздаём инстанс вместо refresh (та же причина, что в ege_detail).
+            const stale = wrap.querySelector('.CodeMirror');
+            if (stale) {
+                this.answers[it.item_id] = this.editors[it.item_id]?.getValue() ?? this.answers[it.item_id];
+                stale.remove();
+                delete this.editors[it.item_id];
+            }
+
+            const cm = CodeMirror(wrap, {
+                value: this.answers[it.item_id] || '',
+                mode: 'python',
+                theme: 'material-darker',
+                lineNumbers: true,
+                matchBrackets: true,
+                autoCloseBrackets: true,
+                indentUnit: 4,
+                tabSize: 4,
+                indentWithTabs: false,
+                extraKeys: { Tab: (cm) => cm.replaceSelection('    ', 'end') },
+            });
+            cm.on('change', () => { this.answers[it.item_id] = cm.getValue(); });
+            this.editors[it.item_id] = cm;
+        },
+
+        async submitCode(itemId) {
+            const it = this.items.find(x => x.item_id === itemId);
+            const code = this.editors[itemId]?.getValue() || '';
+            if (!code.trim()) return;
+
+            this.busy[itemId] = true;
+            this.errors[itemId] = '';
+            this._flushTime();
+
+            try {
+                const resp = await fetch(`/quizzes/${it.quiz_id}/question/${it.question_id}/submit/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.csrf },
+                    body: JSON.stringify({ code }),
+                });
+                const data = await resp.json();
+                if (!resp.ok && !data.submission_id) {
+                    this.errors[itemId] = data.error || 'Не удалось отправить код';
+                    this.busy[itemId] = false;
+                    return;
+                }
+                this._poll(itemId, data.submission_id);
+            } catch (e) {
+                this.errors[itemId] = 'Ошибка сети';
+                this.busy[itemId] = false;
+            }
+        },
+
+        // ponytail: опрос вместо WebSocket. Сокет из quiz-async.js подписан на один
+        // квиз, а задачи сессии приходят из разных банков и вариантов. Переходим
+        // на WS, если задержка в пару секунд начнёт мешать.
+        _poll(itemId, submissionId) {
+            if (!submissionId) { this.busy[itemId] = false; return; }
+            this._polls[itemId] = setInterval(async () => {
+                try {
+                    const resp = await fetch(`/quizzes/submission/${submissionId}/status/`);
+                    const data = await resp.json();
+                    if (data.status === 'pending' || data.status === 'running') return;
+
+                    clearInterval(this._polls[itemId]);
+                    delete this._polls[itemId];
+                    this.busy[itemId] = false;
+                    this.verdict[itemId] = !!data.is_correct;
+                    // Задания 26 и 27: неверный ответ ещё может стоить 1 балла.
+                    this.scores[itemId] = data.score;
+                    this.points[itemId] = data.points;
+                    this.attempts[itemId] = (this.attempts[itemId] || 0) + 1;
+                    if (data.is_correct && !this.isRetry) this.locked[itemId] = true;
+                    if (!data.is_correct && data.error_log) this.errors[itemId] = data.error_log;
+                } catch (e) {
+                    clearInterval(this._polls[itemId]);
+                    delete this._polls[itemId];
+                    this.busy[itemId] = false;
+                    this.errors[itemId] = 'Не удалось получить результат проверки';
+                }
+            }, 2000);
+        },
+    };
+}
+</script>
+{% endblock pre_alpine_js %}

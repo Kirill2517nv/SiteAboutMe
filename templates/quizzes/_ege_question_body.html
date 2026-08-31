@@ -1,0 +1,42 @@
+{% load ege_filters %}
+{% comment %}
+Условие задачи так, как его видит ученик. Ожидает `question`.
+
+Вынесено в партиал ради одного: страница банка для учителя обязана показывать
+задачу ровно тем же рендером, что и сессия ученика. Учитель перебирает банк как
+раз затем, чтобы поймать кривой текст – «\(F = \neg x\)» вместо формулы,
+разъехавшуюся таблицу, потерянную картинку. Пока разметка была скопирована в
+каждый шаблон, банк и сессия расходились молча, и то, что учитель считал
+нормальным, ученик видел иначе.
+
+Формулы здесь намеренно не рендерятся: MathJax подключают только страницы
+вариантов и учебника, а в тренировочной сессии его нет. Значит и в банке его
+быть не должно – иначе LaTeX, оставшийся в задаче после парсера, выглядел бы
+на странице учителя прилично, а у ученика оставался бы сырым текстом.
+
+Поле ответа сюда не входит: это инструмент ученика, а не часть условия, и в
+банке нажимать в нём нечего.
+{% endcomment %}
+<div class="prose max-w-none mb-4 text-gray-700 dark:text-slate-300">{{ question.get_body|render_question_text:question }}</div>
+
+{% comment %}
+Картинки: если в тексте есть маркеры [img:N], их расставил сам render_question_text
+по местам, и второй раз внизу они не нужны.
+{% endcomment %}
+{% if not question.text|has_image_markers %}
+{% for img in question.images.all %}
+<div class="mb-4">
+    <img src="{{ img.image.url }}" alt="{{ img.alt_text }}" class="max-w-full rounded-lg border dark:border-slate-700">
+</div>
+{% endfor %}
+{% endif %}
+
+{% for file in question.files.all %}
+<a href="{% url 'quizzes:question_file_download' file.id %}" download
+   class="inline-flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-slate-700 hover:bg-gray-100 dark:hover:bg-slate-600 rounded-lg text-sm text-gray-700 dark:text-slate-200 mb-4 transition-colors">
+    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+    </svg>
+    {{ file.get_filename }}
+</a>
+{% endfor %}

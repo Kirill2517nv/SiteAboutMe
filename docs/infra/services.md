@@ -113,7 +113,6 @@ ASGI-сервер для WebSocket-соединений через Django Channe
 ### Обслуживает
 
 - `ws/quiz/<quiz_id>/` → `QuizConsumer` (результаты кода)
-- `ws/notifications/` → `NotificationConsumer` (уведомления помощи)
 
 ### Команды
 

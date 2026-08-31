@@ -1,0 +1,189 @@
+{% load textbook_tags %}
+{% comment %}
+Форма запуска сессии. Ожидает: number, counts, default_size, exam_size,
+max_size, recommended_min, exam_pool, exam_open, study_solved,
+unlock_threshold, classroom_pool, stats.
+
+Два режима устроены по-разному не для симметрии:
+  * на тренировке состав выбирает ученик – хоть «две базовых и две высокой»,
+    хоть 15 задач по нормативу;
+  * в экзамене состав фиксирован и берётся из резерва, иначе «экзамен»
+    из пяти базовых задач ничего бы не проверял.
+{% endcomment %}
+<form method="post" action="{% url 'ege:ege_practice_start' %}"
+      x-data="startForm({{ default_size }}, {{ counts.base }}, {{ counts.medium }}, {{ counts.high }})"
+      class="space-y-5">
+    {% csrf_token %}
+    <input type="hidden" name="kind" value="topic">
+    <input type="hidden" name="ege_number" value="{{ number }}">
+    <input type="hidden" name="mode" :value="mode">
+
+    <!-- Режим -->
+    <div>
+        <div class="text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Режим</div>
+        <div class="grid grid-cols-2 gap-2">
+            <button type="button" @click="mode = 'study'"
+                    class="text-left p-3 rounded-lg border transition-colors"
+                    :class="mode === 'study'
+                        ? 'border-brand-600 bg-brand-50 dark:bg-brand-900/20 dark:border-brand-500'
+                        : 'border-gray-200 dark:border-slate-600 hover:border-gray-300'">
+                <span class="block font-medium text-gray-900 dark:text-white text-sm">Тренировка</span>
+                <span class="block text-xs text-gray-500 dark:text-slate-400 mt-0.5">
+                    Разбираемся в теме, ошибаться нормально
+                </span>
+            </button>
+            {% if exam_open %}
+            <button type="button" @click="mode = 'exam'"
+                    class="text-left p-3 rounded-lg border transition-colors"
+                    :class="mode === 'exam'
+                        ? 'border-brand-600 bg-brand-50 dark:bg-brand-900/20 dark:border-brand-500'
+                        : 'border-gray-200 dark:border-slate-600 hover:border-gray-300'">
+                <span class="block font-medium text-gray-900 dark:text-white text-sm">Экзамен</span>
+                <span class="block text-xs text-gray-500 dark:text-slate-400 mt-0.5">
+                    Контрольная: <span class="text-sm font-semibold text-gray-900 dark:text-white">{{ exam_size }}</span>
+                    задач{{ exam_size|plural:"а,и," }} за час
+                </span>
+            </button>
+            {% else %}
+            {% comment %}
+            Экзамен закрыт, пока тема не разобрана: контрольная по незнакомому
+            заданию измеряет не готовность, а то, что ученик к ней не приступал.
+            {% endcomment %}
+            <div class="text-left p-3 rounded-lg border border-dashed border-gray-200 dark:border-slate-700 opacity-70">
+                <span class="flex items-center gap-1.5 font-medium text-gray-500 dark:text-slate-400 text-sm">
+                    <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                    </svg>
+                    Экзамен закрыт
+                </span>
+                <span class="block text-xs text-gray-400 mt-0.5">
+                    Решите {{ unlock_threshold }} разных задач: {{ study_solved }} из {{ unlock_threshold }}
+                </span>
+                <div class="h-1.5 mt-2 rounded-full bg-gray-100 dark:bg-slate-700 overflow-hidden">
+                    <div class="h-full rounded-full bg-brand-400"
+                         style="width: {% widthratio study_solved unlock_threshold 100 %}%"></div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Настройки тренировки -->
+    <div x-show="mode === 'study'" x-cloak class="space-y-4">
+        <div class="rounded-lg bg-blue-50/60 dark:bg-slate-900/60 border border-blue-100 dark:border-slate-700 p-4">
+            <div class="text-sm font-medium text-gray-800 dark:text-slate-200">Как проходит тренировка</div>
+            <ul class="mt-2 space-y-1 text-xs text-gray-600 dark:text-slate-400">
+                <li>Ответ проверяется сразу. Неверный – можно подумать и ответить ещё раз;
+                    задача засчитается, но запомнится, с какой попытки.</li>
+                <li>Кнопка «Показать ответ» закрывает задачу как нерешённую.</li>
+                <li>Состав и количество задач выбираете вы.</li>
+            </ul>
+        </div>
+        <div>
+            <div class="text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
+                {% if linked %}Сколько троек задач{% else %}Сколько задач{% endif %}
+            </div>
+            <input type="number" name="size" x-model.number="size" min="1" max="{{ max_size }}"
+                   :disabled="manual"
+                   class="w-24 px-3 py-2 border border-gray-300 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg focus:ring-2 focus:ring-brand-500 disabled:opacity-40">
+        </div>
+
+        <div x-show="!manual">
+            <div class="text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Сложность</div>
+            <div class="flex flex-wrap gap-2">
+                <label class="cursor-pointer">
+                    <input type="radio" name="difficulty" value="" class="peer sr-only" checked>
+                    <span class="block px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-slate-600 text-gray-600 dark:text-slate-300 peer-checked:bg-brand-600 peer-checked:text-white peer-checked:border-brand-600">
+                        Любая · {{ counts.total }}
+                    </span>
+                </label>
+                <label class="cursor-pointer">
+                    <input type="radio" name="difficulty" value="1" class="peer sr-only" {% if not counts.base %}disabled{% endif %}>
+                    <span class="block px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-slate-600 text-gray-600 dark:text-slate-300 peer-checked:bg-emerald-600 peer-checked:text-white peer-checked:border-emerald-600 peer-disabled:opacity-40">
+                        Базовая · {{ counts.base }}
+                    </span>
+                </label>
+                <label class="cursor-pointer">
+                    <input type="radio" name="difficulty" value="2" class="peer sr-only" {% if not counts.medium %}disabled{% endif %}>
+                    <span class="block px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-slate-600 text-gray-600 dark:text-slate-300 peer-checked:bg-amber-500 peer-checked:text-white peer-checked:border-amber-500 peer-disabled:opacity-40">
+                        Повышенная · {{ counts.medium }}
+                    </span>
+                </label>
+                <label class="cursor-pointer">
+                    <input type="radio" name="difficulty" value="3" class="peer sr-only" {% if not counts.high %}disabled{% endif %}>
+                    <span class="block px-3 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-slate-600 text-gray-600 dark:text-slate-300 peer-checked:bg-red-600 peer-checked:text-white peer-checked:border-red-600 peer-disabled:opacity-40">
+                        Высокая · {{ counts.high }}
+                    </span>
+                </label>
+            </div>
+        </div>
+
+        <!-- Ручной состав -->
+        {% if not linked %}
+        <div class="rounded-lg border border-gray-200 dark:border-slate-700 p-3">
+            <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" x-model="manual"
+                       class="rounded border-gray-300 text-brand-600 focus:ring-brand-500">
+                <span class="text-sm font-medium text-gray-700 dark:text-slate-300">
+                    Собрать состав вручную
+                </span>
+            </label>
+
+            <div x-show="manual" x-cloak class="mt-3 space-y-2">
+                <template x-for="level in levels" :key="level.key">
+                    <div class="flex items-center gap-3">
+                        <span class="w-28 text-sm text-gray-600 dark:text-slate-400" x-text="level.label"></span>
+                        <input type="number" min="0" :max="level.available"
+                               :name="mixName(level.key)" x-model.number="level.count"
+                               :disabled="!manual || !level.available"
+                               class="w-20 px-2 py-1.5 text-sm border border-gray-300 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg focus:ring-2 focus:ring-brand-500 disabled:opacity-40">
+                        <span class="text-xs text-gray-400" x-text="hint(level)"></span>
+                    </div>
+                </template>
+                <div class="pt-2 border-t border-gray-100 dark:border-slate-700 text-sm">
+                    <span class="text-gray-500 dark:text-slate-400">Итого:</span>
+                    <span class="font-semibold text-gray-900 dark:text-white" x-text="mixTotal"></span>
+                    <span class="text-gray-500 dark:text-slate-400">задач</span>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Пояснение к экзамену -->
+    <div x-show="mode === 'exam'" x-cloak
+         class="rounded-lg bg-gray-50 dark:bg-slate-900/60 border border-gray-200 dark:border-slate-700 p-4 text-sm">
+        <div class="text-sm font-medium text-gray-800 dark:text-slate-200">Как проходит экзамен</div>
+        <ul class="mt-2 space-y-1 text-xs text-gray-600 dark:text-slate-400">
+            <li>Час на всю работу. Время выйдет – попытка закроется сама.</li>
+            <li>Проверки по ходу нет, ответ можно менять до завершения.</li>
+        </ul>
+    </div>
+
+    <button type="submit"
+            class="w-full px-4 py-2.5 bg-brand-600 text-white font-medium rounded-lg hover:bg-brand-700 transition-colors">
+        <span x-show="mode === 'study'">Начать тренировку</span>
+        <span x-show="mode === 'exam'" x-cloak>Начать экзамен</span>
+    </button>
+</form>
+
+<script>
+function startForm(defaultSize, base, medium, high) {
+    return {
+        mode: 'study',
+        manual: false,
+        size: defaultSize,
+        levels: [
+            { key: 1, label: 'Базовая', available: base, count: 0 },
+            { key: 2, label: 'Повышенная', available: medium, count: 0 },
+            { key: 3, label: 'Высокая', available: high, count: 0 },
+        ],
+        mixName(key) { return 'mix_' + key; },
+        hint(level) { return 'доступно ' + level.available; },
+        get mixTotal() {
+            return this.levels.reduce((sum, l) => sum + (Number(l.count) || 0), 0);
+        },
+    };
+}
+</script>

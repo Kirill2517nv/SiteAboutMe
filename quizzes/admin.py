@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.http import HttpResponseRedirect
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
-from .models import Quiz, Question, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, HelpRequest, HelpComment, QuestionImage, QuestionFile, ExamTaskProgress, SolutionAttachment, SolutionLike, CodeSubmission, HintChoice
+from .models import Quiz, Question, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, QuestionImage, QuestionFile, ExamTaskProgress, SolutionAttachment, SolutionLike, CodeSubmission, HintChoice, PracticeSession, PracticeItem
 from .forms import BulkQuizAssignmentForm
 
 class ChoiceInline(admin.TabularInline):
@@ -22,9 +22,14 @@ class QuestionFileInline(admin.TabularInline):
     extra = 1
 
 class QuestionAdmin(admin.ModelAdmin):
-    list_display = ('title', 'quiz', 'question_type')
-    list_filter = ('quiz', 'question_type')
-    search_fields = ('title', 'text')
+    list_display = ('title', 'quiz', 'question_type', 'ege_number', 'difficulty',
+                    'exam_only', 'classroom_only')
+    # ege_number в фильтрах – чтобы при смене кодификатора можно было увидеть все
+    # задачи снятой темы разом. Массовая переразметка – manage.py retag_ege.
+    list_filter = ('quiz', 'question_type', 'ege_number', 'difficulty',
+                   'exam_only', 'classroom_only')
+    list_editable = ('exam_only', 'classroom_only')
+    search_fields = ('title', 'text', 'external_id')
     inlines = [ChoiceInline, TestCaseInline, QuestionImageInline, QuestionFileInline]
     fieldsets = (
         (None, {
@@ -41,9 +46,18 @@ class QuestionAdmin(admin.ModelAdmin):
             'description': 'Заполнять только если выбран тип вопроса "Свободный ответ"'
         }),
         ('ЕГЭ', {
-            'fields': ('ege_number', 'topic', 'points'),
+            'fields': ('ege_number', 'topic', 'points', 'difficulty', 'solve_rate',
+                       'exam_only', 'classroom_only', 'external_id', 'source_url'),
             'classes': ('collapse',),
-            'description': 'Поля для задач ЕГЭ'
+            'description': 'Поля для задач ЕГЭ. solve_rate пересчитывается командой '
+                           'recalc_ege_difficulty и перебивает ручную сложность: '
+                           'правьте её, только если хотите зафиксировать уровень до '
+                           'накопления статистики. «Только для экзамена» – резерв: '
+                           'задача исчезает из учебных тренировок и достаётся '
+                           'ученику лишь в режиме «Экзамен». «Только для работы '
+                           'в классе» – набор для урока: одинаковый у всех учеников, '
+                           'в тренировки и в экзамен не попадает. Массово – '
+                           'manage.py mark_exam_pool [--pool classroom].'
         }),
     )
 
@@ -158,18 +172,6 @@ class QuizAssignmentAdmin(admin.ModelAdmin):
             return full if full else obj.user.username
         return '-'
 
-class HelpCommentInline(admin.TabularInline):
-    model = HelpComment
-    readonly_fields = ('author', 'text', 'line_number', 'created_at')
-    extra = 0
-    can_delete = False
-
-class HelpRequestAdmin(admin.ModelAdmin):
-    list_display = ('student', 'question', 'quiz', 'status', 'has_unread_for_teacher', 'created_at', 'updated_at')
-    list_filter = ('status', 'has_unread_for_teacher', 'quiz')
-    search_fields = ('student__username', 'student__last_name', 'question__text')
-    inlines = [HelpCommentInline]
-
 class ExamTaskProgressAdmin(admin.ModelAdmin):
     list_display = ('user', 'quiz', 'question', 'is_solved', 'attempts_to_solve', 'time_spent_seconds')
     list_filter = ('is_solved', 'quiz')
@@ -181,7 +183,6 @@ admin.site.register(Quiz, QuizAdmin)
 admin.site.register(Question, QuestionAdmin)
 admin.site.register(UserResult, UserResultAdmin)
 admin.site.register(QuizAssignment, QuizAssignmentAdmin)
-admin.site.register(HelpRequest, HelpRequestAdmin)
 class SolutionAttachmentAdmin(admin.ModelAdmin):
     list_display = ('user', 'quiz', 'question', 'has_file', 'has_image', 'created_at')
     list_filter = ('quiz',)
@@ -209,6 +210,33 @@ class SolutionLikeAdmin(admin.ModelAdmin):
     list_filter = ('created_at',)
     search_fields = ('user__last_name', 'user__first_name', 'user__username')
     readonly_fields = ('user', 'answer', 'created_at')
+
+class PracticeItemInline(admin.TabularInline):
+    model = PracticeItem
+    fields = ('order', 'question', 'text_answer', 'is_correct', 'attempts', 'gave_up',
+              'seconds', 'answered_at')
+    readonly_fields = fields
+    extra = 0
+    can_delete = False
+
+
+@admin.register(PracticeSession)
+class PracticeSessionAdmin(admin.ModelAdmin):
+    """Журнал тренировок: по нему считается вся аналитика ЕГЭ."""
+    list_display = ('user', 'kind', 'ege_number', 'mode', 'solved_display', 'created_at', 'finished_at')
+    list_filter = ('kind', 'mode', 'ege_number')
+    search_fields = ('user__last_name', 'user__first_name', 'user__username')
+    list_select_related = ('user',)
+    readonly_fields = ('created_at',)
+    inlines = [PracticeItemInline]
+
+    @admin.display(description='Решено')
+    def solved_display(self, obj):
+        items = obj.items.all()
+        answered = [item for item in items if item.answered_at]
+        correct = [item for item in answered if item.is_correct]
+        return f'{len(correct)} / {len(answered)} из {len(items)}'
+
 
 admin.site.register(ExamTaskProgress, ExamTaskProgressAdmin)
 admin.site.register(SolutionAttachment, SolutionAttachmentAdmin)

@@ -65,8 +65,10 @@ nav:
   - "Бизнес-логика":
     - "Quiz Flow": flows/quiz-flow.md
     - "Выполнение кода": flows/code-execution.md
-    - "Система помощи": flows/help-system.md
     - "EGE Тренажёр": flows/ege-trainer.md
+    - "Формат банка задач ЕГЭ": ege-bank-format.md
+    - "Выкатка банка задач ЕГЭ": ege-bank-deploy.md
+    - "Бриф: теория ЕГЭ": ege-theory-brief.md
   - "Учебник":
     - "Структура курса": textbook-structure.md
     - "Бриф: урок": textbook-lesson-brief.md
