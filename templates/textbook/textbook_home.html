@@ -43,18 +43,18 @@
             <div class="flex flex-col gap-2.5">
                 {% for group in material_sections %}
                 <div class="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl overflow-hidden"
-                     x-data="{ open: {% if forloop.first %}true{% else %}false{% endif %} }">
+                     x-data="{ open: {{ group.is_open|yesno:'true,false' }} }">
                     <button type="button" @click="open = !open"
                             class="w-full px-[18px] py-4 text-left bg-transparent">
                         <span class="flex items-center gap-3.5">
                             <span class="w-7 h-7 rounded-lg bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300 text-[13px] font-semibold flex items-center justify-center flex-shrink-0">{{ group.section.order }}</span>
                             <span class="flex-1 text-base font-semibold text-gray-900 dark:text-white">{{ group.section.title }}</span>
 
-                            {% if group.section.deadline %}
+                            {% if group.deadline %}
                             <span class="shrink-0 px-3 py-1.5 rounded-lg text-center {% if group.is_closed %}bg-red-100{% else %}bg-gray-100 dark:bg-slate-700{% endif %}">
                                 <span class="block text-xs uppercase tracking-wide {% if group.is_closed %}text-red-700{% else %}text-gray-500 dark:text-slate-400{% endif %}">Дедлайн</span>
                                 <span class="block text-sm font-semibold whitespace-nowrap {% if group.is_closed %}text-red-700{% else %}text-gray-900 dark:text-white{% endif %}">
-                                    {% if group.is_closed %}прошёл{% else %}{{ group.section.deadline|date:"d E" }}{% endif %}
+                                    {% if group.is_closed %}прошёл{% else %}{{ group.deadline|date:"d E" }}{% endif %}
                                 </span>
                             </span>
                             {% endif %}

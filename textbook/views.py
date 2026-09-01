@@ -14,7 +14,10 @@ from .services import (
     attempted_quiz_ids,
     correct_answers_count,
     frontier_positions,
+    personal_deadlines,
     quiz_state,
+    section_deadline,
+    section_is_closed,
     section_quiz_stats,
     visible_articles,
     visible_group_ids,
@@ -86,6 +89,16 @@ def textbook_home_view(request):
     article_states = {}
     group_ids = visible_group_ids(request)
     frontier = frontier_positions(group_ids)
+    # По умолчанию раскрыт блок, где стоит фишка самого зрителя: то же правило,
+    # по которому учитель видит аватарки класса на маршруте, второй раз не считаем.
+    # Метка «вы здесь» с карты курса сюда не годится намеренно: она уезжает по
+    # дедлайну, а здесь ученика надо вернуть туда, где он на самом деле встал.
+    # У учителя и у ученика без класса фишки нет — таким открываем первый блок.
+    my_frontier = next(
+        (article_id for article_id, students in frontier.items()
+         if any(s.id == request.user.id for s in students)),
+        None,
+    )
     if request.user.is_authenticated:
         progress_map = dict(
             ArticleProgress.objects.filter(user=request.user, article__track='material')
@@ -97,6 +110,7 @@ def textbook_home_view(request):
     # каждое задание ЕГЭ уходил свой запрос — под полсотни на главную.
     material_sections = []
     total_lessons = total_done = 0
+    extensions = personal_deadlines(request.user)
     published_articles = Prefetch(
         'articles',
         queryset=Article.objects.filter(track='material', is_published=True),
@@ -133,8 +147,14 @@ def textbook_home_view(request):
             # учитель в админке, без них оценки за блок нет.
             'grade': section.grade_for(practicum['done']) if request.user.is_authenticated else None,
             'grade_scale': section.grade_scale(practicum['done']),
-            'is_closed': section.is_closed,
+            'is_closed': section_is_closed(section, extensions.get(section.id)),
+            # Продлённый ученик видит свою дату, а не общую «прошёл».
+            'deadline': section_deadline(section, extensions.get(section.id)),
+            'is_open': any(item['article'].id == my_frontier for item in items),
         })
+
+    if material_sections and not any(row['is_open'] for row in material_sections):
+        material_sections[0]['is_open'] = True
 
     context = {
         'material_sections': material_sections,

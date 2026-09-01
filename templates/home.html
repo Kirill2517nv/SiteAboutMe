@@ -535,6 +535,16 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
     .cnode { grid-column: 1 !important; grid-row: auto !important; }
     .cnode__pin { position: static; display: inline-block; margin-bottom: 8px; }
     .cnode__pin::after { display: none; }
+    /* Высоту карточке задавал ряд сетки (--cmap-node-h): обе грани лежат
+       position: absolute и сами по себе места не занимают. С grid-auto-rows:
+       auto ряд схлопывался в ноль, и все карточки рисовались одна поверх
+       другой. На узком экране высоту диктует лицевая грань, а оборотная
+       по-прежнему растягивается по ней. */
+    /* Пол по высоте – ради оборотной стороны: она растягивается по лицевой,
+       а у гостя лицевая это заголовок и одна строка, и список уроков
+       оказался бы в скроллере высотой в две строки. */
+    .cnode__inner { height: auto; min-height: 240px; }
+    .cnode__face--front { position: relative; }
   }
 </style>
 {% endblock extra_css %}
@@ -795,12 +805,12 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
 
         {# Дедлайн и оценка – только вошедшему: гостю чужой график ничего не говорит #}
         {% if user.is_authenticated %}
-        {% if row.section.deadline or row.grade %}
+        {% if row.deadline or row.grade %}
         <div class="cnode__chips">
-          {% if row.section.deadline %}
-          <span class="cnode__chip{% if row.section.is_closed %} cnode__chip--overdue{% endif %}">
+          {% if row.deadline %}
+          <span class="cnode__chip{% if row.is_closed %} cnode__chip--overdue{% endif %}">
             <b>Дедлайн</b>
-            <i>{% if row.section.is_closed %}прошёл{% else %}{{ row.section.deadline|date:"d E" }}{% endif %}</i>
+            <i>{% if row.is_closed %}прошёл{% else %}{{ row.deadline|date:"d E" }}{% endif %}</i>
           </span>
           {% endif %}
           {% if row.grade %}

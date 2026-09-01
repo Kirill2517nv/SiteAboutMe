@@ -7,6 +7,7 @@ from .models import (
     ArticleQuiz,
     EgeTask,
     Section,
+    SectionExtension,
 )
 
 
@@ -52,6 +53,17 @@ class SectionAdmin(admin.ModelAdmin):
         if obj.grade_3_from is None:
             return '–'
         return f'5: от {obj.grade_5_from} · 4: от {obj.grade_4_from} · 3: от {obj.grade_3_from}'
+
+
+@admin.register(SectionExtension)
+class SectionExtensionAdmin(admin.ModelAdmin):
+    """Кому продлён дедлайн. Список отвечает и «кому», и «по какому блоку»."""
+
+    list_display = ('user', 'section', 'deadline', 'reason')
+    list_filter = ('section',)
+    list_editable = ('deadline',)
+    search_fields = ('user__username', 'user__last_name', 'user__first_name', 'reason')
+    autocomplete_fields = ('user',)
 
 
 @admin.register(EgeTask)

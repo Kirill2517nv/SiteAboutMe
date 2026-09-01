@@ -1181,7 +1181,7 @@ def quiz_detail_view(request, quiz_id):
     # Дедлайн блока учебника закрывает и задачи блока, и самопроверки его уроков:
     # решать нельзя, смотреть свои ответы — можно.
     from textbook.services import quiz_is_locked
-    if quiz_is_locked(quiz):
+    if quiz_is_locked(quiz, request.user):
         if request.method == 'POST':
             return redirect(back_url)
         read_only = True
@@ -1721,7 +1721,7 @@ def submit_code_view(request, quiz_id, question_id):
     question = get_object_or_404(Question, id=question_id, quiz=quiz)
 
     from textbook.services import quiz_is_locked
-    if quiz_is_locked(quiz):
+    if quiz_is_locked(quiz, request.user):
         return JsonResponse({'error': 'Дедлайн блока прошёл — решения больше не принимаются'},
                             status=403)
 
@@ -1850,7 +1850,7 @@ def finish_quiz_view(request, quiz_id):
     from textbook.services import quiz_is_locked, textbook_link_for_quiz
     _, _, after_finish_url = textbook_link_for_quiz(quiz)
 
-    if quiz_is_locked(quiz):
+    if quiz_is_locked(quiz, request.user):
         return JsonResponse({'error': 'Дедлайн блока прошёл — решения больше не принимаются'},
                             status=403)
 

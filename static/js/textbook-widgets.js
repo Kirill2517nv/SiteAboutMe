@@ -37,7 +37,7 @@
             }
             const factory = registry[key];
             if (!factory) {
-                el.innerHTML = '<p class="text-sm text-red-500">Неизвестный виджет: ' + key + '</p>';
+                el.innerHTML = '<p class="text-sm text-red-500">Неизвестный виджет: ' + escapeHtml(key) + '</p>';
                 return;
             }
             try {
@@ -9789,6 +9789,315 @@
     });
 
     // ─────────────────────────────────────────────────────────────
+    // Виджет: graph-match – сопоставление букв на схеме с номерами в таблице
+    // (задание 1 ЕГЭ). Слева схема дорог, справа таблица длин; под каждой
+    // буквой подписано то, что о ней уже известно: сначала ничего, потом
+    // степень, потом список номеров-кандидатов, который от шага к шагу
+    // сужается.
+    //
+    // Виджет ничего не выводит сам – раунды уточнения считает Python в
+    // seed-команде и передаёт готовым списком шагов. То же разделение труда,
+    // что у loop-trace: алгоритм живёт там, где его можно проверить прогоном,
+    // виджет только рисует.
+    //
+    // Конфиг:
+    //   {
+    //     "pos":   {"A": [205, 245], "B": [365, 75, "up"], ...},  // 0 0 430 300
+    //     "edges": [["A","E"], ["A","F"], ...],             // схема, длин на ней нет
+    //     "table": [[1,2,39], [1,5,53], ...],               // таблица: пункт, пункт, длина
+    //     "steps": [{
+    //        "title": "Шаг 1. Степени",
+    //        "note":  "Степень – это сколько дорог выходит из пункта…",
+    //        "show":  "none" | "deg" | "cand",   // что подписано под буквой
+    //        "cand":  {"A": [2, 6], ...},        // только при show = "cand"
+    //        "hiL":   ["F"],                     // подсветить буквы на схеме
+    //        "hiP":   [1],                       // подсветить строки таблицы
+    //        "hiE":   [["E","A"]],               // подсветить дороги на схеме
+    //        "hiC":   [[2,3]]                    // подсветить клетки таблицы
+    //     }]
+    //   }
+    //
+    // Координаты вершин обязательны и заданы вручную: схему рисуют так, чтобы
+    // она совпадала с картинкой из варианта, а автоматическая раскладка по
+    // кругу дала бы другой рисунок того же графа – и ученик не узнал бы свою
+    // задачу.
+    // ─────────────────────────────────────────────────────────────
+    register('graph-match', function (el, config) {
+        const SVG_NS = 'http://www.w3.org/2000/svg';
+        const VBW = 430, VBH = 300, R = 15;
+
+        const pos = config.pos && typeof config.pos === 'object' ? config.pos : {};
+        const edges = (Array.isArray(config.edges) ? config.edges : [])
+            .filter(function (e) { return Array.isArray(e) && e.length >= 2 && pos[e[0]] && pos[e[1]]; });
+        const table = (Array.isArray(config.table) ? config.table : [])
+            .filter(function (e) { return Array.isArray(e) && e.length >= 3; });
+        const steps = Array.isArray(config.steps) ? config.steps : [];
+        const letters = Object.keys(pos);
+
+        if (!letters.length || !edges.length || !table.length || !steps.length) {
+            el.innerHTML = '<p class="text-sm text-red-500">graph-match: нужны pos, edges, table и steps</p>';
+            return;
+        }
+
+        // Номера пунктов – по возрастанию, как в условии.
+        const points = [];
+        table.forEach(function (e) {
+            [e[0], e[1]].forEach(function (p) {
+                if (points.indexOf(p) < 0) points.push(p);
+            });
+        });
+        points.sort(function (a, b) { return a - b; });
+
+        // Ключ неориентированной пары: дорога записана один раз, а ищут её
+        // с обоих концов.
+        function key(a, b) {
+            return String(a) < String(b) ? a + ' ' + b : b + ' ' + a;
+        }
+
+        const weight = {};
+        const degP = {};
+        table.forEach(function (e) {
+            weight[key(e[0], e[1])] = e[2];
+            degP[e[0]] = (degP[e[0]] || 0) + 1;
+            degP[e[1]] = (degP[e[1]] || 0) + 1;
+        });
+
+        const degL = {};
+        edges.forEach(function (e) {
+            degL[e[0]] = (degL[e[0]] || 0) + 1;
+            degL[e[1]] = (degL[e[1]] || 0) + 1;
+        });
+
+        function keySet(pairs) {
+            const set = {};
+            (Array.isArray(pairs) ? pairs : []).forEach(function (p) {
+                if (Array.isArray(p) && p.length >= 2) set[key(p[0], p[1])] = true;
+            });
+            return set;
+        }
+        function has(list, v) {
+            return Array.isArray(list) && list.indexOf(v) >= 0;
+        }
+
+        const body = widgetFrame(el, el.dataset.title || 'Сопоставляем схему и таблицу');
+
+        const BTN_MAIN = 'px-3 py-1.5 rounded-full text-sm border transition-colors bg-brand-600 text-white border-brand-600 hover:bg-brand-700 dark:bg-cyan-500 dark:border-cyan-500 dark:hover:bg-cyan-400';
+        const BTN_SEC = 'px-3 py-1.5 rounded-full text-sm border transition-colors bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100 dark:bg-slate-700 dark:border-slate-600 dark:text-slate-300';
+
+        const mainRow = document.createElement('div');
+        mainRow.className = 'flex flex-wrap items-start gap-4';
+        const graphHost = document.createElement('div');
+        graphHost.className = 'flex-1 min-w-[260px]';
+        const tableHost = document.createElement('div');
+        tableHost.className = 'flex-1 min-w-[260px] overflow-x-auto';
+        mainRow.appendChild(graphHost);
+        mainRow.appendChild(tableHost);
+
+        const noteLine = document.createElement('div');
+        noteLine.className = 'mt-3 text-sm text-gray-600 dark:text-slate-300 min-h-[3.5rem]';
+
+        const prevBtn = document.createElement('button');
+        prevBtn.type = 'button';
+        prevBtn.textContent = '← Назад';
+        const nextBtn = document.createElement('button');
+        nextBtn.type = 'button';
+        nextBtn.textContent = 'Дальше →';
+        const resetBtn = document.createElement('button');
+        resetBtn.type = 'button';
+        resetBtn.textContent = 'Сначала';
+        resetBtn.className = BTN_SEC;
+        const counter = document.createElement('span');
+        counter.className = 'text-sm text-gray-400 dark:text-slate-400 ml-auto';
+
+        const controls = document.createElement('div');
+        controls.className = 'flex flex-wrap items-center gap-2 mt-3';
+        [prevBtn, nextBtn, resetBtn, counter].forEach(function (n) { controls.appendChild(n); });
+
+        body.appendChild(mainRow);
+        body.appendChild(noteLine);
+        body.appendChild(controls);
+
+        function svgEl(name, attrs) {
+            const node = document.createElementNS(SVG_NS, name);
+            Object.keys(attrs || {}).forEach(function (k) { node.setAttribute(k, attrs[k]); });
+            return node;
+        }
+
+        // Что подписано под буквой. Один определившийся номер – зелёным,
+        // несколько вариантов – янтарным: цвет и есть ответ на вопрос
+        // «эта вершина уже опознана или ещё нет».
+        function labelFor(step, letter) {
+            if (step.show === 'deg') {
+                return { text: 'степень ' + (degL[letter] || 0), cls: 'fill-gray-500 dark:fill-slate-400' };
+            }
+            if (step.show === 'cand') {
+                const list = (step.cand && step.cand[letter]) || [];
+                if (list.length === 1) {
+                    return { text: '= ' + list[0], cls: 'fill-emerald-600 dark:fill-emerald-400' };
+                }
+                // Два варианта читаются как выбор, четыре – уже как перечень;
+                // «или» между четырьмя номерами не помещается под вершину.
+                return {
+                    text: list.join(list.length === 2 ? ' или ' : ', '),
+                    cls: 'fill-amber-600 dark:fill-amber-500'
+                };
+            }
+            return null;
+        }
+
+        function renderGraph(step) {
+            const hiE = keySet(step.hiE);
+            graphHost.innerHTML = '';
+            const svg = svgEl('svg', {
+                viewBox: '0 0 ' + VBW + ' ' + VBH,
+                class: 'w-full h-auto block select-none',
+                role: 'img'
+            });
+
+            edges.forEach(function (e) {
+                const a = pos[e[0]], b = pos[e[1]];
+                const hot = hiE[key(e[0], e[1])];
+                svg.appendChild(svgEl('line', {
+                    x1: a[0], y1: a[1], x2: b[0], y2: b[1],
+                    'stroke-width': hot ? 4 : 2, 'stroke-linecap': 'round',
+                    class: hot ? 'stroke-amber-500 dark:stroke-amber-400'
+                               : 'stroke-gray-400 dark:stroke-slate-500'
+                }));
+            });
+
+            letters.forEach(function (letter) {
+                const p = pos[letter];
+                const hot = has(step.hiL, letter);
+                svg.appendChild(svgEl('circle', {
+                    cx: p[0], cy: p[1], r: R, 'stroke-width': hot ? 3 : 2,
+                    class: hot
+                        ? 'fill-amber-50 stroke-amber-500 dark:fill-slate-800 dark:stroke-amber-400'
+                        : 'fill-white stroke-gray-400 dark:fill-slate-800 dark:stroke-slate-500'
+                }));
+                const t = svgEl('text', {
+                    x: p[0], y: p[1] + 5, 'text-anchor': 'middle',
+                    'font-size': 14, 'font-weight': 700,
+                    class: 'fill-gray-900 dark:fill-white'
+                });
+                t.textContent = letter;
+                svg.appendChild(t);
+
+                const label = labelFor(step, letter);
+                if (label) {
+                    // Третий элемент координаты – 'up': подпись над вершиной.
+                    // У верхних вершин рёбра уходят вниз, и подпись под ними
+                    // ложится прямо на линию.
+                    const up = p[2] === 'up';
+                    const lt = svgEl('text', {
+                        x: p[0], y: p[1] + (up ? -(R + 8) : R + 15), 'text-anchor': 'middle',
+                        'font-size': 12, 'font-weight': 600, class: label.cls
+                    });
+                    lt.textContent = label.text;
+                    svg.appendChild(lt);
+                }
+            });
+
+            graphHost.appendChild(svg);
+        }
+
+        function renderTable(step) {
+            const hiC = keySet(step.hiC);
+            const showDeg = step.show === 'deg' || step.show === 'cand';
+            tableHost.innerHTML = '';
+
+            // Опознанная буква подписывается к номеру пункта: «3 (E)». Это и
+            // есть подстановка – когда определились все шесть, дорогу E–A
+            // читают из таблицы прямо по подписям, не держа соответствие
+            // в голове.
+            const named = {};
+            if (step.show === 'cand' && step.cand) {
+                Object.keys(step.cand).forEach(function (letter) {
+                    const list = step.cand[letter];
+                    if (list && list.length === 1) named[list[0]] = letter;
+                });
+            }
+            function pointLabel(p) {
+                return named[p] ? p + ' (' + named[p] + ')' : String(p);
+            }
+
+            const tbl = document.createElement('table');
+            tbl.className = 'text-xs border-collapse';
+
+            const head = document.createElement('tr');
+            head.appendChild(cell('th', 'Пункт', 'text-gray-400 dark:text-slate-500 font-normal'));
+            points.forEach(function (p) {
+                head.appendChild(cell('th', pointLabel(p), 'text-gray-500 dark:text-slate-400 whitespace-nowrap'));
+            });
+            if (showDeg) {
+                head.appendChild(cell('th', 'степень', 'text-gray-400 dark:text-slate-500 font-normal whitespace-nowrap'));
+            }
+            tbl.appendChild(head);
+
+            points.forEach(function (row) {
+                const tr = document.createElement('tr');
+                if (has(step.hiP, row)) tr.className = 'bg-amber-50 dark:bg-amber-900/20';
+                tr.appendChild(cell('th', pointLabel(row), 'text-gray-500 dark:text-slate-400 whitespace-nowrap'));
+                points.forEach(function (col) {
+                    const w = row === col ? undefined : weight[key(row, col)];
+                    const hot = hiC[key(row, col)];
+                    tr.appendChild(cell('td', w === undefined ? '' : String(w),
+                        'font-mono ' + (hot
+                            ? 'bg-amber-200 text-amber-900 font-bold dark:bg-amber-500/40 dark:text-amber-100'
+                            : 'text-gray-700 dark:text-slate-200')));
+                });
+                if (showDeg) {
+                    tr.appendChild(cell('td', String(degP[row] || 0),
+                        'font-semibold text-gray-500 dark:text-slate-400'));
+                }
+                tbl.appendChild(tr);
+            });
+
+            tableHost.appendChild(tbl);
+        }
+
+        function cell(tag, text, cls) {
+            const c = document.createElement(tag);
+            c.className = 'border border-gray-200 dark:border-slate-600 px-2 py-1 text-center ' + (cls || '');
+            c.textContent = text;
+            return c;
+        }
+
+        let idx = 0;
+
+        function render() {
+            const step = steps[idx] || {};
+            renderGraph(step);
+            renderTable(step);
+
+            noteLine.innerHTML = '';
+            if (step.title) {
+                const b = document.createElement('b');
+                b.className = 'block text-gray-900 dark:text-white';
+                b.textContent = step.title;
+                noteLine.appendChild(b);
+            }
+            const p = document.createElement('span');
+            p.textContent = step.note || '';
+            noteLine.appendChild(p);
+
+            counter.textContent = 'шаг ' + (idx + 1) + ' из ' + steps.length;
+            prevBtn.disabled = idx === 0;
+            prevBtn.className = BTN_SEC + (idx === 0 ? ' opacity-50 cursor-not-allowed' : '');
+            const atEnd = idx >= steps.length - 1;
+            nextBtn.disabled = atEnd;
+            nextBtn.className = BTN_MAIN + (atEnd ? ' opacity-50 cursor-not-allowed' : '');
+            resetBtn.className = BTN_SEC + (idx === 0 ? ' opacity-50 cursor-not-allowed' : '');
+            resetBtn.disabled = idx === 0;
+        }
+
+        prevBtn.addEventListener('click', function () { if (idx > 0) { idx--; render(); } });
+        nextBtn.addEventListener('click', function () { if (idx < steps.length - 1) { idx++; render(); } });
+        resetBtn.addEventListener('click', function () { idx = 0; render(); });
+
+        render();
+    });
+
+    // ─────────────────────────────────────────────────────────────
     // Виджет: graph-walk — обход графа по шагам (уроки 13.3–13.5).
     // Слева граф, справа лента очереди (или тропинки) и порядок обхода.
     // Виджет сам прогоняет обход и раскладывает его в кадры: взяли вершину,
@@ -10734,6 +11043,948 @@
         });
 
         layout();
+        render();
+    });
+
+    // ─────────────────────────────────────────────────────────────
+    // Виджет: truth-table — черновик для ЛЮБОЙ задачи вида «задание 2».
+    // На входе только две вещи, и обе задаёт пользователь: логическая функция
+    // и фрагмент её таблицы истинности. Поэтому виджет годится не только для
+    // разобранного в статье варианта — ученик вбивает условие со своего
+    // листочка и решает его здесь же.
+    //
+    // Слева фрагмент: столбцы подписаны номерами, потому что какая в них
+    // переменная — и есть вопрос задания. Клетки заполняет пользователь,
+    // клик перебирает «пусто → 0 → 1»: сначала он переносит сюда условие
+    // (часть клеток так и остаётся пустой), а по ходу решения дописывает в те
+    // же клетки то, что удалось восстановить. Строк во фрагменте столько,
+    // сколько нужно, — кнопки под таблицей.
+    //
+    // Справа полная таблица функции с фильтром по значению F: сравнивают не со
+    // всеми 16 строками, а с теми немногими, где F равна нужному значению.
+    //
+    // Раскраска — кисть на четыре цвета (кнопки справа от таблиц). Берут цвет,
+    // красят им один столбец слева и один справа: цвет и означает «эта пара
+    // установлена», то есть ровно ответ задания. Цвет держит НЕ БОЛЬШЕ одного
+    // столбца в каждой таблице — покрасили им другой столбец, прежний
+    // освобождается; и наоборот, столбец носит не больше одного цвета. Обе
+    // проверки нужны, чтобы на черновике нельзя было нарисовать соответствие,
+    // которого не бывает: буква стоит ровно в одном столбце. Собранная пара
+    // подписана текстом на самой кнопке цвета («2 = x») — цвет подсказка, а не
+    // единственный носитель смысла (проектор, дальтонизм).
+    //
+    // В шапках таблиц подписи пары НЕТ намеренно: там она меняла бы ширину
+    // столбца при каждом клике («2» против «2 = x»), дёргая всю таблицу.
+    //
+    // Выражение вводят НА PYTHON — тем же языком, на котором пишут решение
+    // задания: not / and / or / == / !=, импликация a → b это a <= b (False
+    // меньше True). Отсюда и приоритет операций питоновский, а не
+    // экзаменационный: сравнения выше not, not выше and, and выше or. Разница
+    // существенная — «x → y ∧ z» в математической записи это «x → (y ∧ z)»,
+    // а питоновское «x <= y and z» это «(x <= y) and z». Виджет обязан считать
+    // ровно так же, как посчитает интерпретатор, иначе он учит неправде;
+    // TruthTableParserTests (textbook/tests.py) сверяет разбор с настоящим
+    // eval() на полутора десятках выражений. Поэтому и своего new Function
+    // здесь нет: цепочки сравнений («x <= y <= z» это «(x <= y) and (y <= z)»)
+    // и внятные сообщения об ошибках всё равно требуют разбора.
+    //
+    // Строки исходного выражения виджет НЕ вычисляет: они приходят готовыми из
+    // конфига, посчитанные Python в seed-команде (то же разделение труда, что
+    // у loop-trace и graph-match) — статья и виджет обязаны показывать одни и
+    // те же числа. Свой разбор включается на введённом выражении, а если rows
+    // в конфиге нет вовсе — и на исходном. Проверять расстановку цветов виджет
+    // не умеет намеренно: он черновик, на котором решают, а не решатель,
+    // выдающий ответ по нажатию.
+    //
+    // Конфиг (всё необязательно, пустой виджет тоже работает):
+    //   {"vars": ["w","x","y","z"],
+    //    "code": "((x == (not y)) <= (not (w <= x))) or (not z)",  // в поле ввода
+    //    "rows": [[0,0,0,0,1], …],               // значения переменных + F
+    //    "fragment": [[null,0,1,0,0], …],        // та же форма, null = пусто
+    //    "filter": "0"|"1"|"all"}                // какой фильтр включён сначала
+    // ─────────────────────────────────────────────────────────────
+    // Палитра столбцов: один цвет на столбец таблицы истинности. Общая для
+    // truth-table (черновик, где столбцы красят руками) и truth-steps (разбор
+    // по шагам) — это один и тот же язык цвета на соседних блоках статьи, и
+    // разъезжаться ему нельзя. Классы записаны целиком: Tailwind собирает CSS
+    // сканированием исходников, склеенное из кусков имя («bg-' + name + '-500»)
+    // в сборку не попадёт.
+    //
+    // Цвет рамки вынесен отдельным полем и подставляется ВМЕСТО серого, а не
+    // рядом с ним: border-gray-200 и border-<цвет>-500 в одной ячейке спорят не
+    // порядком в class, а порядком в собранном CSS (gray стоит после amber и
+    // emerald, но до sky и violet) — два столбца из четырёх получали серую
+    // сетку поверх заливки, и она выглядела криво.
+    const COLUMN_COLORS = [
+        {
+            btn: 'bg-sky-500 border-sky-500',
+            head: 'bg-sky-500 text-white',
+            border: 'border-sky-500',
+            cell: 'bg-sky-100 text-gray-800 dark:bg-sky-500/25 dark:text-slate-100',
+        },
+        {
+            btn: 'bg-emerald-500 border-emerald-500',
+            head: 'bg-emerald-500 text-white',
+            border: 'border-emerald-500',
+            cell: 'bg-emerald-100 text-gray-800 dark:bg-emerald-500/25 dark:text-slate-100',
+        },
+        {
+            btn: 'bg-violet-500 border-violet-500',
+            head: 'bg-violet-500 text-white',
+            border: 'border-violet-500',
+            cell: 'bg-violet-100 text-gray-800 dark:bg-violet-500/25 dark:text-slate-100',
+        },
+        {
+            btn: 'bg-amber-500 border-amber-500',
+            head: 'bg-amber-500 text-white',
+            border: 'border-amber-500',
+            cell: 'bg-amber-100 text-gray-800 dark:bg-amber-500/25 dark:text-slate-100',
+        },
+    ];
+
+    register('truth-table', function (el, config) {
+        // ── Разбор выражения ─────────────────────────────────────
+        // Токены длиннее — раньше: иначе «<=» прочитается как «<».
+        const SYMBOLS = [
+            ['==', 'eq'], ['!=', 'ne'], ['<=', 'le'], ['>=', 'ge'],
+            ['<', 'lt'], ['>', 'gt'], ['(', '('], [')', ')'],
+        ].sort(function (a, b) { return b[0].length - a[0].length; });
+
+        // Чем заменить то, что в Python не логическая операция. Ученик приходит
+        // сюда из математической записи и из C-подобных языков, поэтому вместо
+        // «непонятный символ» сразу называем питоновский аналог.
+        const INSTEAD = {
+            '&': 'and', '|': 'or', '!': 'not (а «!=» – это «не равно»)', '~': 'not',
+            '∧': 'and', '∨': 'or', '¬': 'not', '→': '<=', '≡': '==', '⇒': '<=',
+            '-': '<= (импликация a → b на Python пишется a <= b)',
+        };
+
+        const CMP = {
+            eq: function (a, b) { return a === b; },
+            ne: function (a, b) { return a !== b; },
+            le: function (a, b) { return a <= b; },
+            ge: function (a, b) { return a >= b; },
+            lt: function (a, b) { return a < b; },
+            gt: function (a, b) { return a > b; },
+        };
+
+        function tokenize(src) {
+            const out = [];
+            let i = 0;
+            while (i < src.length) {
+                const ch = src[i];
+                if (/\s/.test(ch)) { i++; continue; }
+                if (ch === '0' || ch === '1') { out.push({ t: 'const', v: ch === '1' }); i++; continue; }
+                if (/[A-Za-z_]/.test(ch)) {
+                    let word = '';
+                    while (i < src.length && /[A-Za-z_0-9]/.test(src[i])) { word += src[i]; i++; }
+                    if (word === 'not' || word === 'and' || word === 'or') { out.push({ t: word }); continue; }
+                    if (word === 'True' || word === 'False') { out.push({ t: 'const', v: word === 'True' }); continue; }
+                    if (word === 'true' || word === 'false') {
+                        throw new Error('в Python это ' + word[0].toUpperCase() + word.slice(1) + ', с большой буквы');
+                    }
+                    if (word.length === 1 && /[a-z]/.test(word)) { out.push({ t: 'var', v: word }); continue; }
+                    throw new Error('непонятное имя: ' + word + '. Переменная – одна маленькая латинская буква');
+                }
+                const sym = SYMBOLS.find(function (s) { return src.startsWith(s[0], i); });
+                if (!sym) {
+                    throw new Error(INSTEAD[ch]
+                        ? 'вместо «' + ch + '» на Python пишут ' + INSTEAD[ch]
+                        : 'непонятный символ: ' + ch);
+                }
+                out.push({ t: sym[1] });
+                i += sym[0].length;
+            }
+            return out;
+        }
+
+        // Рекурсивный спуск с приоритетом Python: or < and < not < сравнения.
+        // Узел дерева — замыкание fn(env); отдельный AST собирать незачем,
+        // выражение вычисляется 2^n раз и больше ни для чего не нужно.
+        function parse(src) {
+            const toks = tokenize(src);
+            const seen = {};
+            let pos = 0;
+
+            function eat(t) {
+                if (toks[pos] && toks[pos].t === t) { pos++; return true; }
+                return false;
+            }
+            function num(v) { return v ? 1 : 0; }
+
+            function atom() {
+                const tk = toks[pos];
+                if (!tk) throw new Error('выражение обрывается');
+                if (tk.t === '(') {
+                    pos++;
+                    const f = orExpr();
+                    if (!eat(')')) throw new Error('не хватает закрывающей скобки');
+                    return f;
+                }
+                if (tk.t === 'var') {
+                    pos++;
+                    seen[tk.v] = true;
+                    return function (env) { return env[tk.v]; };
+                }
+                if (tk.t === 'const') {
+                    pos++;
+                    return function () { return tk.v; };
+                }
+                if (tk.t === 'not') {
+                    // Python здесь тоже падает: not ниже сравнений по приоритету.
+                    throw new Error('not после сравнения нужен в скобках: x == (not y)');
+                }
+                throw new Error('здесь ожидалась переменная или скобка');
+            }
+            // Цепочка сравнений по-питоновски: x <= y <= z это
+            // (x <= y) and (y <= z), а не сравнение результата с z.
+            function cmpExpr() {
+                const first = atom();
+                const tail = [];
+                while (toks[pos] && CMP[toks[pos].t]) {
+                    const op = toks[pos].t;
+                    pos++;
+                    tail.push([op, atom()]);
+                }
+                if (!tail.length) return first;
+                return function (env) {
+                    let left = num(first(env));
+                    let ok = true;
+                    for (let i = 0; i < tail.length; i++) {
+                        const right = num(tail[i][1](env));
+                        ok = ok && CMP[tail[i][0]](left, right);
+                        left = right;
+                    }
+                    return ok;
+                };
+            }
+            function notExpr() {
+                if (eat('not')) {
+                    const f = notExpr();
+                    return function (env) { return !f(env); };
+                }
+                return cmpExpr();
+            }
+            function andExpr() {
+                let f = notExpr();
+                while (eat('and')) {
+                    const g = notExpr(), h = f;
+                    f = function (env) { return !!(h(env) && g(env)); };
+                }
+                return f;
+            }
+            function orExpr() {
+                let f = andExpr();
+                while (eat('or')) {
+                    const g = andExpr(), h = f;
+                    f = function (env) { return !!(h(env) || g(env)); };
+                }
+                return f;
+            }
+
+            const fn = orExpr();
+            if (pos < toks.length) throw new Error('лишнее после конца выражения');
+            const names = Object.keys(seen).sort();
+            if (!names.length) throw new Error('в выражении нет переменных');
+            if (names.length > 5) throw new Error('переменных больше пяти, таблица не поместится');
+            return { vars: names, fn: fn };
+        }
+
+        function tableFor(parsed) {
+            const n = parsed.vars.length;
+            const out = [];
+            for (let m = 0; m < (1 << n); m++) {
+                const env = {}, row = [];
+                for (let i = 0; i < n; i++) {
+                    const bit = (m >> (n - 1 - i)) & 1;
+                    env[parsed.vars[i]] = !!bit;
+                    row.push(bit);
+                }
+                row.push(parsed.fn(env) ? 1 : 0);
+                out.push(row);
+            }
+            return out;
+        }
+
+        // ── Данные ───────────────────────────────────────────────
+        const baseCode = typeof config.code === 'string' ? config.code : '';
+        const baseVars = Array.isArray(config.vars) ? config.vars : [];
+        const baseRows = (Array.isArray(config.rows) ? config.rows : [])
+            .filter(function (r) { return Array.isArray(r) && r.length === baseVars.length + 1; });
+        const baseFragment = (Array.isArray(config.fragment) ? config.fragment : [])
+            .filter(function (r) { return Array.isArray(r) && r.length === baseVars.length + 1; });
+
+        const MAX_ROWS = 8;
+
+        let vars = baseVars, rows = baseRows;
+
+        if (!rows.length && baseCode) {
+            try {
+                const parsed = parse(baseCode);
+                vars = parsed.vars;
+                rows = tableFor(parsed);
+            } catch (e) { /* разберёмся ниже, по пустому rows */ }
+        }
+        if (!vars.length || !rows.length) {
+            el.innerHTML = '<p class="text-sm text-red-500">truth-table: нужны rows или разбираемый code</p>';
+            return;
+        }
+
+        // ── Рамка и стили ────────────────────────────────────────
+        const body = widgetFrame(el, el.dataset.title || 'Таблица истинности');
+
+        const CHIP = 'px-3 py-1 rounded-full text-xs border transition-colors';
+        const CHIP_ON = CHIP + ' bg-brand-600 text-white border-brand-600 dark:bg-cyan-500 dark:border-cyan-500';
+        const CHIP_OFF = CHIP + ' bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100 dark:bg-slate-700 dark:border-slate-600 dark:text-slate-300';
+
+        const HEAD_OFF = 'text-gray-500 dark:text-slate-400';
+        const CELL_OFF = 'text-gray-800 dark:text-slate-100';
+
+        // Цвет рамки – отдельным параметром: приписать его к cls нельзя,
+        // серый бы с ним конфликтовал (см. COLUMN_COLORS).
+        // h-7 – это про пустые клетки: строка из одних пустых схлопывалась
+        // по высоте, а ширину столбца держит шапка, высоту держать нечему.
+        function cell(tag, text, cls, border) {
+            const c = document.createElement(tag);
+            c.className = 'border ' + (border || 'border-gray-200 dark:border-slate-600')
+                + ' h-7 px-2 py-1 text-center font-mono ' + (cls || '');
+            c.textContent = text;
+            return c;
+        }
+
+        // ── Состояние ────────────────────────────────────────────
+        let filter = ['0', '1'].indexOf(String(config.filter)) >= 0 ? String(config.filter) : 'all';
+        let brush = 0;
+        // Для каждого цвета: какой столбец фрагмента и какая переменная им
+        // покрашены. null — цвет с этой стороны ещё не поставлен.
+        const left = COLUMN_COLORS.map(function () { return null; });
+        const right = COLUMN_COLORS.map(function () { return null; });
+
+        // Фрагмент — состояние, которое правит пользователь: значения 0, 1
+        // или null. Последний столбец каждой строки — F.
+        let frag = [];
+
+        function blankRow() {
+            const row = [];
+            for (let i = 0; i <= vars.length; i++) row.push(null);
+            return row;
+        }
+        function fitFragment(source) {
+            // Переменных стало больше или меньше — строки подрезаем или
+            // добиваем пустыми клетками, чтобы фрагмент пережил смену функции.
+            frag = (source || []).map(function (r) {
+                const row = [];
+                for (let i = 0; i < vars.length; i++) row.push(i < r.length - 1 ? r[i] : null);
+                row.push(r[r.length - 1]);
+                return row;
+            });
+            if (!frag.length) frag = [blankRow(), blankRow(), blankRow()];
+        }
+        fitFragment(baseFragment);
+
+        function paint(side, index) {
+            const slot = side === 'left' ? left : right;
+            if (slot[brush] === index) { slot[brush] = null; render(); return; }
+            // Столбец носит один цвет: снимаем его со всех остальных.
+            slot.forEach(function (v, c) { if (v === index) slot[c] = null; });
+            slot[brush] = index;
+            render();
+        }
+        function colourOf(side, index) {
+            const slot = side === 'left' ? left : right;
+            const c = slot.indexOf(index);
+            return c < 0 ? null : c;
+        }
+        function clearColours() {
+            left.forEach(function (_, c) { left[c] = null; right[c] = null; });
+        }
+
+        // ── Разметка ─────────────────────────────────────────────
+        const exprRow = document.createElement('div');
+        exprRow.className = 'flex flex-wrap items-center gap-2 mb-1';
+        const exprLabel = document.createElement('span');
+        exprLabel.className = 'text-sm font-mono text-gray-500 dark:text-slate-400';
+        exprLabel.textContent = 'F =';
+        const exprInput = document.createElement('input');
+        exprInput.type = 'text';
+        exprInput.value = baseCode;
+        exprInput.spellcheck = false;
+        exprInput.className = 'flex-1 min-w-[220px] px-3 py-1.5 rounded-lg border text-sm font-mono '
+            + 'bg-white text-gray-800 border-gray-200 dark:bg-slate-800 dark:text-slate-100 dark:border-slate-600';
+        const buildBtn = document.createElement('button');
+        buildBtn.type = 'button';
+        buildBtn.textContent = 'Построить';
+        buildBtn.className = CHIP + ' bg-brand-600 text-white border-brand-600 hover:bg-brand-700 dark:bg-cyan-500 dark:border-cyan-500 dark:hover:bg-cyan-400';
+        const backBtn = document.createElement('button');
+        backBtn.type = 'button';
+        backBtn.textContent = 'Из условия';
+        backBtn.title = 'Вернуть выражение и фрагмент из условия';
+        backBtn.className = CHIP_OFF;
+        [exprLabel, exprInput, buildBtn].forEach(function (n) { exprRow.appendChild(n); });
+        if (baseCode) exprRow.appendChild(backBtn);
+        body.appendChild(exprRow);
+
+        const hintLine = document.createElement('div');
+        hintLine.className = 'mb-3 text-xs text-gray-400 dark:text-slate-500';
+        // Одна фраза: как писать импликацию и чем питоновский приоритет
+        // отличается от экзаменационного – разобрано в тексте статьи, здесь
+        // это была стена подсказок над самим виджетом.
+        hintLine.textContent = 'Пишите как на Python';
+        body.appendChild(hintLine);
+
+        const errLine = document.createElement('div');
+        errLine.className = 'mb-3 text-sm text-red-500';
+        errLine.hidden = true;
+        body.appendChild(errLine);
+
+        const mainRow = document.createElement('div');
+        mainRow.className = 'flex flex-wrap items-start gap-6';
+        body.appendChild(mainRow);
+
+        function host(caption) {
+            const node = document.createElement('div');
+            node.className = 'overflow-x-auto';
+            const cap = document.createElement('div');
+            cap.className = 'mb-2 text-xs text-gray-400 dark:text-slate-500';
+            cap.textContent = caption;
+            node.appendChild(cap);
+            const slot = document.createElement('div');
+            node.appendChild(slot);
+            mainRow.appendChild(node);
+            return { node: node, cap: cap, slot: slot };
+        }
+
+        const fragHost = host('Фрагмент: заполняйте клетки кликом');
+        const fullHost = host('Все строки функции');
+
+        // Управление фрагментом живёт под ним же.
+        const fragTools = document.createElement('div');
+        fragTools.className = 'flex flex-wrap items-center gap-2 mt-2';
+        fragHost.node.appendChild(fragTools);
+
+        function toolBtn(text, onClick) {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.textContent = text;
+            b.className = CHIP_OFF;
+            b.addEventListener('click', onClick);
+            fragTools.appendChild(b);
+            return b;
+        }
+        const addBtn = toolBtn('+ строка', function () {
+            if (frag.length < MAX_ROWS) { frag.push(blankRow()); render(); }
+        });
+        const dropBtn = toolBtn('− строка', function () {
+            if (frag.length > 1) { frag.pop(); render(); }
+        });
+        const wipeBtn = toolBtn('Очистить', function () {
+            frag = frag.map(blankRow);
+            render();
+        });
+
+        // Палитра — справа от таблиц: кисть берут здесь, красят там.
+        const palette = document.createElement('div');
+        palette.className = 'shrink-0';
+        const palCap = document.createElement('div');
+        palCap.className = 'mb-2 text-xs text-gray-400 dark:text-slate-500';
+        palCap.textContent = 'Цвет';
+        palette.appendChild(palCap);
+        const palBox = document.createElement('div');
+        palBox.className = 'flex flex-row flex-wrap sm:flex-col gap-2';
+        palette.appendChild(palBox);
+        mainRow.appendChild(palette);
+
+        const palBtns = COLUMN_COLORS.map(function (colour, c) {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.addEventListener('click', function () { brush = c; render(); });
+            palBox.appendChild(b);
+            return b;
+        });
+
+        const chips = document.createElement('div');
+        chips.className = 'flex flex-wrap items-center gap-2 mt-3';
+        const noteLine = document.createElement('div');
+        noteLine.className = 'mt-3 text-sm text-gray-600 dark:text-slate-300';
+        body.appendChild(chips);
+        body.appendChild(noteLine);
+
+        const FILTERS = [['all', 'Все'], ['0', 'F = 0'], ['1', 'F = 1']];
+        const chipBtns = FILTERS.map(function (f) {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.addEventListener('click', function () { filter = f[0]; render(); });
+            chips.appendChild(b);
+            return b;
+        });
+
+        const clearBtn = document.createElement('button');
+        clearBtn.type = 'button';
+        clearBtn.textContent = 'Сбросить цвета';
+        clearBtn.addEventListener('click', function () { clearColours(); render(); });
+        chips.appendChild(clearBtn);
+
+        // ── Пересборка по введённому выражению ───────────────────
+        function build(text, fragment) {
+            const src = String(text || '').trim();
+            if (!src) { showError('выражение пустое'); return; }
+            if (src === baseCode && baseRows.length) {
+                vars = baseVars;
+                rows = baseRows;
+            } else {
+                let parsed;
+                try {
+                    parsed = parse(src);
+                } catch (e) {
+                    showError(e.message);
+                    return;
+                }
+                vars = parsed.vars;
+                rows = tableFor(parsed);
+            }
+            errLine.hidden = true;
+            // Переменные могли смениться целиком – прежние пары бессмысленны,
+            // а фрагмент подгоняем под новое число столбцов.
+            clearColours();
+            fitFragment(fragment || frag);
+            render();
+        }
+        function showError(message) {
+            errLine.textContent = 'Не разобрал выражение: ' + message;
+            errLine.hidden = false;
+        }
+
+        buildBtn.addEventListener('click', function () { build(exprInput.value); });
+        exprInput.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') { e.preventDefault(); build(exprInput.value); }
+        });
+        backBtn.addEventListener('click', function () {
+            exprInput.value = baseCode;
+            build(baseCode, baseFragment);
+        });
+
+        // ── Отрисовка ────────────────────────────────────────────
+        function renderFragment() {
+            const tbl = document.createElement('table');
+            tbl.className = 'text-sm border-collapse';
+
+            const head = document.createElement('tr');
+            vars.forEach(function (_, i) {
+                const c = colourOf('left', i);
+                const th = cell('th', String(i + 1),
+                    'cursor-pointer select-none transition-colors '
+                    + (c === null
+                        ? HEAD_OFF + ' hover:bg-gray-100 dark:hover:bg-slate-700'
+                        : COLUMN_COLORS[c].head),
+                    c === null ? null : COLUMN_COLORS[c].border);
+                th.title = 'Покрасить этот столбец выбранным цветом';
+                th.addEventListener('click', function () { paint('left', i); });
+                head.appendChild(th);
+            });
+            head.appendChild(cell('th', 'F', HEAD_OFF));
+            tbl.appendChild(head);
+
+            frag.forEach(function (row, r) {
+                const tr = document.createElement('tr');
+                row.forEach(function (v, i) {
+                    const last = i === vars.length;
+                    const c = last ? null : colourOf('left', i);
+                    const td = cell('td', v === null || v === undefined ? '' : String(v),
+                        'cursor-pointer select-none '
+                        + (last
+                            ? 'text-gray-500 dark:text-slate-400 bg-gray-50 dark:bg-slate-700/40'
+                            : (c === null ? CELL_OFF : COLUMN_COLORS[c].cell)),
+                        c === null ? null : COLUMN_COLORS[c].border);
+                    td.title = 'Клик: пусто → 0 → 1';
+                    td.addEventListener('click', function () {
+                        // Пустая клетка – это «неизвестно», и она такой же
+                        // рабочий вариант, как 0 и 1: сначала ученик оставляет
+                        // пустыми клетки условия, потом заполняет их по ходу
+                        // решения, а ошибившись – возвращает в пустые.
+                        row[i] = row[i] === null || row[i] === undefined ? 0 : (row[i] === 0 ? 1 : null);
+                        render();
+                    });
+                    tr.appendChild(td);
+                });
+                tbl.appendChild(tr);
+            });
+
+            fragHost.slot.innerHTML = '';
+            fragHost.slot.appendChild(tbl);
+        }
+
+        function renderFull() {
+            const tbl = document.createElement('table');
+            tbl.className = 'text-sm border-collapse';
+
+            const head = document.createElement('tr');
+            vars.forEach(function (v, j) {
+                const c = colourOf('right', j);
+                const th = cell('th', v,
+                    'cursor-pointer select-none transition-colors '
+                    + (c === null
+                        ? HEAD_OFF + ' hover:bg-gray-100 dark:hover:bg-slate-700'
+                        : COLUMN_COLORS[c].head),
+                    c === null ? null : COLUMN_COLORS[c].border);
+                th.title = 'Покрасить этот столбец выбранным цветом';
+                th.addEventListener('click', function () { paint('right', j); });
+                head.appendChild(th);
+            });
+            head.appendChild(cell('th', 'F', HEAD_OFF));
+            tbl.appendChild(head);
+
+            let shown = 0;
+            rows.forEach(function (r) {
+                if (filter !== 'all' && String(r[vars.length]) !== filter) return;
+                shown++;
+                const tr = document.createElement('tr');
+                r.forEach(function (v, j) {
+                    if (j === vars.length) {
+                        tr.appendChild(cell('td', String(v), 'font-semibold ' + CELL_OFF));
+                        return;
+                    }
+                    const c = colourOf('right', j);
+                    tr.appendChild(cell('td', String(v),
+                        c === null ? CELL_OFF : COLUMN_COLORS[c].cell,
+                        c === null ? null : COLUMN_COLORS[c].border));
+                });
+                tbl.appendChild(tr);
+            });
+
+            fullHost.slot.innerHTML = '';
+            fullHost.slot.appendChild(tbl);
+            return shown;
+        }
+
+        function render() {
+            renderFragment();
+            const shown = renderFull();
+
+            palBtns.forEach(function (b, c) {
+                const pair = (left[c] === null ? '?' : left[c] + 1) + ' = '
+                    + (right[c] === null ? '?' : vars[right[c]]);
+                b.textContent = left[c] === null && right[c] === null ? '' : pair;
+                b.className = 'w-16 h-8 rounded-md border text-xs font-mono text-white transition-shadow '
+                    + COLUMN_COLORS[c].btn
+                    + (c === brush ? ' ring-2 ring-offset-2 ring-gray-900 dark:ring-white dark:ring-offset-slate-800' : '');
+                b.title = c === brush ? 'Выбранный цвет' : 'Взять этот цвет';
+            });
+
+            chipBtns.forEach(function (b, n) {
+                b.textContent = FILTERS[n][0] === 'all' ? 'Все ' + rows.length : FILTERS[n][1];
+                b.className = FILTERS[n][0] === filter ? CHIP_ON : CHIP_OFF;
+            });
+
+            addBtn.disabled = frag.length >= MAX_ROWS;
+            addBtn.className = CHIP_OFF + (addBtn.disabled ? ' opacity-50 cursor-not-allowed' : '');
+            dropBtn.disabled = frag.length <= 1;
+            dropBtn.className = CHIP_OFF + (dropBtn.disabled ? ' opacity-50 cursor-not-allowed' : '');
+            const filled = frag.some(function (row) {
+                return row.some(function (v) { return v !== null && v !== undefined; });
+            });
+            wipeBtn.disabled = !filled;
+            wipeBtn.className = CHIP_OFF + (filled ? '' : ' opacity-50 cursor-not-allowed');
+
+            const pairs = left.filter(function (v, c) { return v !== null && right[c] !== null; }).length;
+            const used = left.some(function (v) { return v !== null; })
+                || right.some(function (v) { return v !== null; });
+            clearBtn.disabled = !used;
+            clearBtn.className = CHIP_OFF + ' ml-auto' + (used ? '' : ' opacity-50 cursor-not-allowed');
+
+
+            noteLine.textContent = pairs
+                ? 'Собрано пар: ' + pairs + ' из ' + vars.length
+                    + '. Одинаковый цвет слева и справа – это и есть ответ: столбец фрагмента и переменная, которая в нём стоит.'
+                : 'Слева перенесите фрагмент из условия (клик по клетке: пусто → 0 → 1), справа – все ' + rows.length
+                    + ' строк функции, показано ' + shown + '. Затем возьмите цвет и покрасьте им столбец слева и столбец справа.';
+        }
+
+        render();
+    });
+
+    // ─────────────────────────────────────────────────────────────
+    // Виджет: truth-steps — разбор задания 2 по шагам (как graph-match у
+    // задания 1). Слева фрагмент из условия, справа — панель разбора; шаги
+    // листаются кнопками, и на каждом видно, что именно стало известно.
+    //
+    // Правая панель бывает двух видов, и это принципиально. Сначала `formula`:
+    // само выражение с подсвеченной операцией и список условий, которые из неё
+    // вытекают. Задание решается БЕЗ построения таблицы истинности — нужные
+    // строки достаются разбором формулы с последней операции, и виджет обязан
+    // показывать именно это, иначе он учит противоположному тому, что говорит
+    // текст статьи. Полную таблицу строит второй способ, из соседнего блока,
+    // где её рисует Python. Потом панель переключается на `sets` — те самые
+    // несколько наборов, что получились из условий; дальше они и участвуют
+    // в восстановлении фрагмента.
+    //
+    // Восстановление: узнали букву столбца — дописали вынужденные клетки —
+    // прочитали строку — узнали следующую букву. Текстом это цепочка из семи
+    // «значит», в которой читатель теряет, какая клетка откуда взялась.
+    // Поэтому кадр показывает три вещи разом: подписанные столбцы (цвет +
+    // буква во второй строке шапки), клетки, дописанные ИМЕННО на этом шаге
+    // (обведены), и строку с набором, по которым шаг сделан (стрелка ►).
+    //
+    // Кадр несёт ПОЛНОЕ состояние (cells, labels, facts, формула), а не
+    // разницу: шаг назад тогда не требует пересчёта — тот же приём, что у
+    // loop-trace. Считает кадры Python в seed-команде (_steps() в
+    // seed_ege_theory_2.py): значения дописываемых клеток берутся из
+    // восстановленного решения, а не пишутся руками.
+    //
+    // Цвет столбца — общий COLUMN_COLORS: в соседнем блоке статьи стоит
+    // truth-table, где столбцы красят руками теми же четырьмя цветами.
+    //
+    // Конфиг:
+    //   {"vars": ["w","x","y","z"],
+    //    "sets": [[0,0,1,1], …],            // наборы, добытые из формулы
+    //    "fragF": 0,                        // значение F у строк фрагмента
+    //    "steps": [{"title": "…", "note": "…",
+    //               "panel": "formula"|"sets",
+    //               "formula": [["","(("],["hi","x ≡ ¬y"],["",") → …"]],
+    //               "facts": [["z = 1", true], ["x ≠ y", false]],
+    //               "cells": [[null,0,1,0], …],   // состояние фрагмента
+    //               "labels": [null,null,"z",null],
+    //               "added": [[2,3]],       // клетки, открытые на этом шаге
+    //               "hiRow": [2],           // строка фрагмента под стрелкой
+    //               "hiSet": [2]}]}         // наборы под стрелкой
+    // ─────────────────────────────────────────────────────────────
+    register('truth-steps', function (el, config) {
+        const vars = Array.isArray(config.vars) ? config.vars : [];
+        const sets = (Array.isArray(config.sets) ? config.sets : [])
+            .filter(function (r) { return Array.isArray(r) && r.length === vars.length; });
+        const steps = Array.isArray(config.steps) ? config.steps : [];
+        const fragF = config.fragF === undefined ? 0 : config.fragF;
+
+        if (!vars.length || !sets.length || !steps.length) {
+            el.innerHTML = '<p class="text-sm text-red-500">truth-steps: нужны vars, sets и steps</p>';
+            return;
+        }
+
+        const body = widgetFrame(el, el.dataset.title || 'Разбор по шагам');
+
+        const BTN_MAIN = 'px-3 py-1.5 rounded-full text-sm border transition-colors bg-brand-600 text-white border-brand-600 hover:bg-brand-700 dark:bg-cyan-500 dark:border-cyan-500 dark:hover:bg-cyan-400';
+        const BTN_SEC = 'px-3 py-1.5 rounded-full text-sm border transition-colors bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100 dark:bg-slate-700 dark:border-slate-600 dark:text-slate-300';
+
+        const HEAD_OFF = 'text-gray-500 dark:text-slate-400';
+        const CELL_OFF = 'text-gray-800 dark:text-slate-100';
+        // Клетка, открытая на этом шаге: обводка внутрь, чтобы не спорить
+        // с border-collapse соседних клеток.
+        const FRESH = ' outline outline-2 -outline-offset-2 outline-gray-900 dark:outline-white font-bold';
+        // Указатель на строку. Отдельная узкая колонка, а не фон строки:
+        // фон конфликтовал бы с цветом столбцов, которых на поздних шагах
+        // уже четыре.
+        const MARK = 'w-6 text-brand-600 dark:text-cyan-400 font-bold';
+
+        // Цвет рамки – отдельным параметром: приписать его к cls нельзя,
+        // серый бы с ним конфликтовал (см. COLUMN_COLORS).
+        // h-7 – это про пустые клетки: строка из одних пустых схлопывалась
+        // по высоте, а ширину столбца держит шапка, высоту держать нечему.
+        function cell(tag, text, cls, border) {
+            const c = document.createElement(tag);
+            c.className = 'border ' + (border || 'border-gray-200 dark:border-slate-600')
+                + ' h-7 px-2 py-1 text-center font-mono ' + (cls || '');
+            c.textContent = text;
+            return c;
+        }
+        function has(list, v) {
+            return Array.isArray(list) && list.indexOf(v) >= 0;
+        }
+
+        const mainRow = document.createElement('div');
+        mainRow.className = 'flex flex-wrap items-start gap-6';
+        body.appendChild(mainRow);
+
+        function host(caption) {
+            const node = document.createElement('div');
+            node.className = 'overflow-x-auto';
+            const cap = document.createElement('div');
+            cap.className = 'mb-2 text-xs text-gray-400 dark:text-slate-500';
+            cap.textContent = caption;
+            node.appendChild(cap);
+            const slot = document.createElement('div');
+            node.appendChild(slot);
+            mainRow.appendChild(node);
+            return { cap: cap, slot: slot };
+        }
+
+        const fragHost = host('Фрагмент из условия');
+        const panelHost = host('Разбор выражения');
+
+        const noteLine = document.createElement('div');
+        noteLine.className = 'mt-3 text-sm text-gray-600 dark:text-slate-300 min-h-[4.5rem]';
+        body.appendChild(noteLine);
+
+        const prevBtn = document.createElement('button');
+        prevBtn.type = 'button';
+        prevBtn.textContent = '← Назад';
+        const nextBtn = document.createElement('button');
+        nextBtn.type = 'button';
+        nextBtn.textContent = 'Дальше →';
+        const resetBtn = document.createElement('button');
+        resetBtn.type = 'button';
+        resetBtn.textContent = 'Сначала';
+        const counter = document.createElement('span');
+        counter.className = 'text-sm text-gray-400 dark:text-slate-400 ml-auto';
+
+        const controls = document.createElement('div');
+        controls.className = 'flex flex-wrap items-center gap-2 mt-3';
+        [prevBtn, nextBtn, resetBtn, counter].forEach(function (n) { controls.appendChild(n); });
+        body.appendChild(controls);
+
+        // Столбец фрагмента i и столбец переменной labels[i] в наборах — одна
+        // пара, поэтому и цвет у них один.
+        function colourOfColumn(step, i) {
+            return (step.labels || [])[i] ? COLUMN_COLORS[i % COLUMN_COLORS.length] : null;
+        }
+        function colourOfVar(step, name) {
+            const i = (step.labels || []).indexOf(name);
+            return i < 0 ? null : COLUMN_COLORS[i % COLUMN_COLORS.length];
+        }
+
+        function renderFragment(step) {
+            const cells = step.cells || [];
+            const tbl = document.createElement('table');
+            tbl.className = 'text-sm border-collapse';
+
+            // Две строки шапки: номера столбцов постоянны, буквы проявляются
+            // по ходу разбора. Отдельной строкой, а не «3 = z» в одной ячейке,
+            // чтобы ширина столбца не менялась от шага к шагу.
+            const numbers = document.createElement('tr');
+            numbers.appendChild(cell('th', '', MARK));
+            vars.forEach(function (_, i) {
+                const colour = colourOfColumn(step, i);
+                numbers.appendChild(cell('th', String(i + 1),
+                    colour ? colour.head : HEAD_OFF, colour ? colour.border : null));
+            });
+            numbers.appendChild(cell('th', 'F', HEAD_OFF));
+            tbl.appendChild(numbers);
+
+            const letters = document.createElement('tr');
+            letters.appendChild(cell('th', '', MARK));
+            vars.forEach(function (_, i) {
+                const label = (step.labels || [])[i];
+                const colour = colourOfColumn(step, i);
+                letters.appendChild(cell('th', label || '?',
+                    colour ? colour.head : HEAD_OFF + ' font-normal',
+                    colour ? colour.border : null));
+            });
+            letters.appendChild(cell('th', '', HEAD_OFF));
+            tbl.appendChild(letters);
+
+            cells.forEach(function (row, r) {
+                const tr = document.createElement('tr');
+                tr.appendChild(cell('td', has(step.hiRow, r) ? '►' : '', MARK));
+                row.forEach(function (v, c) {
+                    const colour = colourOfColumn(step, c);
+                    const fresh = (step.added || []).some(function (p) {
+                        return p[0] === r && p[1] === c;
+                    });
+                    tr.appendChild(cell('td', v === null || v === undefined ? '' : String(v),
+                        (colour ? colour.cell : CELL_OFF) + (fresh ? FRESH : '')));
+                });
+                tr.appendChild(cell('td', String(fragF),
+                    'text-gray-500 dark:text-slate-400 bg-gray-50 dark:bg-slate-700/40'));
+                tbl.appendChild(tr);
+            });
+
+            fragHost.slot.innerHTML = '';
+            fragHost.slot.appendChild(tbl);
+        }
+
+        // Панель «разбор выражения»: сама формула с подсвеченной операцией и
+        // условия, которые из неё уже вытекли.
+        function renderFormula(step) {
+            const box = document.createElement('div');
+
+            const line = document.createElement('div');
+            line.className = 'text-base font-mono mb-4 text-gray-500 dark:text-slate-400';
+            (step.formula || []).forEach(function (part) {
+                const span = document.createElement('span');
+                span.textContent = part[1];
+                span.className = part[0] === 'hi'
+                    ? 'px-1 rounded bg-amber-200 text-amber-900 font-bold dark:bg-amber-500/40 dark:text-amber-100'
+                    : '';
+                line.appendChild(span);
+            });
+            box.appendChild(line);
+
+            (step.facts || []).forEach(function (fact) {
+                const row = document.createElement('div');
+                row.className = 'text-sm font-mono mb-1 ' + (fact[1]
+                    ? 'text-gray-900 dark:text-white font-bold'
+                    : 'text-gray-500 dark:text-slate-400');
+                row.textContent = '• ' + fact[0];
+                box.appendChild(row);
+            });
+
+            panelHost.cap.textContent = 'Разбор выражения';
+            panelHost.slot.innerHTML = '';
+            panelHost.slot.appendChild(box);
+        }
+
+        // Панель «наборы»: то немногое, что осталось от таблицы истинности
+        // после разбора формулы.
+        function renderSets(step) {
+            const tbl = document.createElement('table');
+            tbl.className = 'text-sm border-collapse';
+
+            const head = document.createElement('tr');
+            head.appendChild(cell('th', '', MARK));
+            vars.forEach(function (v) {
+                const colour = colourOfVar(step, v);
+                head.appendChild(cell('th', v,
+                    colour ? colour.head : HEAD_OFF, colour ? colour.border : null));
+            });
+            head.appendChild(cell('th', 'F', HEAD_OFF));
+            tbl.appendChild(head);
+
+            sets.forEach(function (r, n) {
+                const tr = document.createElement('tr');
+                tr.appendChild(cell('td', has(step.hiSet, n) ? '►' : '', MARK));
+                r.forEach(function (v, j) {
+                    const colour = colourOfVar(step, vars[j]);
+                    tr.appendChild(cell('td', String(v), colour ? colour.cell : CELL_OFF));
+                });
+                tr.appendChild(cell('td', String(fragF), 'font-semibold ' + CELL_OFF));
+                tbl.appendChild(tr);
+            });
+
+            panelHost.cap.textContent = 'Наборы, на которых F = ' + fragF;
+            panelHost.slot.innerHTML = '';
+            panelHost.slot.appendChild(tbl);
+        }
+
+        let idx = 0;
+
+        function render() {
+            const step = steps[idx] || {};
+            renderFragment(step);
+            if (step.panel === 'sets') renderSets(step); else renderFormula(step);
+
+            noteLine.innerHTML = '';
+            if (step.title) {
+                const b = document.createElement('b');
+                b.className = 'block text-gray-900 dark:text-white';
+                b.textContent = step.title;
+                noteLine.appendChild(b);
+            }
+            const p = document.createElement('span');
+            p.textContent = step.note || '';
+            noteLine.appendChild(p);
+
+            counter.textContent = 'шаг ' + (idx + 1) + ' из ' + steps.length;
+            prevBtn.disabled = idx === 0;
+            prevBtn.className = BTN_SEC + (idx === 0 ? ' opacity-50 cursor-not-allowed' : '');
+            const atEnd = idx >= steps.length - 1;
+            nextBtn.disabled = atEnd;
+            nextBtn.className = BTN_MAIN + (atEnd ? ' opacity-50 cursor-not-allowed' : '');
+            resetBtn.disabled = idx === 0;
+            resetBtn.className = BTN_SEC + (idx === 0 ? ' opacity-50 cursor-not-allowed' : '');
+        }
+
+        prevBtn.addEventListener('click', function () { if (idx > 0) { idx--; render(); } });
+        nextBtn.addEventListener('click', function () { if (idx < steps.length - 1) { idx++; render(); } });
+        resetBtn.addEventListener('click', function () { idx = 0; render(); });
+
         render();
     });
 

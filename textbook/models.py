@@ -77,7 +77,11 @@ class Section(models.Model):
 
     @property
     def is_closed(self):
-        """Прошёл ли дедлайн блока."""
+        """Прошёл ли общий дедлайн блока – без учёта личных продлений.
+
+        Для конкретного ученика спрашивать надо `services.section_is_closed`:
+        болевшему дедлайн двигают персонально, и это свойство о нём не знает.
+        """
         from django.utils import timezone
         return bool(self.deadline and timezone.now() > self.deadline)
 
@@ -88,6 +92,47 @@ class Section(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class SectionExtension(models.Model):
+    """Личное продление дедлайна блока: болел, олимпиада, пришёл среди года.
+
+    Продление только отодвигает дату. Личный срок раньше общего ничего не
+    закрывает: иначе опечатка в админке молча отрезала бы ученика от задач,
+    а «наказать сроком» – не то, ради чего это заводилось.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='section_extensions', verbose_name="Ученик"
+    )
+    section = models.ForeignKey(
+        Section, on_delete=models.CASCADE,
+        related_name='extensions', verbose_name="Блок учебника"
+    )
+    deadline = models.DateTimeField(
+        verbose_name="Личный дедлайн",
+        help_text="До этого момента ученик сдаёт задачи блока и самопроверки, "
+                  "даже когда общий дедлайн уже прошёл."
+    )
+    reason = models.CharField(
+        max_length=200, blank=True, verbose_name="Причина",
+        help_text="Для себя: «болел, справка до 12.03». Ученику не показывается."
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        # Один срок на пару «ученик + блок»: два продления одного блока
+        # означали бы два ответа на вопрос «когда закрывается».
+        constraints = [
+            models.UniqueConstraint(fields=['user', 'section'], name='unique_section_extension'),
+        ]
+        ordering = ['-deadline']
+        verbose_name = "Продление дедлайна"
+        verbose_name_plural = "Продления дедлайнов"
+
+    def __str__(self):
+        return f'{self.user} · {self.section} · до {self.deadline:%d.%m.%Y}'
 
 
 class EgeTask(models.Model):

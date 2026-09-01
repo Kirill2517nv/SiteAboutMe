@@ -24,6 +24,37 @@
        не видно с задних парт. Толщина в px, а не в rem: 3px хватает на любом
        масштабе, а растущая вместе с кеглем каретка закрывала бы букву. */
     .present-root:fullscreen .CodeMirror-cursor { border-left-width: 3px; }
+    /* Хром проектора не растёт вместе с материалом. Панель свёрстана
+       tailwind-утилитами, то есть в rem, и на 200% ряд кнопок (h-9 – это
+       2.25rem) занимал 72px высоты: полторы строки урока на стене, где места
+       и так мало. Размеры хрома – в px: он одинаково читаем при любом
+       масштабе текста. Селектор из двух классов перебивает утилиты по
+       специфичности, !important не нужен. */
+    .present-root:fullscreen .present-chrome { font-size: 13px; gap: 6px; margin-bottom: 8px; }
+    .present-root:fullscreen .present-chrome span { font-size: 13px; }
+    .present-root:fullscreen .present-chrome button,
+    .present-root:fullscreen .present-chrome input {
+        height: 26px; width: auto; min-width: 26px; padding: 0 8px;
+        font-size: 13px; line-height: 1; border-radius: 6px;
+    }
+    .present-root:fullscreen .present-chrome input { width: 58px; }
+    /* Опциональная раскладка: панель уезжает в левое поле (класс
+       present-chrome-left на .present-root). Колонка статьи занимает 80%
+       ширины и центрирована – слева пустует полоса, где текст не появится,
+       а сверху панель отнимала строку у заголовка. position: fixed, потому
+       что у .present-root:fullscreen свой overflow-y: auto: в потоке панель
+       уехала бы вверх вместе с текстом. */
+    .present-root.present-chrome-left:fullscreen .present-chrome {
+        position: fixed; top: 12px; left: 12px; z-index: 20;
+        flex-direction: column; align-items: flex-start; margin-bottom: 0;
+    }
+    /* «Выйти» свёрстан с ml-auto – в колонке он прижал бы кнопку вправо. */
+    .present-root.present-chrome-left:fullscreen .present-chrome > * { margin-left: 0; }
+    /* Выход – в правый верхний угол, по диагонали от рабочих кнопок: за него
+       не хватаются случайно, а ищут глазами там, где крестик у любого окна. */
+    .present-root.present-chrome-left:fullscreen .present-exit {
+        position: fixed; top: 12px; right: 12px; left: auto;
+    }
 </style>
 
 {% comment %}
@@ -38,11 +69,21 @@ nav_list – массив задач. Например, для трениров�
 
 Без них панель остаётся с одним масштабом и выходом.
 {% endcomment %}
-<div x-show="presenting" x-cloak class="flex items-center gap-3 mb-3">
+<div x-show="presenting" x-cloak class="present-chrome flex items-center gap-3 mb-3">
     <div class="flex items-center gap-1">
         <button @click="setZoom(zoom - 0.2)" class="w-9 h-9 rounded-lg border border-gray-300 dark:border-slate-600 text-lg leading-none">−</button>
-        <span class="w-16 text-center text-sm tabular-nums text-gray-500 dark:text-slate-400"
-              x-text="Math.round(zoom * 100) + '%'"></span>
+        {% comment %}
+        Масштаб набирается числом, а не только кнопками: путь от 60% до 300%
+        шагами по 20% – это дюжина нажатий. Значение возвращается из состояния
+        после setZoom: он зажимает ввод в 60–300, и в поле должно оказаться то,
+        что реально применилось, а не то, что набрали.
+        {% endcomment %}
+        <input type="number" min="60" max="300" step="5" inputmode="numeric"
+               title="Масштаб в процентах, от 60 до 300"
+               class="present-zoom-input w-16 h-9 text-center text-sm tabular-nums rounded-lg border border-gray-300 dark:border-slate-600 bg-transparent text-gray-500 dark:text-slate-400"
+               :value="Math.round(zoom * 100)"
+               @change="setZoom($event.target.value / 100); $event.target.value = Math.round(zoom * 100)"
+               @keydown.enter.prevent="$event.target.blur()">
         <button @click="setZoom(zoom + 0.2)" class="w-9 h-9 rounded-lg border border-gray-300 dark:border-slate-600 text-lg leading-none">+</button>
     </div>
     {% if nav_goto %}
@@ -56,7 +97,7 @@ nav_list – массив задач. Например, для трениров�
     </div>
     {% endif %}
     <button @click="togglePresent()"
-            class="ml-auto px-3 h-9 rounded-lg border border-gray-300 dark:border-slate-600 text-sm text-gray-600 dark:text-slate-300">
+            class="present-exit ml-auto px-3 h-9 rounded-lg border border-gray-300 dark:border-slate-600 text-sm text-gray-600 dark:text-slate-300">
         Выйти (Esc)
     </button>
 </div>

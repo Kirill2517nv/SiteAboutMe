@@ -10,11 +10,11 @@
 {% endblock %}
 
 {% block content %}
-<div class="min-h-screen bg-gray-50 dark:bg-slate-900 text-gray-900 dark:text-slate-100" x-data="{ sidebarOpen: true }">
-    <div class="flex">
+<div class="present-root present-chrome-left min-h-screen bg-gray-50 dark:bg-slate-900 text-gray-900 dark:text-slate-100" x-data="articlePresent()">
+    <div class="flex" x-data="{ sidebarOpen: true }">
 
         <!-- Сайдбар: соседние статьи блока / задания ЕГЭ -->
-        <aside class="article-sidebar-col hidden md:block" :class="sidebarOpen ? '' : 'w-collapsed'">
+        <aside class="article-sidebar-col hidden md:block present-hide" :class="sidebarOpen ? '' : 'w-collapsed'">
             <div class="article-sidebar-inner">
                 <a href="{{ back_url }}" class="inline-flex items-center gap-1.5 text-sm text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200 transition-colors mb-4">
                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -91,7 +91,7 @@
         <div class="flex-1 min-w-0 relative">
 
             <!-- Кнопка сворачивания сайдбара -->
-            <div class="article-sidebar-toggle-wrap hidden md:block">
+            <div class="article-sidebar-toggle-wrap hidden md:block present-hide">
                 <button @click="sidebarOpen = !sidebarOpen" title="Показать / скрыть навигацию"
                         class="article-sidebar-toggle" :class="sidebarOpen ? '' : 'is-collapsed'">
                     <svg class="w-3.5 h-3.5 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -107,8 +107,12 @@
              data-csrf="{{ csrf_token }}"
              data-authenticated="{% if user.is_authenticated %}1{% else %}0{% endif %}">
 
+            {% include '_present_mode.html' with nav_goto="goSlide" nav_index="slide" nav_list="slideList" %}
+            {# Компонент страницы: presentMode() выше по файлу уже объявлен. #}
+            <script src="{% static 'js/article-present.js' %}"></script>
+
             <!-- Хлебная крошка -->
-            <nav class="text-sm text-gray-500 dark:text-slate-400 mb-2 md:pl-2">
+            <nav class="text-sm text-gray-500 dark:text-slate-400 mb-2 md:pl-2 present-hide">
                 <a href="{{ back_url }}" class="hover:text-gray-700 dark:hover:text-slate-300 transition-colors">{{ back_label|default:"Учебник" }}</a>
                 {% if group_title %}<span class="text-gray-300 dark:text-slate-600">/</span> {{ group_title }}{% endif %}
                 {% if article_number %}<span class="text-gray-300 dark:text-slate-600">/</span> Статья {{ article_number }}{% endif %}
@@ -117,7 +121,7 @@
             <!-- Заголовок + статус прогресса -->
             <header class="mb-10 md:pl-2">
                 {% if progress or frontier %}
-                <div class="mb-3 flex items-center gap-3">
+                <div class="mb-3 flex items-center gap-3 present-hide">
                     {% if progress %}
                     <span id="progress-badge"
                           data-status="{{ progress.status }}"
@@ -129,7 +133,10 @@
                     {% include 'textbook/_frontier_avatars.html' with users=frontier %}
                 </div>
                 {% endif %}
-                <h1 class="article-title">{{ article.title }}</h1>
+                <div class="flex items-start justify-between gap-4">
+                    <h1 class="article-title">{{ article.title }}</h1>
+                    <div class="present-hide mt-1">{% include '_present_button.html' %}</div>
+                </div>
                 {# description на странице не показываем – краткое содержание дублировало вводку статьи. #}
                 {% if not blocks %}
                 <span class="inline-flex items-center mt-4 px-2.5 py-1 rounded-full bg-gray-100 dark:bg-slate-800 text-gray-500 dark:text-slate-400 text-xs font-medium">Материалы скоро появятся</span>
@@ -140,7 +147,7 @@
             <!-- Блоки контента -->
             <div class="space-y-8 pswp-gallery md:pl-2">
                 {% for block in blocks %}
-                <article>
+                <article data-slide>
                     {% comment %}
                     Три текстовых блока повторяются почти в каждом уроке и рисуются
                     по-особому: вводка (первый блок), «Коротко» и «Что нас ждёт в
@@ -255,13 +262,12 @@
             пополняется, и практикум из него собирается каждый раз заново.
             {% endcomment %}
             {% if article.track == 'ege' and article.ege_task %}
-            <section class="mt-16 pt-8 border-t border-gray-200 dark:border-slate-800 md:pl-2">
+            <section class="mt-16 pt-8 border-t border-gray-200 dark:border-slate-800 md:pl-2 present-hide">
                 <div class="rounded-2xl bg-brand-50 dark:bg-slate-800 border border-brand-100 dark:border-slate-700 p-6">
                     <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">Теперь порешаем</h2>
                     <p class="text-gray-600 dark:text-slate-400 mb-5">
                         Разбор без практики забывается за неделю. Возьмите несколько задач
-                        на задание {{ article.ege_task.number }} прямо сейчас – сессия
-                        рассчитана примерно на 45 минут.
+                        на задание {{ article.ege_task.number }} прямо сейчас.
                     </p>
                     {% if user.is_authenticated %}
                     <form method="post" action="{% url 'ege:ege_practice_start' %}" class="flex flex-wrap items-center gap-3">
@@ -273,10 +279,6 @@
                                 class="px-5 py-2.5 bg-brand-600 text-white font-medium rounded-lg hover:bg-brand-700 transition-colors">
                             Решать задачи
                         </button>
-                        <a href="{% url 'ege:ege_task' article.ege_task.number %}"
-                           class="px-5 py-2.5 bg-white dark:bg-slate-700 text-gray-700 dark:text-slate-200 font-medium rounded-lg border border-gray-200 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-600 transition-colors">
-                            Настроить сложность
-                        </a>
                     </form>
                     {% else %}
                     <a href="{% url 'login' %}?next={{ request.path }}"
@@ -290,7 +292,7 @@
 
             <!-- Самопроверка -->
             {% if self_checks %}
-            <section id="self-check" class="mt-16 pt-8 border-t border-gray-200 dark:border-slate-800 md:pl-2">
+            <section id="self-check" class="mt-16 pt-8 border-t border-gray-200 dark:border-slate-800 md:pl-2 present-hide">
                 <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">Проверь себя</h2>
                 <p class="text-sm text-gray-500 dark:text-slate-400 mb-6">Короткие вопросы по теме урока. Попыток сколько угодно, на прохождение блока они не влияют – это проверка для себя.</p>
                 <div class="grid gap-3">
@@ -326,7 +328,7 @@
 
             <!-- Предыдущая / следующая статья -->
             {% if prev_article or next_article %}
-            <div class="flex items-center justify-between gap-3 mt-12 pt-6 border-t border-gray-200 dark:border-slate-800 md:pl-2">
+            <div class="flex items-center justify-between gap-3 mt-12 pt-6 border-t border-gray-200 dark:border-slate-800 md:pl-2 present-hide">
                 {% if prev_article %}
                 <a href="{{ prev_article.get_absolute_url }}"
                    class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-200 hover:bg-gray-200 dark:hover:bg-slate-700 transition-colors">

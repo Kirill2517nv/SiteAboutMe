@@ -88,18 +88,21 @@
 
 /* Ссылок в текстах уроков раньше не было, поэтому и стиля не было: Tailwind
    Preflight оставляет <a> цветом обычного текста, и ссылка не читалась как
-   ссылка. Внешние ссылки открываются в новой вкладке (target проставляется
-   в markdownify), подчёркивание — со смещением, чтобы не резать кириллицу. */
-.article-body a {
+   ссылка. Ссылки открываются в новой вкладке (target проставляется
+   в markdownify), подчёркивание — со смещением, чтобы не резать кириллицу.
+   Первый текстовый блок статьи рендерится как .article-lead__text, а не
+   .article-body, поэтому селектор перечисляет оба — иначе ссылка в лид-абзаце
+   остаётся чёрной, как это и случилось в разборе задания 2. */
+:is(.article-body, .article-lead__text) a {
   color: var(--color-brand-600);
   text-decoration: underline;
   text-underline-offset: 2px;
   text-decoration-thickness: 1px;
   transition: color .15s;
 }
-.article-body a:hover { color: var(--color-brand-700); }
-html.dark .article-body a { color: #60a5fa; }
-html.dark .article-body a:hover { color: var(--color-dark-accent); }
+:is(.article-body, .article-lead__text) a:hover { color: var(--color-brand-700); }
+html.dark :is(.article-body, .article-lead__text) a { color: #60a5fa; }
+html.dark :is(.article-body, .article-lead__text) a:hover { color: var(--color-dark-accent); }
 
 /* markdownify рендерит "> **Термин** — определение" как <blockquote>. Показываем как
    карточку-определение с лейблом, а не как обычную цитату. */
@@ -418,3 +421,33 @@ html.dark :is(.article-body, .article-summary-card__body, .article-lead__text, .
 html.dark .code-block__head { background: #1e293b; }
 html.dark .code-block__lang, html.dark .code-block__copy { color: #94a3b8; }
 html.dark .code-block__copy:hover { color: #fff; background: #334155; }
+
+/* ============================================================
+   РЕЖИМ ПРОЕКТОРА — .present-root:fullscreen
+   Масштаб задаётся корневым font-size (см. present-mode.js), поэтому расти
+   умеет только то, что измерено в rem. Шкала статьи объявлена в px – и на
+   проекторе текст остался бы кегля 18.5px при любом масштабе. Переводим ровно
+   те шесть переменных, ради которых шкала и была вынесена наверх файла: сами
+   значения те же, просто поделены на 16px базового кегля. Больше в файле
+   менять нечего – весь текст, заголовки, списки, таблицы и подписи ходят
+   через них.
+   ============================================================ */
+.present-root:fullscreen .article-column {
+  /* py-8 сверху – это строка заголовка, отданная пустоте: панель управления
+     на проекторе уехала в левое поле и место над h1 больше ничем не занято. */
+  padding-top: 0;
+  --fs-h1: 2.125rem;
+  --fs-h2: 1.5625rem;
+  --fs-p: 1.156rem;
+  --fs-li: 1.156rem;
+  --fs-cap: 0.906rem;
+  --fs-table: 1rem;
+}
+/* Листинги мимо шкалы: у кода свой кегль, а на уроке информатики читать с
+   задней парты нужно именно его. */
+.present-root:fullscreen .code-block pre code { font-size: 0.875rem; }
+.present-root:fullscreen .code-block__head { font-size: 0.75rem; }
+/* ponytail: подписи внутри виджетов (.textbook-widget__*) остаются в px –
+   там же лежит SVG-графика со своими координатами, и её масштабирование
+   через zoom сломало бы замеры getBoundingClientRect. Если у доски окажется
+   мелко – переводить в rem вместе с координатами конкретного виджета. */

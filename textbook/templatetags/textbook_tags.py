@@ -39,12 +39,13 @@ _GLUED_LIST = re.compile(
 )
 _FENCE = re.compile(r'(?ms)^```.*?^```[ \t]*$')
 
-# Внешняя ссылка на выходе bleach: атрибуты сериализуются в алфавитном
-# порядке, поэтому href идёт первым. Уводить ученика со страницы урока не
-# нужно — такие ссылки открываем в новой вкладке; rel закрывает доступ к
-# window.opener. Относительные ссылки (внутри сайта) под шаблон не подходят
-# и остаются как есть.
-_EXTERNAL_LINK = re.compile(r'<a href="(?=https?:)')
+# Ссылка на выходе bleach: атрибуты сериализуются в алфавитном порядке,
+# поэтому href идёт первым; rel закрывает новой вкладке доступ к window.opener.
+# Все ссылки из текста урока уходят в новую вкладку, не только внешние:
+# ссылка внутри урока — это справка «если подзабыли», и уводить с неё читателя
+# со страницы, которую он читает, незачем. Раньше здесь стоял lookahead
+# `(?=https?:)`, и ссылка на соседний урок открывалась поверх текущего.
+_LINK = re.compile(r'<a href="')
 _TARGET_BLANK = '<a target="_blank" rel="noopener noreferrer" href="'
 
 
@@ -81,7 +82,7 @@ def markdownify(value):
         protocols=_ALLOWED_PROTOCOLS,
         strip=True,
     )
-    return mark_safe(_EXTERNAL_LINK.sub(_TARGET_BLANK, clean))
+    return mark_safe(_LINK.sub(_TARGET_BLANK, clean))
 
 
 @register.filter(name='markdownify_inline')

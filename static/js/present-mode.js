@@ -46,8 +46,16 @@ function presentMode() {
             else this._root().requestFullscreen().catch(() => {});
         },
 
+        // Нижняя граница 60%: на большом телевизоре вместо проектора крупный
+        // кегль наоборот мешает – в кадр перестаёт влезать длинное условие.
+        // Округление до процента, а не до десятых: шаг кнопок остался 20%, но
+        // в поле можно вбить любое число, и 65% не должны превращаться в 70%.
         setZoom(z) {
-            this.zoom = Math.min(3, Math.max(1, Math.round(z * 10) / 10));
+            z = parseFloat(z);
+            // Очищенное поле даёт 0 (пустая строка делится на 100), а не NaN:
+            // отсекаем оба, и в поле вернётся прежний масштаб.
+            if (!z || !isFinite(z)) return;
+            this.zoom = Math.min(3, Math.max(0.6, Math.round(z * 100) / 100));
             localStorage.setItem('egePresentZoom', this.zoom);
             this._applyZoom();
         },

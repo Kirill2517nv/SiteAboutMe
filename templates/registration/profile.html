@@ -224,9 +224,9 @@
                         решено {{ item.practicum_done }} из {{ item.practicum_total }}{% if item.next_step %},
                         до «{{ item.next_step.grade }}» – {{ item.next_step.left }} задач{{ item.next_step.left|plural:"а,и," }}{% endif %}
                     </span>
-                    {% if item.section.deadline %}
+                    {% if item.deadline %}
                     <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 text-xs font-medium">
-                        до {{ item.section.deadline|date:"d.m" }}
+                        до {{ item.deadline|date:"d.m" }}
                     </span>
                     {% endif %}
                 </li>
@@ -273,7 +273,7 @@
                                 {% if item.self_check_total %}{{ item.self_check_done }}/{{ item.self_check_total }}{% else %}–{% endif %}
                             </td>
                             <td class="px-3 py-3 text-center text-xs {% if item.is_closed %}text-red-500{% else %}text-gray-500 dark:text-slate-400{% endif %}">
-                                {% if item.section.deadline %}{{ item.section.deadline|date:"d.m.Y" }}{% else %}–{% endif %}
+                                {% if item.deadline %}{{ item.deadline|date:"d.m.Y" }}{% else %}–{% endif %}
                             </td>
                             <td class="px-3 py-3 text-center">
                                 {% include 'textbook/_grade_badge.html' with grade=item.grade %}

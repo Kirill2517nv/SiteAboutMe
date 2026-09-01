@@ -92,10 +92,53 @@ def section_for_quiz(quiz):
     return link.article.section if link and link.article.section_id else None
 
 
-def quiz_is_locked(quiz):
-    """Прошёл ли дедлайн блока, к которому относится тест."""
+def personal_deadlines(user):
+    """{section_id: личный дедлайн} – все продления одного ученика, одним запросом.
+
+    Берётся один раз на страницу: и главная, и учебник, и профиль перебирают
+    все блоки сразу, а спрашивать продление в цикле – это +14 запросов на
+    страницу ради строк, которых у большинства учеников нет вовсе.
+    """
+    from .models import SectionExtension
+
+    if not getattr(user, 'is_authenticated', False):
+        return {}
+    return dict(
+        SectionExtension.objects.filter(user=user).values_list('section_id', 'deadline')
+    )
+
+
+def section_deadline(section, personal=None):
+    """Дедлайн блока глазами конкретного ученика: общий или его продление.
+
+    `personal` – дата из `personal_deadlines()`. Продление только отодвигает:
+    у блока без общего дедлайна продлевать нечего (иначе личная дата завела бы
+    срок там, где его не было), а дата раньше общей игнорируется.
+    """
+    if not section.deadline:
+        return None
+    return max(section.deadline, personal) if personal else section.deadline
+
+
+def section_is_closed(section, personal=None):
+    """Закрыт ли блок для этого ученика: приём решений по его дедлайну."""
+    deadline = section_deadline(section, personal)
+    return bool(deadline and timezone.now() > deadline)
+
+
+def quiz_is_locked(quiz, user=None):
+    """Прошёл ли дедлайн блока, к которому относится тест, для этого ученика.
+
+    Без `user` отвечает по общему дедлайну – так спрашивает код, у которого
+    ученика под рукой нет. Все три точки приёма решений передают его.
+    """
     section = section_for_quiz(quiz)
-    return bool(section and section.is_closed)
+    if not section:
+        return False
+    if user is None or not section.is_closed:
+        # Общий дедлайн ещё не прошёл – продлевать нечего, запрос не делаем.
+        return section.is_closed
+    return section_is_closed(section, personal_deadlines(user).get(section.id))
 
 
 def quiz_is_hidden(quiz):
@@ -466,6 +509,7 @@ def profile_textbook_stats(user):
     from .models import Article, ArticleProgress, Section
 
     stats, _ = section_quiz_stats(user)
+    extensions = personal_deadlines(user)
 
     lessons_total = dict(
         Article.objects
@@ -490,6 +534,7 @@ def profile_textbook_stats(user):
         done, total = lessons_done.get(section.id, 0), lessons_total.get(section.id, 0)
         started = bool(done or practicum_done)
         grade = section.grade_for(practicum_done)
+        is_closed = section_is_closed(section, extensions.get(section.id))
 
         # Ближайшая невзятая ступень: ученику важнее «до 4 осталось 2 задачи»,
         # чем сама шкала целиком.
@@ -500,7 +545,9 @@ def profile_textbook_stats(user):
             None,
         )
 
-        if grade is not None and (started or section.is_closed):
+        # Продлённый блок в средний балл не тащим: у ученика оценка ещё не
+        # финальная, он как раз досдаёт.
+        if grade is not None and (started or is_closed):
             grades.append(grade)
         totals['lessons_done'] += done
         totals['lessons_total'] += total
@@ -520,7 +567,9 @@ def profile_textbook_stats(user):
             'grade': grade,
             'next_step': next_step,
             'started': started,
-            'is_closed': section.is_closed,
+            'is_closed': is_closed,
+            # Дата, которую видит этот ученик: своя, если блок ему продлили.
+            'deadline': section_deadline(section, extensions.get(section.id)),
         })
 
     # Что подтянуть: начатые блоки с нерешёнными задачами практикума. Блоки с
@@ -532,8 +581,8 @@ def profile_textbook_stats(user):
         (s for s in sections
          if s['started'] and not s['is_closed'] and s['practicum_done'] < s['practicum_total']),
         key=lambda s: (
-            s['section'].deadline is None,
-            s['section'].deadline or no_deadline,
+            s['deadline'] is None,
+            s['deadline'] or no_deadline,
             -(s['practicum_total'] - s['practicum_done']),
         ),
     )[:3]
@@ -719,6 +768,7 @@ def course_map(user):
 
     stats = {}
     progress = {}
+    extensions = personal_deadlines(user)
     if user.is_authenticated:
         stats, _ = section_quiz_stats(user)
         # Одним запросом: статус плюс обе отметки времени. read_at ставится,
@@ -749,6 +799,7 @@ def course_map(user):
         prac_done, prac_total = bucket['practicum']
         self_done, self_total = bucket['self_check']
         lessons = section.published_articles
+        is_closed = section_is_closed(section, extensions.get(section.id))
         lessons_done = sum(
             1 for a in lessons
             if progress.get(a.id, (None,))[0] in ('read', 'mastered')
@@ -796,6 +847,8 @@ def course_map(user):
             'grade': grade,
             'grade_scale': section.grade_scale(prac_done),
             'is_done': is_done,
+            'is_closed': is_closed,
+            'deadline': section_deadline(section, extensions.get(section.id)),
             'is_current': False,
             'is_soon': not section.is_published,
             'cleared': cleared,
@@ -821,7 +874,7 @@ def course_map(user):
                 continue
             nxt = rows[i + 1] if i + 1 < len(rows) else None
             if nxt and not nxt['is_soon']:
-                if (row['cleared'] and nxt['started']) or row['section'].is_closed:
+                if (row['cleared'] and nxt['started']) or row['is_closed']:
                     continue
             row['is_current'] = True
             break

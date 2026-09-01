@@ -1,11 +1,15 @@
 """Тесты учебника. Запуск: python manage.py test textbook"""
+from datetime import timedelta
+
 from django.test import SimpleTestCase, TestCase, override_settings
+from django.utils import timezone
 
 from quizzes.models import Question, Quiz
 from textbook.models import Section
 from textbook.services import (
     course_map,
     frontier_positions,
+    quiz_is_locked,
     shuffle_choices,
     sync_question_texts,
 )
@@ -151,6 +155,174 @@ class FrontierPositionsTest(TestCase):
     def test_other_groups_are_invisible(self):
         self.assertEqual(frontier_positions([self.group.id + 99]), {})
         self.assertEqual(frontier_positions([]), {})
+
+
+class OpenSectionTest(TestCase):
+    """Главная учебника раскрывает блок, где стоит фишка ученика."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.contrib.auth.models import User
+
+        from accounts.models import Profile, StudentGroup
+        from textbook.models import Article, ArticleProgress
+
+        cls.group = StudentGroup.objects.create(name='11Б')
+        cls.student = User.objects.create_user('petya', password='pw')
+        Profile.objects.update_or_create(user=cls.student, defaults={'group': cls.group})
+
+        cls.sections = [
+            Section.objects.create(title=f'Блок {i}', slug=f'ob{i}', order=i, is_published=True)
+            for i in (1, 2)
+        ]
+        cls.articles = [
+            Article.objects.create(section=section, slug=f'oa{i}', title=f'Урок {i}',
+                                   order=1, is_published=True)
+            for i, section in enumerate(cls.sections, start=1)
+        ]
+        cls.progress_model = ArticleProgress
+
+    def open_orders(self, login=True):
+        if login:
+            self.client.force_login(self.student)
+        rows = self.client.get('/textbook/').context['material_sections']
+        return [row['section'].order for row in rows if row['is_open']]
+
+    def test_first_block_is_open_at_the_start(self):
+        self.assertEqual(self.open_orders(), [1])
+
+    def test_open_block_follows_the_pin(self):
+        self.progress_model.objects.create(user=self.student, article=self.articles[0],
+                                           status='read')
+        self.assertEqual(self.open_orders(), [2],
+                         'первый блок пройден – раскрыт второй, как и едет аватарка')
+
+    def test_deadline_does_not_move_the_open_block(self):
+        """Дедлайн фишку не двигает: непрочитанный блок остаётся раскрытым и после него.
+
+        Отличие от метки «вы здесь» на главной (`course_map`), которая по
+        прошедшему дедлайну уезжает вперёд, – здесь ученика возвращают туда,
+        где он реально встал.
+        """
+        self.sections[0].deadline = timezone.now() - timedelta(days=1)
+        self.sections[0].save(update_fields=['deadline'])
+        self.assertEqual(self.open_orders(), [1])
+
+    def test_finished_course_falls_back_to_the_first_block(self):
+        for article in self.articles:
+            self.progress_model.objects.create(user=self.student, article=article, status='read')
+        self.assertEqual(self.open_orders(), [1], 'фишки нет – раскрыт ровно один блок')
+
+    def test_guest_gets_the_first_block(self):
+        self.assertEqual(self.open_orders(login=False), [1])
+
+
+@override_settings(STORAGES={
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+})
+class SectionExtensionTest(TestCase):
+    """Личное продление дедлайна блока: болевший досдаёт, остальной класс закрыт."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.contrib.auth.models import User
+
+        from textbook.models import Article, ArticleQuiz
+
+        cls.ill = User.objects.create_user('ill', password='pw')
+        cls.other = User.objects.create_user('other', password='pw')
+
+        cls.past = timezone.now() - timedelta(days=3)
+        cls.section = Section.objects.create(
+            title='Блок с дедлайном', slug='se1', order=1, is_published=True,
+            deadline=cls.past,
+        )
+        cls.practicum = Quiz.objects.create(title='Практикум', is_public=True)
+        Question.objects.create(quiz=cls.practicum, text='2+2', correct_text_answer='4')
+        cls.section.practicum_quiz = cls.practicum
+        cls.section.save(update_fields=['practicum_quiz'])
+
+        cls.next_section = Section.objects.create(
+            title='Следующий блок', slug='se2', order=2, is_published=True,
+        )
+        Article.objects.create(section=cls.next_section, slug='sa2', title='Урок 2',
+                               order=1, is_published=True)
+
+        cls.article = Article.objects.create(section=cls.section, slug='sa1', title='Урок',
+                                             order=1, is_published=True)
+        cls.self_check = Quiz.objects.create(title='Самопроверка', is_self_check=True)
+        Question.objects.create(quiz=cls.self_check, text='3+3', correct_text_answer='6')
+        ArticleQuiz.objects.create(article=cls.article, quiz=cls.self_check)
+
+    def extend(self, days=7, user=None):
+        from textbook.models import SectionExtension
+
+        return SectionExtension.objects.create(
+            user=user or self.ill, section=self.section,
+            deadline=timezone.now() + timedelta(days=days), reason='болел',
+        )
+
+    def test_common_deadline_locks_everyone(self):
+        self.assertTrue(quiz_is_locked(self.practicum, self.ill))
+        self.assertTrue(quiz_is_locked(self.self_check, self.ill))
+
+    def test_extension_opens_practicum_and_self_check(self):
+        self.extend()
+        self.assertFalse(quiz_is_locked(self.practicum, self.ill))
+        self.assertFalse(quiz_is_locked(self.self_check, self.ill),
+                         'самопроверки урока закрываются тем же дедлайном')
+        self.assertTrue(quiz_is_locked(self.practicum, self.other),
+                        'продление одному не открывает блок всему классу')
+
+    def test_extension_only_extends(self):
+        """Личная дата раньше общей ничего не закрывает и не открывает."""
+        from textbook.models import SectionExtension
+
+        SectionExtension.objects.create(user=self.ill, section=self.section,
+                                        deadline=self.past - timedelta(days=5))
+        self.assertTrue(quiz_is_locked(self.practicum, self.ill))
+
+        self.section.deadline = timezone.now() + timedelta(days=1)
+        self.section.save(update_fields=['deadline'])
+        self.assertFalse(quiz_is_locked(self.practicum, self.ill),
+                         'общий дедлайн ещё не прошёл – продление не может закрыть блок')
+
+    def test_extension_without_common_deadline_changes_nothing(self):
+        self.section.deadline = None
+        self.section.save(update_fields=['deadline'])
+        self.extend(days=-5)
+        self.assertFalse(quiz_is_locked(self.practicum, self.ill),
+                         'у блока без дедлайна закрывать нечего')
+
+    def test_page_is_read_only_after_deadline_and_editable_after_extension(self):
+        url = f'/quizzes/{self.self_check.id}/'
+        self.client.force_login(self.ill)
+        self.assertTrue(self.client.get(url).context['read_only'])
+        self.extend()
+        self.assertFalse(self.client.get(url).context.get('read_only'))
+
+    def test_student_sees_his_own_date(self):
+        from textbook.services import profile_textbook_stats
+
+        self.extend()
+        row = next(s for s in profile_textbook_stats(self.ill)['sections']
+                   if s['section'].id == self.section.id)
+        self.assertFalse(row['is_closed'])
+        self.assertGreater(row['deadline'], self.past)
+
+        other = next(s for s in profile_textbook_stats(self.other)['sections']
+                     if s['section'].id == self.section.id)
+        self.assertTrue(other['is_closed'])
+        self.assertEqual(other['deadline'], self.past)
+
+    def test_pin_stays_on_an_extended_block(self):
+        """Метка «вы здесь» уезжает по дедлайну – но не у того, кому продлили."""
+        self.assertFalse(any(r['is_current'] and r['section'].id == self.section.id
+                             for r in course_map(self.other)))
+        self.extend()
+        self.assertTrue(any(r['is_current'] and r['section'].id == self.section.id
+                            for r in course_map(self.ill)))
 
 
 class ShuffleChoicesTest(SimpleTestCase):
@@ -487,3 +659,267 @@ class CourseMapPinTest(TestCase):
         from django.contrib.auth.models import AnonymousUser
 
         self.assertFalse(any(row['is_current'] for row in course_map(AnonymousUser())))
+
+
+# Тот же обход манифеста, что и выше: страница подключает статику.
+@override_settings(STORAGES={
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+})
+class ArticlePresentModeTests(TestCase):
+    """Режим проектора на странице урока.
+
+    Слайд – это блок статьи, отдельного хранилища у презентации нет. Тест
+    сторожит именно связь: если разметку блоков поправят и data-slide отвалится,
+    страница на проекторе перестанет листаться молча – в браузере это видно
+    только у доски.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from textbook.models import Article, ArticleBlock
+
+        section = Section.objects.create(title='Блок 1', slug='pm1', order=1,
+                                         is_published=True)
+        cls.article = Article.objects.create(
+            section=section, slug='pm-a1', title='Урок 1', order=1, is_published=True)
+        for i, title in enumerate(['С чего всё пошло', '', 'Итоги']):
+            ArticleBlock.objects.create(article=cls.article, block_type='text',
+                                        title=title, content='Текст.', order=i)
+
+    def setUp(self):
+        self.html = self.client.get(self.article.get_absolute_url()).content.decode()
+
+    def test_page_hosts_present_component(self):
+        self.assertIn('present-root', self.html)
+        self.assertIn('articlePresent()', self.html)
+        self.assertIn('js/present-mode.js', self.html)
+        self.assertIn('js/article-present.js', self.html)
+
+    def test_every_block_is_a_slide(self):
+        self.assertEqual(self.html.count('<article data-slide'), self.article.blocks.count())
+
+    def test_service_chrome_is_hidden_on_the_projector(self):
+        """Сайдбар и хвост страницы помечены present-hide."""
+        self.assertIn('article-sidebar-col hidden md:block present-hide', self.html)
+        self.assertGreaterEqual(self.html.count('present-hide'), 5)
+
+
+class ProjectorFontScaleTest(SimpleTestCase):
+    """Шкала кегля статьи должна целиком иметь rem-двойник для проектора.
+
+    Масштаб на проекторе – это корневой font-size, и растёт только то, что
+    измерено в rem. Шкала статьи объявлена в px, а её rem-копия живёт в блоке
+    .present-root:fullscreen. Добавят седьмую переменную в шкалу и забудут про
+    копию – на уроке этот кусок текста останется мелким, и заметит это только
+    класс с задней парты.
+    """
+
+    def variables(self, selector):
+        import re
+        from pathlib import Path
+
+        css = Path('static/css/textbook-article.css').read_text(encoding='utf-8')
+        # Шкала объявлена одним блоком на селектор; берём последний из них –
+        # первое вхождение .article-column задаёт ширину, а не кегль.
+        blocks = re.findall(re.escape(selector) + r'\s*\{([^}]*)\}', css)
+        return {name for block in blocks for name in re.findall(r'(--fs-[\w-]+)\s*:', block)}
+
+    def test_every_font_variable_has_a_rem_twin(self):
+        base = self.variables('.article-column')
+        projector = self.variables('.present-root:fullscreen .article-column')
+        self.assertTrue(base, 'шкала кегля не найдена – селектор в CSS переименовали?')
+        self.assertEqual(base, projector)
+
+    def test_projector_scale_is_in_rem(self):
+        import re
+        from pathlib import Path
+
+        css = Path('static/css/textbook-article.css').read_text(encoding='utf-8')
+        block = re.search(r'\.present-root:fullscreen \.article-column\s*\{([^}]*)\}', css).group(1)
+        self.assertNotIn('px', block)
+        self.assertEqual(len(re.findall(r'rem', block)), len(re.findall(r'--fs-', block)))
+
+
+class TemplateCommentsTest(SimpleTestCase):
+    """Многострочный {# … #} утекает в отрендеренную страницу.
+
+    Django-тег {# … #} закрывается только в пределах своей строки: всё, что
+    ниже первого перевода строки, шаблонизатор считает обычной разметкой и
+    отдаёт браузеру. Ошибка тихая – в исходнике текст выглядит комментарием, а
+    на странице читается как абзац. Многострочный комментарий пишется
+    {% comment %} … {% endcomment %}.
+    """
+
+    def test_no_multiline_hash_comments_in_templates(self):
+        import re
+        from pathlib import Path
+
+        # Открытие, перевод строки и закрытие – без вложенного «#}» между ними.
+        pattern = re.compile(r'\{#(?:(?!#\}).)*?\n(?:(?!#\}).)*?#\}', re.S)
+        leaks = []
+        for path in Path('templates').rglob('*.html'):
+            text = path.read_text(encoding='utf-8')
+            for match in pattern.finditer(text):
+                line = text[:match.start()].count('\n') + 1
+                leaks.append(f'{path}:{line}')
+        self.assertEqual(leaks, [], 'многострочные {# #} утекут в HTML: ' + ', '.join(leaks))
+
+
+class TruthTableParserTests(SimpleTestCase):
+    """Разбор выражения в виджете truth-table – сверка с настоящим Python.
+
+    Виджет умеет строить таблицу по введённому выражению, то есть содержит
+    собственный интерпретатор. Он обещает питоновский синтаксис (not/and/or,
+    ==, !=, импликация через <=) и питоновский приоритет операций – значит,
+    обязан считать ровно то же, что посчитает интерпретатор, иначе учит
+    неправде. Поэтому эталоны не выдуманы: выражения ниже прогоняются через
+    eval() и передаются проверке как ожидаемые таблицы.
+
+    Проверка написана на JS (textbook/tests_truth_table_parser.js) и
+    запускается через node: иначе она жила бы вне единственного раннера
+    проекта и не бежала бы никогда. Без node тест пропускается – на проде
+    node нет, а тесты там гоняют.
+
+    Первое выражение – функция задания 2; её таблица сверяется ещё и с
+    seed_ege_theory_2._rows(), то есть с тем, что записано в статью. Так
+    связаны все три счётчика: seed-команда, браузер и Python.
+    """
+
+    # Список подобран по граням приоритета: сравнения выше not, not выше and,
+    # and выше or, цепочка сравнений разворачивается в and соседних пар.
+    # Функция задания 2 берётся из seed-команды, а не переписывается сюда:
+    # две копии одного выражения разошлись бы при первой же правке.
+    EXPRESSIONS = [
+        'x <= y',
+        'y <= x',
+        'x == y',
+        'x != y',
+        'not x or y',
+        'x or y and z',
+        'not x == y',
+        'x <= y <= z',
+        '(x or y) <= z',
+        'x <= (y or z)',
+        'not (x and y) or z',
+        'x >= y',
+        'x < y',
+        'x and not y or z',
+        'x == y == z',
+        '(x or y) and (not (y and z))',
+    ]
+
+    @staticmethod
+    def _table(src):
+        """Таблица истинности выражения, посчитанная самим Python."""
+        import re
+        from itertools import product
+
+        names = sorted(set(re.findall(r'\b[a-z]\b', src)))
+        rows = []
+        for values in product((False, True), repeat=len(names)):
+            env = dict(zip(names, values))
+            rows.append([int(v) for v in values] + [int(bool(eval(src, {'__builtins__': {}}, env)))])
+        return rows
+
+    def test_parser_matches_python(self):
+        import json
+        import shutil
+        import subprocess
+        import tempfile
+        from pathlib import Path
+
+        node = shutil.which('node')
+        if not node:
+            self.skipTest('node не установлен')
+
+        from textbook.management.commands.seed_ege_theory_2 import PY_EXPR, _rows
+
+        cases = [{'src': src, 'rows': self._table(src)}
+                 for src in [PY_EXPR] + self.EXPRESSIONS]
+        self.assertEqual(
+            cases[0]['rows'], _rows(),
+            'питоновская запись в виджете разошлась с функцией из seed-команды',
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            expected = Path(tmp) / 'cases.json'
+            expected.write_text(json.dumps(cases), encoding='utf-8')
+            result = subprocess.run(
+                [node, 'textbook/tests_truth_table_parser.js', str(expected)],
+                capture_output=True, text=True, encoding='utf-8', errors='replace',
+            )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+
+class LinkRenderTests(SimpleTestCase):
+    """Ссылка из текста урока: новая вкладка и защитный rel.
+
+    Раньше target проставлялся только внешним ссылкам, а ссылка на соседний
+    урок открывалась поверх страницы, которую ученик читает. Такая ссылка –
+    справка «если подзабыли», уводить с неё не нужно.
+    """
+
+    def test_internal_link_opens_in_new_tab(self):
+        html = markdownify('см. [урок](/textbook/article/3-2-bazovye-operatsii-ne-i-ili/)')
+        self.assertIn('target="_blank"', html)
+        self.assertIn('rel="noopener noreferrer"', html)
+        self.assertIn('href="/textbook/article/3-2-bazovye-operatsii-ne-i-ili/"', html)
+
+    def test_external_link_still_opens_in_new_tab(self):
+        html = markdownify('см. [ФИПИ](https://fipi.ru/)')
+        self.assertIn('target="_blank"', html)
+        self.assertIn('href="https://fipi.ru/"', html)
+
+
+class WidgetMountTests(SimpleTestCase):
+    """Виджеты статьи должны смонтироваться на своих же конфигах.
+
+    `node --check` ловит только синтаксис: виджет с обращением к снесённой
+    константе разбирается нормально, а падает при первом рендере. Браузер это
+    прячет – TextbookWidgets.init() ловит исключение фабрики, и на странице
+    остаётся пустая рамка с заголовком. Поэтому монтируем виджеты в node на
+    заглушечном DOM (textbook/tests_widget_mount.js) и берём конфиги оттуда же,
+    откуда их берёт база, – из seed-команды.
+
+    Без node тест пропускается: на проде его нет, а тесты там гоняют.
+    """
+
+    def test_article_widgets_mount(self):
+        import json
+        import shutil
+        import subprocess
+        import tempfile
+        from pathlib import Path
+
+        node = shutil.which('node')
+        if not node:
+            self.skipTest('node не установлен')
+
+        from textbook.management.commands import seed_ege_theory_2 as ege2
+
+        configs = {
+            'truth-steps': {
+                'vars': list(ege2.VARS),
+                'sets': [[s[v] for v in ege2.VARS] for s in ege2._zero_sets()],
+                'fragF': 0,
+                'steps': ege2._steps(),
+            },
+            'truth-table': {
+                'vars': list(ege2.VARS),
+                'code': ege2.PY_EXPR,
+                'expr': ege2.FORMULA,
+                'rows': ege2._rows(),
+                'fragment': [list(r) for r in ege2.FRAGMENT],
+                'filter': '0',
+            },
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'configs.json'
+            path.write_text(json.dumps(configs), encoding='utf-8')
+            result = subprocess.run(
+                [node, 'textbook/tests_widget_mount.js', str(path)],
+                capture_output=True, text=True, encoding='utf-8', errors='replace',
+            )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
