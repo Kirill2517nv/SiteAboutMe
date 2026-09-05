@@ -86,12 +86,10 @@
         {% endif %}
 
         <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1 {% if group.is_first %}justify-center mb-2{% else %}mb-5{% endif %}">
-            <h2 class="text-2xl font-bold text-gray-900 dark:text-white">Группа {{ group.name }}</h2>
-            {# У первого выпуска год уже стоит крупно над заголовком – плашка была бы третьим повтором #}
+            {# Номер класса вместе с именем – персональные данные, наружу идёт только год #}
+            {# У первого выпуска год уже стоит крупно над заголовком, второй раз не повторяем #}
             {% if not group.is_first %}
-            <span class="px-2.5 py-0.5 rounded-lg text-sm font-medium bg-brand-100 dark:bg-brand-900/40 text-brand-700 dark:text-brand-300">
-                Выпуск {{ group.graduation_year }}
-            </span>
+            <h2 class="text-2xl font-bold text-gray-900 dark:text-white">Выпуск {{ group.graduation_year }}</h2>
             {% endif %}
             <span class="text-sm text-gray-400 dark:text-slate-500">
                 {{ group.students.all|length }} чел.
@@ -107,10 +105,10 @@
 
         {% if group.graduation_photo %}
         <figure class="mb-6">
-            <img src="{{ group.graduation_photo.url }}" alt="Группа {{ group.name }}, выпуск {{ group.graduation_year }}"
+            <img src="{{ group.graduation_photo.url }}" alt="Выпуск {{ group.graduation_year }}"
                  class="w-full rounded-2xl object-cover shadow-sm{% if group.is_first %} ring-2 ring-amber-300 dark:ring-amber-500/40{% endif %}">
             <figcaption class="serif italic text-center mt-3 text-base {% if group.is_first %}text-amber-800/70 dark:text-amber-300/60{% else %}text-gray-500 dark:text-slate-400{% endif %}">
-                Группа {{ group.name }} · выпуск {{ group.graduation_year }}
+                Выпуск {{ group.graduation_year }}
             </figcaption>
         </figure>
         {% endif %}
@@ -138,16 +136,17 @@
                 <div class="relative flex items-start gap-4">
                     {# Портрет 3:4 – object-cover обрезает по центру, пропорции лица не плывут #}
                     {% if p.avatar %}
-                    <img src="{{ p.avatar.url }}" alt="{{ p.user|surname_first }}"
+                    <img src="{{ p.avatar.url }}" alt="{{ p.user.first_name }}"
                          class="w-28 h-36 rounded-xl object-cover shrink-0{% if group.is_first %} ring-1 ring-amber-300/70{% endif %}">
                     {% else %}
                     <div class="w-28 h-36 rounded-xl bg-gray-100 dark:bg-slate-700 text-gray-400 dark:text-slate-400 text-2xl font-semibold flex items-center justify-center shrink-0">
-                        {{ p.user.last_name|default:p.user.username|make_list|first|upper }}{{ p.user.first_name|make_list|first|upper|default:"" }}
+                        {{ p.user.first_name|make_list|first|upper }}
                     </div>
                     {% endif %}
                     <div class="min-w-0 flex-1">
                         <div class="serif text-xl font-semibold text-gray-900 dark:text-white leading-snug">
-                            {{ p.user|surname_first }}
+                            {# Только имя: фамилия наружу не отдаётся, username им часто и является #}
+                            {{ p.user.first_name }}
                         </div>
                         {% if p.alumni_place %}
                         <div class="text-sm text-brand-600 dark:text-brand-400">{{ p.alumni_place }}</div>

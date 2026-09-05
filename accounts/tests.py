@@ -218,8 +218,11 @@ class AlumniTests(TestCase):
         self.assertEqual(response.status_code, 200)
         page = response.content.decode()
 
-        self.assertIn('Петров Иван', page)  # фамилия впереди имени
+        self.assertIn('Иван', page)
         self.assertIn('Учусь на ФИТ.', page)
+        # Персональные данные: наружу идут имя и год, но не фамилия и не номер класса.
+        self.assertNotIn('Петров', page, 'фамилия выпускника на публичной странице')
+        self.assertNotIn('11А', page, 'номер класса на публичной странице')
         self.assertNotIn('Сидоров', page, 'действующий класс попал в архив')
 
     def test_first_cohort_marked(self):

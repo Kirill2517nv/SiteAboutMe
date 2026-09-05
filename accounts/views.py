@@ -129,7 +129,7 @@ class AlumniView(generic.ListView):
             .exclude(graduation_year=None)
             .prefetch_related(Prefetch('students', queryset=(
                 Profile.objects.select_related('user')
-                .order_by('user__last_name', 'user__first_name', 'user__username')
+                .order_by('user__first_name', 'user__last_name')
             )))
             .order_by('-graduation_year', 'name')
         )
