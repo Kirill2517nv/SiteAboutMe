@@ -21,7 +21,7 @@
     {% if students %}{% include 'quizzes/_ege_teacher_bar.html' %}{% endif %}
 
     <div class="text-center mb-8" data-aos="fade-down">
-        <h1 class="text-4xl font-bold text-gray-900 dark:text-white mb-3">Тренажёр ЕГЭ</h1>
+        <h1 class="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white mb-3">Тренажёр ЕГЭ</h1>
         {% if student %}
         {% comment %}
         Открыт чужой прогресс. Подпись стоит на месте обычной, а не рядом с ней:
@@ -99,10 +99,10 @@
             </div>
             <div class="flex gap-1.5 mt-1">
                 {% for week in overview.dynamics %}
-                <div class="flex-1 text-center text-[9px] text-gray-400">{{ week.label }}</div>
+                <div class="flex-1 text-center text-xs text-gray-400">{{ week.label }}</div>
                 {% endfor %}
             </div>
-            <div class="flex items-center justify-center gap-3 text-[11px] text-gray-500 dark:text-slate-400 mt-1.5">
+            <div class="flex items-center justify-center gap-3 text-xs text-gray-500 dark:text-slate-400 mt-1.5">
                 <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-sm bg-brand-500"></span>тренировки</span>
                 <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-sm bg-violet-500"></span>экзамены</span>
                 <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-sm bg-amber-400"></span>варианты</span>

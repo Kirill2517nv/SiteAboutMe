@@ -55,7 +55,7 @@
     {# Текст #}
     <div class="flex-1 text-center md:text-left" data-aos="fade-right">
       <p class="text-blue-200 text-sm font-semibold uppercase tracking-widest mb-3">Об авторе</p>
-      <h1 class="text-3xl sm:text-4xl lg:text-5xl font-bold leading-tight mb-4">
+      <h1 class="text-3xl sm:text-4xl font-bold leading-tight mb-4">
         {{ profile.full_name|default:"Новоселов Кирилл Васильевич" }}
       </h1>
       <p class="text-blue-100 text-lg leading-relaxed mb-8 max-w-lg">
@@ -126,7 +126,7 @@
           </span>
           О себе
         </h2>
-        <div class="bio-text text-gray-700 dark:text-slate-300 leading-relaxed text-base sm:text-[1.0625rem]">
+        <div class="bio-text text-gray-700 dark:text-slate-300 leading-relaxed text-base">
           {{ profile.bio|bio_paragraphs }}
         </div>
       </div>
@@ -146,7 +146,7 @@
           </span>
           Научные интересы
         </h2>
-        <div class="bio-text text-gray-700 dark:text-slate-300 leading-relaxed text-base sm:text-[1.0625rem]">
+        <div class="bio-text text-gray-700 dark:text-slate-300 leading-relaxed text-base">
           {{ profile.research_interests|bio_paragraphs }}
         </div>
       </div>

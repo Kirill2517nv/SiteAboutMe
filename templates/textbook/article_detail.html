@@ -23,7 +23,7 @@
                     Все статьи
                 </a>
                 {% if group_title %}
-                <div class="text-[11px] font-semibold text-gray-400 dark:text-slate-500 uppercase tracking-wide mb-2">{{ group_title }}</div>
+                <div class="text-xs font-semibold text-gray-400 dark:text-slate-500 uppercase tracking-wide mb-2">{{ group_title }}</div>
                 {% endif %}
                 <div class="flex flex-col gap-px">
                     {% for item in sidebar_items %}
@@ -68,7 +68,7 @@
                             </span>
                             {% if practicum.grade_scale %}
                             {# Сколько задач нужно решить на каждую оценку – тот же расчёт, что на главной. #}
-                            <span class="flex flex-wrap gap-1 mt-2 text-[11px]">
+                            <span class="flex flex-wrap gap-1 mt-2 text-xs">
                                 {% for step in practicum.grade_scale %}
                                 <span class="px-1.5 py-0.5 rounded whitespace-nowrap
                                              {% if step.reached %}bg-green-100 text-green-700{% else %}bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-slate-400{% endif %}">

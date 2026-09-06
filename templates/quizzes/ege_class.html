@@ -52,8 +52,8 @@ setAttribute('style', …) и стёрла бы display:none, который с�
     {% include 'quizzes/_ege_teacher_bar.html' %}
 
     <div class="mb-6">
-        <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Класс: подготовка к ЕГЭ</h1>
-        <p class="text-gray-500 dark:text-slate-400 mt-1">
+        <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">Класс: подготовка к ЕГЭ</h1>
+        <p class="text-base text-gray-500 dark:text-slate-400 mt-1">
             Фамилия – ссылка на полный прогресс ученика, число ошибок – на их разбор
         </p>
     </div>
@@ -105,23 +105,23 @@ setAttribute('style', …) и стёрла бы display:none, который с�
                         <th class="px-4 py-3 font-medium text-gray-500 dark:text-slate-400">Ученик</th>
                         <th class="px-3 py-3 font-medium text-gray-500 dark:text-slate-400 text-center">
                             Прогноз
-                            <div class="text-[11px] font-normal text-gray-400">из заданий · /100</div>
+                            <div class="text-xs font-normal text-gray-400">из заданий · /100</div>
                         </th>
                         <th class="px-3 py-3 font-medium text-gray-500 dark:text-slate-400 text-center">
                             Вариант
-                            <div class="text-[11px] font-normal text-gray-400">последний · /100</div>
+                            <div class="text-xs font-normal text-gray-400">последний · /100</div>
                         </th>
                         <th class="px-3 py-3 font-medium text-gray-500 dark:text-slate-400 text-center">
                             Ошибки
-                            <div class="text-[11px] font-normal text-gray-400">ждут разбора</div>
+                            <div class="text-xs font-normal text-gray-400">ждут разбора</div>
                         </th>
                         <th class="px-3 py-3 font-medium text-gray-500 dark:text-slate-400">
                             Что подтянуть
-                            <div class="text-[11px] font-normal text-gray-400">номер и точность</div>
+                            <div class="text-xs font-normal text-gray-400">номер и точность</div>
                         </th>
                         <th class="px-3 py-3 font-medium text-gray-500 dark:text-slate-400 w-64">
                             Динамика
-                            <div class="text-[11px] font-normal text-gray-400">4 недели, с понедельника</div>
+                            <div class="text-xs font-normal text-gray-400">4 недели, с понедельника</div>
                         </th>
                     </tr>
                 </thead>
@@ -150,7 +150,7 @@ setAttribute('style', …) и стёрла бы display:none, который с�
                             {% if row.score.has_data %}
                             <div class="text-2xl font-bold leading-none tabular-nums {% include 'quizzes/_ege_scale_color.html' with color=row.score.color %}">{{ row.score.test }}</div>
                             {# На скольких заданиях держится прогноз: два номера и двадцать – обещания разной надёжности #}
-                            <div class="text-[11px] text-gray-400 mt-1">{{ row.score.covered }} из {{ row.score.covered_total }} зад.</div>
+                            <div class="text-xs text-gray-400 mt-1">{{ row.score.covered }} из {{ row.score.covered_total }} зад.</div>
                             {% else %}
                             <span class="text-gray-300 dark:text-slate-600">–</span>
                             {% endif %}
@@ -159,7 +159,7 @@ setAttribute('style', …) и стёрла бы display:none, который с�
                         <td class="px-3 py-3 text-center">
                             {% if row.variant.written %}
                             <div class="text-2xl font-bold leading-none tabular-nums {% include 'quizzes/_ege_scale_color.html' with color=row.variant.color %}">{{ row.variant.test }}</div>
-                            <div class="text-[11px] text-gray-400 mt-1">{{ row.variant.date|date:"d.m" }} · {{ row.variant.written }} шт.</div>
+                            <div class="text-xs text-gray-400 mt-1">{{ row.variant.date|date:"d.m" }} · {{ row.variant.written }} шт.</div>
                             {% else %}
                             <span class="text-gray-300 dark:text-slate-600">–</span>
                             {% endif %}
@@ -241,7 +241,7 @@ setAttribute('style', …) и стёрла бы display:none, который с�
                             </div>
                             <div class="flex gap-2 mt-1">
                                 {% for week in row.dynamics %}
-                                <div class="flex-1 text-center text-[10px] text-gray-400 tabular-nums">{{ week.label }}</div>
+                                <div class="flex-1 text-center text-xs text-gray-400 tabular-nums">{{ week.label }}</div>
                                 {% endfor %}
                             </div>
                         </td>

@@ -15,7 +15,7 @@
             <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
                 {{ student.get_full_name|default:student.username }}
             </h1>
-            <p class="mt-2 text-sm text-gray-500 dark:text-slate-400">
+            <p class="mt-2 text-base text-gray-500 dark:text-slate-400">
                 {{ section.title }} · неверных попыток: {{ total_errors }}, задач с ошибками: {{ items|length }}
             </p>
         </header>

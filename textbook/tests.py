@@ -766,6 +766,57 @@ class TemplateCommentsTest(SimpleTestCase):
         self.assertEqual(leaks, [], 'многострочные {# #} утекут в HTML: ' + ', '.join(leaks))
 
 
+class FontScaleTest(SimpleTestCase):
+    """Кегль в шаблонах – только ступени общей шкалы.
+
+    До неё на страницах жили девять произвольных размеров между 9 и 17px
+    (`text-[12.5px]`, `font-size: 13.5px`), и один и тот же подзаголовок был
+    12px на одной странице и 18px на соседней. Шкала описана в CLAUDE.md:
+    12 / 14 / 16 / 18 / 20 / 24 / 30 / 36. Тест сторожит её от следующего
+    «ну тут на полпикселя мельче» – такие правки не видно в ревью, а вместе
+    они и сделали разнобой.
+    """
+
+    #: Кегль вне шкалы разрешён там, где буквы работают как графика.
+    EXCEPTIONS = {
+        # CSS-иллюстрации главной: макет сайта шириной 174px в миниатюре.
+        'templates/home.html',
+        # Игровое поле «Своей игры» на проекторе – кегль подобран под клетку.
+        'templates/games/svoya_igra/play.html',
+        # Год выпуска (clamp) и стрелки Swiper – декоративные глифы.
+        'templates/accounts/alumni.html',
+        'templates/about.html',
+    }
+
+    SCALE_PX = {12, 14, 16, 18, 20, 24, 30, 36}
+
+    def files(self):
+        from pathlib import Path
+
+        for path in sorted(Path('templates').rglob('*.html')):
+            if path.as_posix() in self.EXCEPTIONS:
+                continue
+            yield path, path.read_text(encoding='utf-8')
+
+    def test_no_arbitrary_tailwind_sizes(self):
+        import re
+
+        found = [f'{path}: {m}' for path, text in self.files()
+                 for m in re.findall(r'text-\[[^\]]+\]', text)]
+        self.assertEqual(found, [], 'произвольный кегль мимо шкалы: ' + ', '.join(found))
+
+    def test_inline_font_size_is_on_the_scale(self):
+        import re
+
+        found = []
+        for path, text in self.files():
+            for value, unit in re.findall(r'font-size:\s*([\d.]+)(px|rem)', text):
+                px = float(value) * (16 if unit == 'rem' else 1)
+                if px not in self.SCALE_PX:
+                    found.append(f'{path}: {value}{unit}')
+        self.assertEqual(found, [], 'кегль мимо шкалы: ' + ', '.join(found))
+
+
 class TruthTableParserTests(SimpleTestCase):
     """Разбор выражения в виджете truth-table – сверка с настоящим Python.
 

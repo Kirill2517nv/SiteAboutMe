@@ -9,8 +9,8 @@
         <span>/</span>
         <span>Создать тему</span>
     </div>
-    <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">Создать тему</h1>
-    <p class="text-gray-500 dark:text-slate-400 mb-8">Тема будет отправлена на проверку администратору. После одобрения её можно будет включить в игру.</p>
+    <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-2">Создать тему</h1>
+    <p class="text-base text-gray-500 dark:text-slate-400 mb-8">Тема будет отправлена на проверку администратору. После одобрения её можно будет включить в игру.</p>
 
     <form method="post" enctype="multipart/form-data" class="space-y-8">
         {% csrf_token %}
@@ -61,21 +61,21 @@
                     </div>
                     <div class="space-y-3">
                         <div>
-                            <label class="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Стоимость в очках</label>
+                            <label class="block text-sm font-medium text-gray-500 dark:text-slate-400 mb-1">Стоимость в очках</label>
                             {{ form.points }}
                             {% for error in form.points.errors %}
                             <p class="mt-1 text-sm text-red-500">{{ error }}</p>
                             {% endfor %}
                         </div>
                         <div>
-                            <label class="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Текст вопроса <span class="text-red-500">*</span></label>
+                            <label class="block text-sm font-medium text-gray-500 dark:text-slate-400 mb-1">Текст вопроса <span class="text-red-500">*</span></label>
                             {{ form.text }}
                             {% for error in form.text.errors %}
                             <p class="mt-1 text-sm text-red-500">{{ error }}</p>
                             {% endfor %}
                         </div>
                         <div>
-                            <label class="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Ответ <span class="text-red-500">*</span></label>
+                            <label class="block text-sm font-medium text-gray-500 dark:text-slate-400 mb-1">Ответ <span class="text-red-500">*</span></label>
                             {{ form.answer }}
                             {% for error in form.answer.errors %}
                             <p class="mt-1 text-sm text-red-500">{{ error }}</p>
@@ -88,49 +88,49 @@
                         {% endif %}
                         <!-- Медиафайлы к вопросу -->
                         <div class="pt-2 border-t border-gray-100 dark:border-slate-700">
-                            <p class="text-xs font-medium text-gray-500 dark:text-slate-400 mb-2">
+                            <p class="text-sm font-medium text-gray-500 dark:text-slate-400 mb-2">
                                 Медиафайлы к <span class="text-brand-600 dark:text-brand-400">вопросу</span> (до 5 каждого типа)
                             </p>
                             <div class="grid grid-cols-3 gap-3">
                                 <div>
-                                    <label class="block text-xs text-gray-400 dark:text-slate-500 mb-1">Изображения</label>
+                                    <label class="block text-sm text-gray-400 dark:text-slate-500 mb-1">Изображения</label>
                                     <input type="file" name="media_image_{{ forloop.counter0 }}" accept="image/*" multiple
-                                           class="block w-full text-xs text-gray-500 dark:text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-brand-50 dark:file:bg-slate-700 file:text-brand-700 dark:file:text-cyan-300">
+                                           class="block w-full text-sm text-gray-500 dark:text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-brand-50 dark:file:bg-slate-700 file:text-brand-700 dark:file:text-cyan-300">
                                 </div>
                                 <div>
-                                    <label class="block text-xs text-gray-400 dark:text-slate-500 mb-1">Аудио</label>
+                                    <label class="block text-sm text-gray-400 dark:text-slate-500 mb-1">Аудио</label>
                                     <input type="file" name="media_audio_{{ forloop.counter0 }}" accept="audio/*" multiple
-                                           class="block w-full text-xs text-gray-500 dark:text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-brand-50 dark:file:bg-slate-700 file:text-brand-700 dark:file:text-cyan-300">
+                                           class="block w-full text-sm text-gray-500 dark:text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-brand-50 dark:file:bg-slate-700 file:text-brand-700 dark:file:text-cyan-300">
                                 </div>
                                 <div>
-                                    <label class="block text-xs text-gray-400 dark:text-slate-500 mb-1">Видео</label>
+                                    <label class="block text-sm text-gray-400 dark:text-slate-500 mb-1">Видео</label>
                                     <input type="file" name="media_video_{{ forloop.counter0 }}" accept="video/*" multiple
-                                           class="block w-full text-xs text-gray-500 dark:text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-brand-50 dark:file:bg-slate-700 file:text-brand-700 dark:file:text-cyan-300">
+                                           class="block w-full text-sm text-gray-500 dark:text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-brand-50 dark:file:bg-slate-700 file:text-brand-700 dark:file:text-cyan-300">
                                 </div>
                             </div>
                         </div>
 
                         <!-- Медиафайлы к ответу -->
                         <div class="pt-2 border-t border-gray-100 dark:border-slate-700">
-                            <p class="text-xs font-medium text-gray-500 dark:text-slate-400 mb-2">
+                            <p class="text-sm font-medium text-gray-500 dark:text-slate-400 mb-2">
                                 Медиафайлы к <span class="text-green-600 dark:text-green-400">ответу</span> (до 5 каждого типа)
                             </p>
-                            <p class="text-xs text-gray-400 dark:text-slate-500 mb-2">Суммарный объём всех файлов к одному вопросу – не более <span class="font-medium text-gray-600 dark:text-slate-300">20 МБ</span></p>
+                            <p class="text-sm text-gray-400 dark:text-slate-500 mb-2">Суммарный объём всех файлов к одному вопросу – не более <span class="font-medium text-gray-600 dark:text-slate-300">20 МБ</span></p>
                             <div class="grid grid-cols-3 gap-3">
                                 <div>
-                                    <label class="block text-xs text-gray-400 dark:text-slate-500 mb-1">Изображения</label>
+                                    <label class="block text-sm text-gray-400 dark:text-slate-500 mb-1">Изображения</label>
                                     <input type="file" name="answer_media_image_{{ forloop.counter0 }}" accept="image/*" multiple
-                                           class="block w-full text-xs text-gray-500 dark:text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-green-50 dark:file:bg-slate-700 file:text-green-700 dark:file:text-green-300">
+                                           class="block w-full text-sm text-gray-500 dark:text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-green-50 dark:file:bg-slate-700 file:text-green-700 dark:file:text-green-300">
                                 </div>
                                 <div>
-                                    <label class="block text-xs text-gray-400 dark:text-slate-500 mb-1">Аудио</label>
+                                    <label class="block text-sm text-gray-400 dark:text-slate-500 mb-1">Аудио</label>
                                     <input type="file" name="answer_media_audio_{{ forloop.counter0 }}" accept="audio/*" multiple
-                                           class="block w-full text-xs text-gray-500 dark:text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-green-50 dark:file:bg-slate-700 file:text-green-700 dark:file:text-green-300">
+                                           class="block w-full text-sm text-gray-500 dark:text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-green-50 dark:file:bg-slate-700 file:text-green-700 dark:file:text-green-300">
                                 </div>
                                 <div>
-                                    <label class="block text-xs text-gray-400 dark:text-slate-500 mb-1">Видео</label>
+                                    <label class="block text-sm text-gray-400 dark:text-slate-500 mb-1">Видео</label>
                                     <input type="file" name="answer_media_video_{{ forloop.counter0 }}" accept="video/*" multiple
-                                           class="block w-full text-xs text-gray-500 dark:text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-green-50 dark:file:bg-slate-700 file:text-green-700 dark:file:text-green-300">
+                                           class="block w-full text-sm text-gray-500 dark:text-slate-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-green-50 dark:file:bg-slate-700 file:text-green-700 dark:file:text-green-300">
                                 </div>
                             </div>
                         </div>

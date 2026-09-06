@@ -87,7 +87,7 @@
             {% endif %}
             <div class="min-w-0">
                 <div class="flex items-center gap-2">
-                    <h1 class="text-lg font-semibold text-gray-900 dark:text-white truncate">
+                    <h1 class="text-xl font-semibold text-gray-900 dark:text-white truncate">
                         {% if session.ege_number %}Задание {{ session.ege_number }}{% else %}{{ session.get_kind_display }}{% endif %}
                     </h1>
                     {% if session.mode == 'exam' %}

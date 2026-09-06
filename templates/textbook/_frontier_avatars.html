@@ -22,14 +22,14 @@ compact=1 – только кружки, без раскрытия по наве
              class="w-6 h-6 rounded-full object-cover ring-2 ring-white dark:ring-slate-800">
         {% else %}
         <span title="{{ name }}"
-              class="w-6 h-6 rounded-full bg-gray-200 dark:bg-slate-600 text-gray-600 dark:text-slate-200 text-[10px] font-semibold flex items-center justify-center ring-2 ring-white dark:ring-slate-800">
+              class="w-6 h-6 rounded-full bg-gray-200 dark:bg-slate-600 text-gray-600 dark:text-slate-200 text-xs font-semibold flex items-center justify-center ring-2 ring-white dark:ring-slate-800">
             {{ u.last_name|default:u.username|make_list|first|upper }}{{ u.first_name|make_list|first|upper|default:"" }}
         </span>
         {% endif %}
         {% endwith %}
         {% endfor %}
         {% if users|length > 5 %}
-        <span class="w-6 h-6 rounded-full bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-300 text-[10px] font-semibold flex items-center justify-center ring-2 ring-white dark:ring-slate-800">
+        <span class="w-6 h-6 rounded-full bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-300 text-xs font-semibold flex items-center justify-center ring-2 ring-white dark:ring-slate-800">
             +{{ users|length|add:"-5" }}
         </span>
         {% endif %}
@@ -44,7 +44,7 @@ compact=1 – только кружки, без раскрытия по наве
             <img src="{{ u.profile.avatar.url }}" alt=""
                  class="w-5 h-5 rounded-full object-cover">
             {% else %}
-            <span class="w-5 h-5 rounded-full bg-gray-200 dark:bg-slate-600 text-gray-600 dark:text-slate-200 text-[9px] font-semibold flex items-center justify-center">
+            <span class="w-5 h-5 rounded-full bg-gray-200 dark:bg-slate-600 text-gray-600 dark:text-slate-200 text-xs font-semibold flex items-center justify-center">
                 {{ u.last_name|default:u.username|make_list|first|upper }}{{ u.first_name|make_list|first|upper|default:"" }}
             </span>
             {% endif %}

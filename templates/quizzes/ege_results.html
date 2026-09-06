@@ -18,8 +18,8 @@
 
     <!-- Header -->
     <div class="mb-8" data-aos="fade-down">
-        <h1 class="text-2xl font-bold text-gray-900 mb-2">{{ quiz.title }} – Результаты</h1>
-        <p class="text-sm text-gray-500">
+        <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">{{ quiz.title }} – Результаты</h1>
+        <p class="text-base text-gray-500">
             {% if results_matrix %}
                 {{ results_matrix|length }} {% with count=results_matrix|length %}{% if count == 1 %}участник{% elif count < 5 %}участника{% else %}участников{% endif %}{% endwith %}
             {% else %}
@@ -57,7 +57,7 @@
                             <!-- Popover меню -->
                             <div x-show="popOpen" x-transition
                                  class="absolute top-full left-1/2 -translate-x-1/2 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50 whitespace-nowrap">
-                                <div class="px-2.5 py-1 text-[10px] text-gray-400 uppercase tracking-wider">Сортировать по</div>
+                                <div class="px-2.5 py-1 text-xs text-gray-400 uppercase tracking-wider">Сортировать по</div>
                                 <button @click="sortBy({{ q.ege_number }}, 'likes'); popOpen = false"
                                         class="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-50 transition-colors text-left cursor-pointer"
                                         :class="activeSortCol === {{ q.ege_number }} && activeSortCriterion === 'likes' ? 'text-red-600 font-medium' : 'text-gray-700'">
@@ -211,7 +211,7 @@
                         <td class="sticky left-0 z-10 bg-white px-4 py-3 font-medium text-gray-700"
                             title="Сколько раз нажимали «Проверить». У решённой задачи – с какой попытки она получилась: после верного ответа счётчик не растёт.">
                             Попытки
-                            <div class="text-[10px] font-normal text-gray-400 leading-tight">с какой получилось</div>
+                            <div class="text-xs font-normal text-gray-400 leading-tight">с какой получилось</div>
                         </td>
                         {% for stat in personal_stats %}
                         <td class="px-2 py-3 text-center text-xs text-gray-600">

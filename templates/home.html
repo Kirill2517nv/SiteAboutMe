@@ -103,11 +103,11 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
   .cnode__badge {
     width: 28px; height: 28px; border-radius: 999px; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
-    font-size: 13px; font-weight: 700; background: #f3f4f6; color: #6b7280;
+    font-size: 14px; font-weight: 700; background: #f3f4f6; color: #6b7280;
   }
   html.dark .cnode__badge { background: #334155; color: #94a3b8; }
   .cnode__title {
-    flex: 1; min-width: 0; font-size: 15px; line-height: 1.3; font-weight: 600;
+    flex: 1; min-width: 0; font-size: 16px; line-height: 1.3; font-weight: 600;
     color: #111827; padding-top: 4px;
   }
   html.dark .cnode__title { color: #f1f5f9; }
@@ -126,16 +126,16 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
   }
   html.dark .cnode__chip { background: #334155; }
   .cnode__chip b {
-    display: block; font-size: 9.5px; font-weight: 500;
+    display: block; font-size: 12px; font-weight: 500;
     letter-spacing: .05em; text-transform: uppercase; color: #6b7280;
   }
   .cnode__chip i {
-    display: block; font-style: normal; font-size: 13px; font-weight: 600;
+    display: block; font-style: normal; font-size: 14px; font-weight: 600;
     color: #111827; white-space: nowrap;
   }
   html.dark .cnode__chip b { color: #94a3b8; }
   html.dark .cnode__chip i { color: #f1f5f9; }
-  .cnode__chip--grade i { font-size: 17px; line-height: 1.1; }
+  .cnode__chip--grade i { font-size: 16px; line-height: 1.1; }
   .cnode__chip--g5 { background: #dcfce7; }
   .cnode__chip--g5 b, .cnode__chip--g5 i { color: #16a34a; }
   .cnode__chip--g4 { background: #eff6ff; }
@@ -159,7 +159,7 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
   .cnode__rows { display: flex; flex-direction: column; gap: 7px; margin-top: 14px; }
   .cnode__row { display: flex; align-items: center; gap: 10px; }
   .cnode__row-label {
-    width: var(--cmap-label); flex-shrink: 0; font-size: 12.5px; color: #6b7280;
+    width: var(--cmap-label); flex-shrink: 0; font-size: 12px; color: #6b7280;
   }
   html.dark .cnode__row-label { color: #94a3b8; }
   .cnode__bar {
@@ -170,7 +170,7 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
   .cnode__fill--green { background: #10b981; }
   .cnode__row-num {
     width: 44px; flex-shrink: 0; text-align: right;
-    font-size: 12.5px; font-variant-numeric: tabular-nums; color: #6b7280;
+    font-size: 12px; font-variant-numeric: tabular-nums; color: #6b7280;
   }
   html.dark .cnode__row-num { color: #94a3b8; }
   /* Подпись над чипами, а не слева: рядом с колонкой в 104px три чипа
@@ -180,18 +180,18 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
   .cnode__scale { display: flex; flex-wrap: wrap; gap: 5px; }
   .cnode__scale-chip {
     padding: 2px 7px; border-radius: 6px; white-space: nowrap;
-    font-size: 10.5px; background: #f3f4f6; color: #6b7280;
+    font-size: 12px; background: #f3f4f6; color: #6b7280;
   }
   html.dark .cnode__scale-chip { background: #334155; color: #94a3b8; }
   .cnode__scale-chip.is-reached { background: #dcfce7; color: #16a34a; }
   html.dark .cnode__scale-chip.is-reached { background: #052e16; color: #4ade80; }
-  .cnode__note { font-size: 12.5px; color: #9ca3af; }
+  .cnode__note { font-size: 12px; color: #9ca3af; }
   html.dark .cnode__note { color: #64748b; }
 
   /* Кнопки прижаты к низу, чтобы ряд карточек читался ровной линией */
   .cnode__actions { display: flex; gap: 8px; margin-top: auto; padding-top: 14px; }
   .cnode__btn {
-    font-size: 12.5px; font-weight: 600; padding: 8px 14px; border-radius: 8px;
+    font-size: 12px; font-weight: 600; padding: 8px 14px; border-radius: 8px;
     white-space: nowrap; text-decoration: none; transition: background .15s;
   }
   .cnode__btn--ghost { background: #f3f4f6; color: #374151; }
@@ -212,7 +212,7 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
   }
   html.dark .cnode__pins { border-top-color: #334155; }
   .cnode__pins-label {
-    display: block; font-size: 10.5px; letter-spacing: .04em;
+    display: block; font-size: 12px; letter-spacing: .04em;
     text-transform: uppercase; color: #9ca3af; margin-bottom: 6px;
   }
   html.dark .cnode__pins-label { color: #64748b; }
@@ -224,9 +224,9 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
     border-bottom: 1px solid #f3f4f6;
   }
   html.dark .cnode__back-head { border-bottom-color: #334155; }
-  .cnode__back-title { font-size: 13px; font-weight: 600; color: #111827; }
+  .cnode__back-title { font-size: 14px; font-weight: 600; color: #111827; }
   html.dark .cnode__back-title { color: #f1f5f9; }
-  .cnode__back-hint { margin-left: auto; font-size: 10.5px; color: #9ca3af; }
+  .cnode__back-hint { margin-left: auto; font-size: 12px; color: #9ca3af; }
   html.dark .cnode__back-hint { color: #64748b; }
 
   .cnode__lessons {
@@ -245,7 +245,7 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
   }
   .cnode__lesson-num {
     flex-shrink: 0; font-variant-numeric: tabular-nums;
-    font-size: 11px; color: #9ca3af;
+    font-size: 12px; color: #9ca3af;
   }
   html.dark .cnode__lesson-num { color: #64748b; }
   .cnode__lesson-title { color: #374151; }
@@ -259,7 +259,7 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
   /* Метка «вы здесь» над текущим блоком */
   .cnode__pin {
     position: absolute; bottom: calc(100% + 10px); left: 24px; z-index: 2;
-    white-space: nowrap; font-size: 11px; font-weight: 600;
+    white-space: nowrap; font-size: 12px; font-weight: 600;
     background: #2563eb; color: #fff; padding: 4px 10px; border-radius: 999px;
   }
   .cnode__pin::after {
@@ -305,7 +305,7 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
   /* Легенда */
   .cmap__legend {
     display: flex; flex-wrap: wrap; gap: 20px; justify-content: center;
-    margin-top: 34px; font-size: 12.5px; color: #6b7280;
+    margin-top: 34px; font-size: 12px; color: #6b7280;
   }
   html.dark .cmap__legend { color: #94a3b8; }
   .cmap__legend span.dot { width: 12px; height: 12px; border-radius: 999px; flex-shrink: 0; }
@@ -377,6 +377,10 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
   }
   html.dark .iflip__face { background: #1e293b; border-color: #334155; }
   .iflip__face--back { transform: rotateY(180deg); }
+  /* ponytail: у трёх иллюстраций ниже (.iflip__, .iread__, .icode__) свой
+     кегль 9-10px мимо общей шкалы. Это не текст, а макет сайта в миниатюре
+     шириной 174px – буквы в них работают как графика. Единую шкалу сюда
+     заводить нельзя: 12px разорвёт 17-18px кружки и плашки. */
   .iflip__head { display: flex; align-items: center; gap: 7px; margin-bottom: 10px; }
   .iflip__num {
     width: 18px; height: 18px; border-radius: 999px; flex-shrink: 0;
@@ -555,14 +559,14 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
   <!-- Шапка: чем является курс, и куда вернуться -->
   <header class="flex flex-wrap items-end justify-between gap-8 mb-8">
     <div>
-      <h1 class="text-3xl font-bold text-gray-900 dark:text-white leading-tight mb-2.5">
+      <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white leading-tight mb-2.5">
         {% if user.is_authenticated %}
           С возвращением{% if user.first_name %}, {{ user.first_name }}{% endif %}
         {% else %}
           Курс информатики
         {% endif %}
       </h1>
-      <p class="text-[15px] text-gray-500 dark:text-slate-400">
+      <p class="text-base text-gray-500 dark:text-slate-400">
         <b class="font-semibold text-gray-700 dark:text-slate-300">{{ section_label }}</b> ·
         <b class="font-semibold text-gray-700 dark:text-slate-300">{{ lesson_label }}</b> ·
         практикум с автопроверкой
@@ -572,9 +576,9 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
     {% if current %}
     <div class="shrink-0 flex items-center gap-4 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-2xl px-4 py-3.5 shadow-sm">
       <div>
-        <div class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500 mb-0.5">Вы остановились</div>
+        <div class="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500 mb-0.5">Вы остановились</div>
         <div class="text-sm font-semibold text-gray-900 dark:text-white">{{ current.section.title }}</div>
-        <div class="text-[12.5px] text-gray-500 dark:text-slate-400 mt-0.5">
+        <div class="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
           Статья {{ current.lessons_done }} из {{ current.lessons }}{% if current.practicum.total %} · задачи блока {{ current.practicum.done }} из {{ current.practicum.total }}{% endif %}
         </div>
       </div>
@@ -588,9 +592,9 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
     {% elif not user.is_authenticated %}
     <div class="shrink-0 flex items-center gap-4 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-2xl px-4 py-3.5 shadow-sm">
       <div>
-        <div class="text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500 mb-0.5">Уже учитесь здесь?</div>
+        <div class="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500 mb-0.5">Уже учитесь здесь?</div>
         <div class="text-sm font-semibold text-gray-900 dark:text-white">Войдите, чтобы видеть прогресс</div>
-        <div class="text-[12.5px] text-gray-500 dark:text-slate-400 mt-0.5">Оценки, дедлайны и решённые задачи</div>
+        <div class="text-xs text-gray-500 dark:text-slate-400 mt-0.5">Оценки, дедлайны и решённые задачи</div>
       </div>
       <a href="{% url 'login' %}"
          class="whitespace-nowrap bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold px-[18px] py-2.5 rounded-xl transition-colors">
@@ -609,7 +613,7 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
   <section data-aos="fade-up"
            class="mb-8 rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-5 py-6 sm:px-7 shadow-sm">
     <h2 class="text-base font-semibold text-gray-900 dark:text-white mb-1.5">Что это за сайт</h2>
-    <p class="text-[14px] leading-relaxed text-gray-600 dark:text-slate-300 mb-5 max-w-3xl">
+    <p class="text-sm leading-relaxed text-gray-600 dark:text-slate-300 mb-5 max-w-3xl">
       Это школьный курс информатики и подготовки к ЕГЭ. Ниже – карта курса: каждая
       карточка это один блок с теорией, самопроверками и задачами. Блоки идут по
       порядку, линия между ними и есть маршрут обучения.
@@ -657,8 +661,8 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
             </div>
           </div>
         </div>
-        <div class="text-[13px] font-semibold text-gray-900 dark:text-white mb-1">Как читать карту</div>
-        <p class="text-[13.5px] leading-relaxed text-gray-500 dark:text-slate-400">
+        <div class="text-sm font-semibold text-gray-900 dark:text-white mb-1">Как читать карту</div>
+        <p class="text-sm leading-relaxed text-gray-500 dark:text-slate-400">
           Нажмите на заголовок блока – откроется его первая статья. Нажмите в любое
           другое место карточки – она перевернётся и покажет список всех статей блока.
         </p>
@@ -684,8 +688,8 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
             </span>
           </div>
         </div>
-        <div class="text-[13px] font-semibold text-gray-900 dark:text-white mb-1">Учебник открыт всем</div>
-        <p class="text-[13.5px] leading-relaxed text-gray-500 dark:text-slate-400">
+        <div class="text-sm font-semibold text-gray-900 dark:text-white mb-1">Учебник открыт всем</div>
+        <p class="text-sm leading-relaxed text-gray-500 dark:text-slate-400">
           Читать статьи можно без регистрации: теория, примеры и разборы доступны
           сразу, ничего вводить не нужно.
         </p>
@@ -729,8 +733,8 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
             </div>
           </div>
         </div>
-        <div class="text-[13px] font-semibold text-gray-900 dark:text-white mb-1">Задачи – по логину</div>
-        <p class="text-[13.5px] leading-relaxed text-gray-500 dark:text-slate-400">
+        <div class="text-sm font-semibold text-gray-900 dark:text-white mb-1">Задачи – по логину</div>
+        <p class="text-sm leading-relaxed text-gray-500 dark:text-slate-400">
           Практикум с автопроверкой, оценки и прогресс работают только для учеников.
           Логин и пароль выдаю лично – контакты на вкладке
           <a href="{% url 'about' %}" class="text-brand-600 hover:text-brand-700 dark:text-cyan-400 font-medium">«Об авторе»</a>.
@@ -738,7 +742,7 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
       </div>
     </div>
 
-    <p class="mt-5 pt-4 border-t border-gray-100 dark:border-slate-700 text-[12.5px] leading-relaxed text-gray-400 dark:text-slate-500">
+    <p class="mt-5 pt-4 border-t border-gray-100 dark:border-slate-700 text-xs leading-relaxed text-gray-400 dark:text-slate-500">
       Почему не открытая регистрация: сайт живёт на моём старом ноутбуке, и проверка
       кода запускается прямо на нём. Пары десятков учеников он выдерживает,
       а вот всех желающих – вряд ли, поэтому доступы я выдаю вручную.
@@ -940,7 +944,7 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
     <span><span class="dot dot--soon"></span>Скоро</span>
   </div>
 
-  <div class="mt-11 pt-7 border-t border-gray-200 dark:border-slate-700 text-center text-[12.5px]">
+  <div class="mt-11 pt-7 border-t border-gray-200 dark:border-slate-700 text-center text-xs">
     <a href="{% url 'pages:changelog' %}" class="text-gray-400 dark:text-slate-500 hover:text-brand-600 dark:hover:text-cyan-400 transition-colors">
       Что нового на сайте
     </a>

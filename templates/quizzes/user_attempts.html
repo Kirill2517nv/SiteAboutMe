@@ -22,10 +22,10 @@
                 {{ student.first_name|slice:":1" }}{{ student.last_name|slice:":1" }}
             </div>
             <div>
-                <h1 class="text-2xl font-bold text-gray-900">
+                <h1 class="text-2xl sm:text-3xl font-bold text-gray-900">
                     {{ student.first_name }} {{ student.last_name }}
                 </h1>
-                <p class="text-gray-600">{{ quiz.title }}</p>
+                <p class="text-base text-gray-600">{{ quiz.title }}</p>
             </div>
         </div>
     </header>

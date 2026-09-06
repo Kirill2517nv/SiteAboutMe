@@ -11,7 +11,7 @@
                 <span>/</span>
                 <span>Своя игра</span>
             </div>
-            <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Своя игра</h1>
+            <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">Своя игра</h1>
         </div>
         <div class="flex flex-wrap gap-2">
             {% if user.is_authenticated %}
@@ -57,7 +57,7 @@
                     <span class="inline-flex flex-col px-2 py-1 text-xs bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300 rounded-full leading-tight">
                         <span>{{ pc.category.title }}</span>
                         {% if pc.category.created_by %}
-                        <span class="text-[10px] text-gray-400 dark:text-slate-500">
+                        <span class="text-xs text-gray-400 dark:text-slate-500">
                             {{ pc.category.created_by.get_full_name|default:pc.category.created_by.username }}
                         </span>
                         {% endif %}

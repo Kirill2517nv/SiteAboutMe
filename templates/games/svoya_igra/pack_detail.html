@@ -14,9 +14,9 @@
 
     <div class="flex items-start justify-between mb-8 gap-4">
         <div>
-            <h1 class="text-3xl font-bold text-gray-900 dark:text-white">{{ pack.title }}</h1>
+            <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">{{ pack.title }}</h1>
             {% if pack.description %}
-            <p class="mt-2 text-gray-500 dark:text-slate-400">{{ pack.description }}</p>
+            <p class="text-base mt-2 text-gray-500 dark:text-slate-400">{{ pack.description }}</p>
             {% endif %}
         </div>
         {% if user.is_authenticated %}
@@ -39,7 +39,7 @@
                 <div class="bg-brand-700 dark:bg-brand-800 text-white text-center py-3 px-2 rounded-lg flex flex-col items-center gap-0.5">
                     <span class="font-bold text-sm leading-tight">{{ pc.category.title }}</span>
                     {% if pc.category.created_by %}
-                    <span class="text-[10px] leading-tight text-brand-200 dark:text-brand-300 opacity-80">
+                    <span class="text-xs leading-tight text-brand-200 dark:text-brand-300 opacity-80">
                         {{ pc.category.created_by.get_full_name|default:pc.category.created_by.username }}
                     </span>
                     {% endif %}

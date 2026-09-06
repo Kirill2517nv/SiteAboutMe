@@ -18,8 +18,8 @@
 
     <!-- Header -->
     <div class="mb-8">
-        <h1 class="text-2xl font-bold text-gray-900 mb-1">{{ full_name }}</h1>
-        <p class="text-sm text-gray-500">{{ quiz.title }}</p>
+        <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 mb-1">{{ full_name }}</h1>
+        <p class="text-base text-gray-500">{{ quiz.title }}</p>
     </div>
 
     <!-- Summary cards -->
@@ -107,7 +107,7 @@
                         <td class="sticky left-0 z-10 bg-white px-4 py-3 font-medium text-gray-700"
                             title="Сколько раз нажимали «Проверить». У решённой задачи – с какой попытки она получилась: после верного ответа счётчик не растёт.">
                             Попытки
-                            <div class="text-[10px] font-normal text-gray-400 leading-tight">с какой получилось</div>
+                            <div class="text-xs font-normal text-gray-400 leading-tight">с какой получилось</div>
                         </td>
                         {% for stat in stats %}
                         <td class="px-2 py-3 text-center text-xs text-gray-600">

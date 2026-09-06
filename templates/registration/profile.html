@@ -83,7 +83,7 @@
 
             <!-- Справа: имя и плашки в три столбика -->
             <div class="flex-1 min-w-0 w-full text-center sm:text-left">
-                <h1 class="text-2xl font-bold text-white">
+                <h1 class="text-2xl sm:text-3xl font-bold text-white">
                     {{ profile_user|student_name }}
                 </h1>
                 {% if is_ege %}
@@ -99,23 +99,23 @@
 
                 <div class="grid grid-cols-2 md:grid-cols-3 gap-3 text-left">
                     <div class="rounded-xl bg-white/10 px-4 py-3">
-                        <div class="text-[11px] uppercase tracking-wide text-blue-100">Фамилия</div>
+                        <div class="text-xs uppercase tracking-wide text-blue-100">Фамилия</div>
                         <div class="font-semibold truncate mt-0.5">{{ profile_user.last_name|default:"–" }}</div>
                     </div>
                     <div class="rounded-xl bg-white/10 px-4 py-3">
-                        <div class="text-[11px] uppercase tracking-wide text-blue-100">Имя</div>
+                        <div class="text-xs uppercase tracking-wide text-blue-100">Имя</div>
                         <div class="font-semibold truncate mt-0.5">{{ profile_user.first_name|default:"–" }}</div>
                     </div>
                     <div class="rounded-xl bg-white/10 px-4 py-3">
-                        <div class="text-[11px] uppercase tracking-wide text-blue-100">Группа</div>
+                        <div class="text-xs uppercase tracking-wide text-blue-100">Группа</div>
                         <div class="font-semibold truncate mt-0.5">{{ group.name|default:"–" }}</div>
                     </div>
                     <div class="rounded-xl bg-white/10 px-4 py-3">
-                        <div class="text-[11px] uppercase tracking-wide text-blue-100">Логин</div>
+                        <div class="text-xs uppercase tracking-wide text-blue-100">Логин</div>
                         <div class="font-semibold truncate mt-0.5">{{ profile_user.username }}</div>
                     </div>
                     <div class="rounded-xl bg-white/10 px-4 py-3">
-                        <div class="text-[11px] uppercase tracking-wide text-blue-100">Пароль</div>
+                        <div class="text-xs uppercase tracking-wide text-blue-100">Пароль</div>
                         {# Кнопка только в своём профиле: PasswordChangeView меняет пароль request.user, а не хозяину профиля #}
                         {% if is_own %}
                         <a href="{% url 'password_change' %}"
@@ -166,37 +166,37 @@
     <!-- ===== Сводка ===== -->
     <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-10" data-aos="fade-up" data-aos-delay="100">
         <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 px-4 py-3.5">
-            <div class="text-[11px] uppercase tracking-wide text-gray-500 dark:text-slate-400">Средний балл</div>
+            <div class="text-xs uppercase tracking-wide text-gray-500 dark:text-slate-400">Средний балл</div>
             <div class="text-xl lg:text-2xl font-bold leading-tight mt-0.5 {% if textbook.avg_grade %}text-gray-900 dark:text-white{% else %}text-gray-300 dark:text-slate-600{% endif %}">
                 {{ textbook.avg_grade|default:"–" }}
             </div>
-            <div class="text-[11px] text-gray-400 dark:text-slate-500">
+            <div class="text-xs text-gray-400 dark:text-slate-500">
                 {% if textbook.graded_count %}по {{ textbook.graded_count }} блок{{ textbook.graded_count|plural:"у,ам,ам" }}{% else %}оценок нет{% endif %}
             </div>
         </div>
         <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 px-4 py-3.5">
-            <div class="text-[11px] uppercase tracking-wide text-gray-500 dark:text-slate-400">Уроки</div>
+            <div class="text-xs uppercase tracking-wide text-gray-500 dark:text-slate-400">Уроки</div>
             <div class="text-xl lg:text-2xl font-bold leading-tight mt-0.5 text-gray-900 dark:text-white tabular-nums">
                 {{ textbook.lessons_done }}<span class="text-base text-gray-400">/{{ textbook.lessons_total }}</span>
             </div>
-            <div class="text-[11px] text-gray-400 dark:text-slate-500">прочитано</div>
+            <div class="text-xs text-gray-400 dark:text-slate-500">прочитано</div>
         </div>
         <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 px-4 py-3.5">
-            <div class="text-[11px] uppercase tracking-wide text-gray-500 dark:text-slate-400">Практикум</div>
+            <div class="text-xs uppercase tracking-wide text-gray-500 dark:text-slate-400">Практикум</div>
             <div class="text-xl lg:text-2xl font-bold leading-tight mt-0.5 text-gray-900 dark:text-white tabular-nums">
                 {{ textbook.practicum_done }}<span class="text-base text-gray-400">/{{ textbook.practicum_total }}</span>
             </div>
-            <div class="text-[11px] text-gray-400 dark:text-slate-500">задач решено</div>
+            <div class="text-xs text-gray-400 dark:text-slate-500">задач решено</div>
         </div>
         <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 px-4 py-3.5">
-            <div class="text-[11px] uppercase tracking-wide text-gray-500 dark:text-slate-400">Чтение</div>
+            <div class="text-xs uppercase tracking-wide text-gray-500 dark:text-slate-400">Чтение</div>
             <div class="text-xl lg:text-2xl font-bold leading-tight mt-0.5 text-gray-900 dark:text-white whitespace-nowrap">{{ textbook.read_seconds|time_short }}</div>
-            <div class="text-[11px] text-gray-400 dark:text-slate-500">время над статьями</div>
+            <div class="text-xs text-gray-400 dark:text-slate-500">время над статьями</div>
         </div>
         <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 px-4 py-3.5">
-            <div class="text-[11px] uppercase tracking-wide text-gray-500 dark:text-slate-400">Решение</div>
+            <div class="text-xs uppercase tracking-wide text-gray-500 dark:text-slate-400">Решение</div>
             <div class="text-xl lg:text-2xl font-bold leading-tight mt-0.5 text-gray-900 dark:text-white whitespace-nowrap">{{ textbook.solve_seconds|time_short }}</div>
-            <div class="text-[11px] text-gray-400 dark:text-slate-500">время над задачами</div>
+            <div class="text-xs text-gray-400 dark:text-slate-500">время над задачами</div>
         </div>
     </div>
 

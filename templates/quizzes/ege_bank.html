@@ -29,10 +29,10 @@
             </svg>
         </span>
         <div>
-            <h1 class="text-2xl font-bold text-gray-900 dark:text-white">
+            <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
                 Банк задач{% if linked %} {{ linked_range }}{% endif %}
             </h1>
-            <p class="text-sm text-gray-500 dark:text-slate-400">
+            <p class="text-base text-gray-500 dark:text-slate-400">
                 {% if task %}{{ task.title }}{% else %}Задание {{ number }}{% endif %} ·
                 всего {{ rows|length }}
             </p>

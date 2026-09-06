@@ -62,7 +62,7 @@
     }
     #quiz-timer.critical .timer-value { color: #dc2626; }
 
-    .timer-label { font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
+    .timer-label { font-size: 12px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
     .timer-value { font-size: 24px; font-weight: 700; color: #1e293b; font-variant-numeric: tabular-nums; }
 
     /* Code status */
@@ -138,7 +138,7 @@
         padding: 0; border: 0; border-radius: 0;
         background: transparent;
         color: #e2e8f0;
-        font-size: 0.84rem; line-height: 1.6;
+        font-size: 0.875rem; line-height: 1.6;
         white-space: pre;
     }
     .task-text pre code .hljs-comment { color: #7f848e; }
@@ -183,9 +183,9 @@
     </nav>
 
     <header class="mb-8">
-        <h1 class="text-3xl font-bold text-gray-900 mb-2">{{ quiz.title }}</h1>
+        <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">{{ quiz.title }}</h1>
         {% if quiz.description %}
-        <p class="text-gray-600">{{ quiz.description }}</p>
+        <p class="text-base text-gray-600">{{ quiz.description }}</p>
         {% endif %}
     </header>
 
@@ -338,7 +338,7 @@ Alpine ищет данные вверх по дереву, поэтому кно
                 <a href="{{ back_url }}" class="text-gray-400 hover:text-gray-600 transition-colors">
                     <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
                 </a>
-                <h1 class="text-2xl font-bold text-gray-900">{{ quiz.title }}</h1>
+                <h1 class="text-xl font-bold text-gray-900">{{ quiz.title }}</h1>
             </div>
             <p class="text-sm text-gray-500 mt-1">
                 <span x-text="answeredCount"></span> / {{ all_questions|length }} отвечено
