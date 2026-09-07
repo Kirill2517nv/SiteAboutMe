@@ -1,4 +1,4 @@
-from django.contrib.auth.mixins import LoginRequiredMixin
+from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.contrib.auth.models import User
 from django.core.exceptions import PermissionDenied
 from django.db.models import Count, Prefetch
@@ -112,16 +112,19 @@ class ProfileView(LoginRequiredMixin, generic.TemplateView):
         return context
 
 
-class AlumniView(generic.ListView):
+class AlumniView(UserPassesTestMixin, generic.ListView):
     """
-    Публичный архив: выпускные классы с общим фото, словом учителя и карточками.
+    Архив выпускных классов: общее фото, слово учителя и карточки.
 
-    Открыт всем – в отличие от статистики учебника, где фамилии школьников
-    наружу не отдаются: здесь класс публикует учитель, а текст о себе пишет
-    сам выпускник.
+    Страница внутренняя: ссылки в шапке сайта нет, вход только из профиля, и
+    посторонний получает 403 – то же правило, что и на чужом профиле ученика.
     """
+    raise_exception = True
     template_name = 'accounts/alumni.html'
     context_object_name = 'groups'
+
+    def test_func(self):
+        return self.request.user.is_superuser
 
     def get_queryset(self):
         groups = list(

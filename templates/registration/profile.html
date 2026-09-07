@@ -40,6 +40,8 @@
                 {% endfor %}
             </div>
         </details>
+        {# Единственный вход на закрытую страницу выпускников: в шапке её нет #}
+        <a href="{% url 'alumni' %}" class="text-sm text-gray-500 dark:text-slate-400 hover:text-brand-600">🎓 Выпускники</a>
         {% if not is_own %}
         <a href="{% url 'accounts:profile' %}" class="text-sm text-gray-500 dark:text-slate-400 hover:text-brand-600">← к своему профилю</a>
         {% endif %}
@@ -140,8 +142,8 @@
             🎓 Карточка выпускника
         </h2>
         <p class="mt-1 mb-4 text-sm text-gray-600 dark:text-slate-400">
-            Это увидят все на <a href="{% url 'alumni' %}" class="text-brand-600 hover:underline">странице выпускников</a>.
-            Пустые поля просто не показываются.
+            Страница выпускников закрыта: её видит только учитель. Пустые поля
+            просто не показываются.
         </p>
         <div class="space-y-3">
             <label class="block">

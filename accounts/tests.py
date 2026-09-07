@@ -200,10 +200,11 @@ class TextbookStatsTests(TestCase):
 
 @NO_MANIFEST_STATIC
 class AlumniTests(TestCase):
-    """Архив выпускников: попадает туда только класс с годом выпуска."""
+    """Архив выпускников: закрыт для всех, кроме учителя, и только класс с годом выпуска."""
 
     @classmethod
     def setUpTestData(cls):
+        cls.teacher = User.objects.create_superuser('teacher', password='pw')
         cls.graduated = StudentGroup.objects.create(name='11А', graduation_year=2025)
         cls.active = StudentGroup.objects.create(name='10Б')
         cls.alum = User.objects.create_user('alum', password='pw',
@@ -213,20 +214,39 @@ class AlumniTests(TestCase):
         cls.pupil = User.objects.create_user('pupil', password='pw', last_name='Сидоров')
         Profile.objects.create(user=cls.pupil, group=cls.active)
 
-    def test_anonymous_sees_graduated_class_only(self):
+    def test_page_closed_to_everyone_but_teacher(self):
+        """Страница внутренняя: и ученик, и гость получают 403."""
+        self.assertEqual(self.client.get(reverse('alumni')).status_code, 403)
+
+        self.client.force_login(self.pupil)
+        self.assertEqual(self.client.get(reverse('alumni')).status_code, 403)
+
+    def test_no_link_in_site_header(self):
+        """Ссылка живёт только в профиле учителя – в шапке её быть не должно."""
+        self.assertNotIn('/alumni/', self.client.get(reverse('home')).content.decode())
+
+    def test_link_lives_in_teacher_profile(self):
+        self.client.force_login(self.teacher)
+        page = self.client.get(reverse('accounts:profile')).content.decode()
+
+        self.assertIn(reverse('alumni'), page)
+
+    def test_teacher_sees_graduated_class_only(self):
+        self.client.force_login(self.teacher)
         response = self.client.get(reverse('alumni'))
         self.assertEqual(response.status_code, 200)
         page = response.content.decode()
 
         self.assertIn('Иван', page)
         self.assertIn('Учусь на ФИТ.', page)
-        # Персональные данные: наружу идут имя и год, но не фамилия и не номер класса.
-        self.assertNotIn('Петров', page, 'фамилия выпускника на публичной странице')
-        self.assertNotIn('11А', page, 'номер класса на публичной странице')
+        # Карточка подписана именем и годом: ни фамилии, ни номера класса.
+        self.assertNotIn('Петров', page, 'фамилия выпускника на странице')
+        self.assertNotIn('11А', page, 'номер класса на странице')
         self.assertNotIn('Сидоров', page, 'действующий класс попал в архив')
 
     def test_first_cohort_marked(self):
         earlier = StudentGroup.objects.create(name='11В', graduation_year=2024)
+        self.client.force_login(self.teacher)
         response = self.client.get(reverse('alumni'))
         flags = {g.name: g.is_first for g in response.context['groups']}
 
