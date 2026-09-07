@@ -196,17 +196,42 @@ def article_detail_view(request, slug):
             'state': quiz_state(done, total, attempted),
         })
 
-    # Соседние статьи для сайдбара и prev/next: тот же блок (material) или то же задание ЕГЭ.
+    # Соседние статьи для сайдбара и prev/next: тот же блок (material) или то же
+    # задание ЕГЭ. Правило видимости одно на всю страницу: статья пришла из
+    # visible_articles, и список слева обязан ходить через ту же функцию. Иначе
+    # у черновика, открытого автором, сайдбар не содержит самой открытой статьи,
+    # current_index падает в 0, и prev/next показывают соседей чужой статьи.
+    def visible(manager):
+        allowed = visible_articles(request.user).values('pk')
+        return manager.filter(pk__in=allowed)
+
     if article.track == 'ege' and article.ege_task_id:
-        siblings = list(article.ege_task.articles.filter(track='ege', is_published=True))
+        siblings = list(visible(article.ege_task.articles).filter(track='ege'))
         group_title = f'Задание {article.ege_task.number}. {article.ege_task.title}'
         article_number = ''
         # Назад – на карточку своего задания: там же и задачи по этой теме.
         # Прежняя вкладка «Теория» на /ege/ упразднена.
         back_url = reverse('ege:ege_task', kwargs={'number': article.ege_task.number})
         back_label = f'Задание {article.ege_task.number}'
+    elif article.track == 'spetskurs':
+        # Спецкурс: соседи – статьи той же задачи, а у основ C++ (задачи нет) –
+        # весь их список. Назад – на страницу задачи, там же лежит симуляция.
+        if article.course_task_id:
+            siblings = list(visible(article.course_task.articles).filter(
+                track='spetskurs'))
+            group_title = str(article.course_task)
+            back_url = article.course_task.get_absolute_url()
+            back_label = 'Задача'
+        else:
+            siblings = list(visible(Article.objects).filter(
+                track='spetskurs', course_task__isnull=True
+            ).order_by('order', 'title'))
+            group_title = 'Основы C++'
+            back_url = reverse('spetskurs:basics')
+            back_label = 'Основы C++'
+        article_number = ''
     elif article.section_id:
-        siblings = list(article.section.articles.filter(track='material', is_published=True))
+        siblings = list(visible(article.section.articles).filter(track='material'))
         group_title = article.section.title
         article_number = f'{article.section.order}.{article.order}'
         back_url = reverse('textbook:home')

@@ -1,0 +1,62 @@
+{% comment %}
+Иконка задачи спецкурса. Рисуется по slug, а не хранится в модели: картинок
+шесть, они меняются реже, чем что-либо ещё на сайте, и поле под SVG в базе
+означало бы миграцию ради четырёх путей Безье.
+
+Ожидает `task` в контексте. Цвет наследуется от родителя (currentColor).
+{% endcomment %}
+{% if task.slug == 'ballistics' %}
+    <svg class="w-full h-full" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+        {# Параболическая траектория #}
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 20 Q10 3 21 8"/>
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 5l4 3-4 2"/>
+        <circle cx="3" cy="20" r="1.5" fill="currentColor" stroke="none"/>
+    </svg>
+{% elif task.slug == 'oscillations' %}
+    <svg class="w-full h-full" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+        {# Биения: амплитудно-модулированная волна и её огибающие #}
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M2 12 Q3 11 4 12 Q5 13 6 12
+                 Q7.5 8 9 12 Q10.5 16 12 12 Q13.5 8 15 12 Q16.5 16 18 12
+                 Q19 11 20 12 Q21 13 22 12"/>
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" stroke-dasharray="1.5 1.5" opacity="0.5"
+              d="M2 12 Q6 12 9 8 Q12 4 15 8 Q18 12 22 12"/>
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" stroke-dasharray="1.5 1.5" opacity="0.5"
+              d="M2 12 Q6 12 9 16 Q12 20 15 16 Q18 12 22 12"/>
+    </svg>
+{% elif task.slug == 'pendulum' %}
+    <svg class="w-full h-full" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+        <line x1="6" y1="3" x2="18" y2="3" stroke-width="2" stroke-linecap="round"/>
+        <line x1="12" y1="3" x2="7" y2="17" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="7" cy="19" r="2" stroke-width="2"/>
+        <path stroke-linecap="round" stroke-width="1.5" d="M5 12 Q12 18 19 12" fill="none" stroke-dasharray="2 2"/>
+    </svg>
+{% elif task.slug == 'gravity' %}
+    <svg class="w-full h-full" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+        <circle cx="12" cy="12" r="3" stroke-width="2"/>
+        <ellipse cx="12" cy="12" rx="9" ry="5" stroke-width="1.5" transform="rotate(-30 12 12)"/>
+        <circle cx="19" cy="9" r="1.2" fill="currentColor" stroke="none"/>
+    </svg>
+{% elif task.slug == 'lbm' %}
+    <svg class="w-full h-full" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+        {# Линии тока #}
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2 6 C6 6 7 4 11 4 S16 6 20 5"/>
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2 12 C5 10 8 14 12 12 S17 10 22 12"/>
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2 18 C6 18 7 20 11 20 S16 18 22 19"/>
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 3l2 2-2 2"/>
+    </svg>
+{% elif task.slug == 'molecular-dynamics' %}
+    <svg class="w-full h-full" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+        <circle cx="12" cy="12" r="2.5" stroke-width="2"/>
+        <circle cx="5"  cy="7"  r="1.5" stroke-width="2"/>
+        <circle cx="19" cy="7"  r="1.5" stroke-width="2"/>
+        <circle cx="12" cy="20" r="1.5" stroke-width="2"/>
+        <line x1="7"  y1="8.5"  x2="10.3" y2="10.5" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="17" y1="8.5"  x2="13.7" y2="10.5" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="12" y1="14.5" x2="12"   y2="18.5" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>
+{% else %}
+    <svg class="w-full h-full" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 19h16M4 19V5m0 14l5-6 4 3 7-8"/>
+    </svg>
+{% endif %}

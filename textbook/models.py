@@ -175,6 +175,7 @@ class Article(models.Model):
     TRACK_CHOICES = [
         ('material', 'Учебный материал'),
         ('ege', 'Теория ЕГЭ'),
+        ('spetskurs', 'Спецкурс'),
     ]
 
     track = models.CharField(
@@ -188,6 +189,12 @@ class Article(models.Model):
     ege_task = models.ForeignKey(
         EgeTask, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='articles', verbose_name="Задание ЕГЭ (для вкладки ЕГЭ)"
+    )
+    # Третий якорь трека. Ссылка строкой, а не импортом: иначе textbook и
+    # spetskurs импортировали бы друг друга по кругу.
+    course_task = models.ForeignKey(
+        'spetskurs.CourseTask', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='articles', verbose_name="Задача спецкурса (для вкладки спецкурса)"
     )
     slug = models.SlugField(max_length=120, unique=True, verbose_name="URL-идентификатор")
     title = models.CharField(max_length=200, verbose_name="Заголовок статьи")

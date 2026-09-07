@@ -415,7 +415,10 @@ html.dark :is(.article-body, .article-summary-card__body, .article-lead__text, .
   transition: color .15s ease, background .15s ease;
 }
 .code-block__copy:hover { color: var(--color-brand-600); background: var(--color-brand-50); }
-.code-block pre { margin: 0; border-radius: 0; overflow-x: auto; background: #282c34; }
+/* Цвет текста задан здесь, а не только темой highlight.js: если языка нет
+   среди загруженных модулей, hljs помечает блок no-highlight и не вешает
+   класс .hljs – тогда тёмные чернила статьи ложились на тёмный фон. */
+.code-block pre { margin: 0; border-radius: 0; overflow-x: auto; background: #282c34; color: #abb2bf; }
 .code-block pre code { font-size: 14px; line-height: 1.6; background: transparent; }
 
 html.dark .code-block__head { background: #1e293b; }

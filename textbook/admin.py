@@ -78,8 +78,8 @@ class EgeTaskAdmin(admin.ModelAdmin):
 
 @admin.register(Article)
 class ArticleAdmin(admin.ModelAdmin):
-    list_display = ('title', 'track', 'section', 'ege_task', 'order', 'is_published')
-    list_filter = ('track', 'is_published', 'section', 'ege_task')
+    list_display = ('title', 'track', 'section', 'ege_task', 'course_task', 'order', 'is_published')
+    list_filter = ('track', 'is_published', 'section', 'ege_task', 'course_task')
     list_editable = ('order', 'is_published')
     search_fields = ('title', 'slug')
     prepopulated_fields = {'slug': ('title',)}
@@ -89,8 +89,9 @@ class ArticleAdmin(admin.ModelAdmin):
             'fields': ('track', 'title', 'slug', 'description', 'order', 'is_published'),
         }),
         ('Привязка (выбирается по вкладке)', {
-            'fields': ('section', 'ege_task'),
-            'description': 'Для «Учебного материала» укажите Блок; для «Теории ЕГЭ» – Задание ЕГЭ.',
+            'fields': ('section', 'ege_task', 'course_task'),
+            'description': 'Для «Учебного материала» укажите Блок; для «Теории ЕГЭ» – Задание ЕГЭ; '
+                           'для «Спецкурса» – Задачу спецкурса (пусто = статья из «Основ C++»).',
         }),
         ('Превью', {
             'fields': ('thumbnail',),

@@ -32,6 +32,11 @@ static/spetskurs/wasm/*.js
 static/spetskurs/wasm/*.wasm
 static/spetskurs/wasm/*.html
 
+# Библиотека спецкурса – отдельный репозиторий (github.com/Kirill2517nv/GuiLibrary),
+# лежит рядом ради сборки .wasm. В дерево сайта не коммитится: у неё свои
+# сабмодули glfw/imgui/implot, и `git add .` затянул бы их целиком.
+GuiLibrary/
+
 # Node
 node_modules/
 package-lock.json

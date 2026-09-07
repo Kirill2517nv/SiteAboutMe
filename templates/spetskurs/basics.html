@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+
+{% block title %}Основы C++ – Спецкурс{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 dark:bg-slate-900 text-gray-900 dark:text-slate-100">
+    {% include 'spetskurs/_subnav.html' %}
+
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div class="mb-10">
+            <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">Основы C++</h1>
+            <p class="text-base mt-2 text-gray-600 dark:text-slate-400">
+                Не курс языка – ровно то, что нужно, чтобы прочитать
+                <code class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-slate-800 text-sm font-mono">main.cpp</code>
+                своей задачи. Читается по порядку.
+            </p>
+        </div>
+
+        {% if articles %}
+        <div class="flex flex-col gap-px">
+            {% for article in articles %}
+            <a href="{{ article.get_absolute_url }}"
+               class="group flex items-start gap-4 p-5 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 first:rounded-t-xl last:rounded-b-xl hover:border-brand-400 dark:hover:border-cyan-600/50 transition-colors">
+                <span class="mt-0.5 w-7 h-7 shrink-0 rounded-lg bg-brand-50 dark:bg-cyan-900/40 text-brand-600 dark:text-cyan-400 text-sm font-semibold flex items-center justify-center tabular-nums">
+                    {{ forloop.counter }}
+                </span>
+                <span class="min-w-0">
+                    <span class="block font-semibold text-gray-900 dark:text-white group-hover:text-brand-600 dark:group-hover:text-cyan-400 transition-colors">{{ article.title }}</span>
+                    {% if article.description %}
+                    <span class="block mt-1 text-sm text-gray-600 dark:text-slate-400">{{ article.description }}</span>
+                    {% endif %}
+                </span>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center py-24">
+            <svg class="w-16 h-16 text-gray-300 dark:text-slate-700 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+            </svg>
+            <p class="text-gray-400 dark:text-slate-500">Материалы ещё не добавлены</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

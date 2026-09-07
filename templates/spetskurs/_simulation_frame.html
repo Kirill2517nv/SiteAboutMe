@@ -1,0 +1,130 @@
+{% load static %}
+{% comment %}
+Кадр с симуляцией: панель + iframe с WASM-сборкой задачи.
+
+Отдельный файл, потому что тот же кадр встраивается в двух местах – на странице
+симуляции и (после волны 2) на странице задачи рядом с теорией.
+
+Ожидает в контексте объект `simulation` с полем `html_path`.
+{% endcomment %}
+
+<div class="sim-frame bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 overflow-hidden"
+     x-data="simulationFrame()" x-ref="frame">
+
+    <!-- Панель кадра -->
+    <div class="bg-gray-50 dark:bg-slate-900/50 px-5 py-3 border-b border-gray-200 dark:border-slate-700 flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2 min-w-0">
+            <div class="flex gap-1.5 shrink-0">
+                <div class="w-3 h-3 rounded-full bg-gray-300 dark:bg-slate-600"></div>
+                <div class="w-3 h-3 rounded-full bg-gray-300 dark:bg-slate-600"></div>
+                <div class="w-3 h-3 rounded-full bg-gray-300 dark:bg-slate-600"></div>
+            </div>
+            <span class="text-xs text-gray-500 dark:text-slate-500 font-mono ml-2 truncate">{{ simulation.title }}</span>
+        </div>
+        {% if simulation.html_path %}
+        <div class="flex items-center gap-3 shrink-0">
+            <button type="button" @click="toggleFullscreen()"
+                    class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-slate-400 hover:text-brand-600 dark:hover:text-cyan-400 transition-colors">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4"/>
+                </svg>
+                <span x-text="full ? 'Свернуть' : 'На весь экран'">На весь экран</span>
+            </button>
+            <button type="button" @click="reload()"
+                    class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-slate-400 hover:text-brand-600 dark:hover:text-cyan-400 transition-colors"
+                    title="Запустить заново">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M4 4v5h5M20 20v-5h-5M20 9A8 8 0 006.3 5.3M4 15a8 8 0 0013.7 3.7"/>
+                </svg>
+                Перезапустить
+            </button>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Сам кадр -->
+    {% if simulation.html_path %}
+    <div class="sim-frame-body bg-gray-100 dark:bg-slate-950"
+         {% if simulation.frame_ratio %}style="aspect-ratio: {{ simulation.frame_ratio }}"{% endif %}>
+        <iframe x-ref="iframe" :src="src"
+                class="w-full h-full border-0 block"
+                title="{{ simulation.title }}"
+                allow="fullscreen"></iframe>
+    </div>
+    {% else %}
+    <div class="flex flex-col items-center justify-center bg-gray-100 dark:bg-slate-950 min-h-64 py-16">
+        <svg class="w-12 h-12 text-gray-300 dark:text-slate-700 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                  d="M12 9v2m0 4h.01M5.07 19H19a2 2 0 001.75-2.97L13.75 4.04a2 2 0 00-3.5 0L3.25 16.03A2 2 0 005.07 19z"/>
+        </svg>
+        <p class="text-sm text-gray-400 dark:text-slate-500">Файл симуляции не подключён</p>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+    /* Пропорция кадра, а не фиксированная высота: симуляция сама подстраивает
+       канвас под размер iframe (gui_main_loop зовёт glfwSetWindowSize по
+       window.innerWidth/innerHeight), поэтому кадр может быть любым – лишь бы
+       пульту с параметрами хватало ширины, а графику высоты. Конкретную
+       пропорцию задаёт задача (frame_width/frame_height), здесь – запасная. */
+    .sim-frame-body { aspect-ratio: 16 / 10; min-height: 420px; }
+
+    /* В полном экране пропорция не нужна – занимаем всё, что дали. Inline-стиль
+       с aspect-ratio перебивается !important: он стоит на самом элементе.
+       max-height так же: страница-хозяин ограничивает кадр, чтобы он влез в
+       экран рядом с текстом (на лендинге – max-h-[70vh]), и в полном экране это
+       ограничение оставляло треть высоты пустым белым полем под симуляцией. */
+    .sim-frame:fullscreen { border-radius: 0; border: 0; display: flex; flex-direction: column; }
+    .sim-frame:fullscreen .sim-frame-body {
+        aspect-ratio: auto !important; flex: 1 1 auto;
+        min-height: 0; max-height: none !important;
+    }
+</style>
+
+<script>
+    function simulationFrame() {
+        return {
+            full: false,
+            src: '',
+            base: '',
+
+            init() {
+                // Тему знает только браузер (класс html.dark ставится из
+                // localStorage в base.html), поэтому адрес собираем здесь, а не
+                // в шаблоне. Оболочка симуляции красит по нему экран загрузки.
+                this.base = '{% if simulation.html_path %}{% static simulation.html_path %}{% endif %}';
+                if (!this.base) return;
+                if (!document.documentElement.classList.contains('dark')) {
+                    this.base += '?theme=light';
+                }
+                this.src = this.base;
+
+                // Из полного экрана выходят и мимо нашей кнопки – по Esc.
+                // Состояние спрашиваем у браузера, но не сравниваем узлы: Alpine
+                // оборачивает данные в Proxy, и ссылка на элемент перестаёт
+                // совпадать сама с собой (та же ловушка описана в present-mode.js).
+                document.addEventListener('fullscreenchange', () => {
+                    this.full = !!document.fullscreenElement;
+                });
+            },
+
+            toggleFullscreen() {
+                if (document.fullscreenElement) document.exitFullscreen();
+                else this.$refs.frame.requestFullscreen().catch(() => {});
+            },
+
+            // Перезапуск: кнопка Restart в самой задаче сбрасывает только то,
+            // что автор задачи не забыл сбросить, а загнать модель в тупик
+            // ученик успевает за минуту. Метка времени в адресе нужна потому,
+            // что присвоение iframe.src прежнего значения перезагрузку даёт не
+            // во всех браузерах.
+            reload() {
+                if (!this.base) return;
+                this.src = this.base + (this.base.includes('?') ? '&' : '?') + 'r=' + Date.now();
+            }
+        };
+    }
+</script>

@@ -1,0 +1,127 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ task }} – Спецкурс{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 dark:bg-slate-900 text-gray-900 dark:text-slate-100">
+    {% include 'spetskurs/_subnav.html' %}
+
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+
+        <nav class="flex items-center gap-2 text-sm text-gray-500 dark:text-slate-500 mb-8">
+            <a href="{% url 'spetskurs:task_list' %}" class="hover:text-gray-700 dark:hover:text-slate-300 transition-colors">Задачи</a>
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+            </svg>
+            <span class="text-gray-700 dark:text-slate-300">{{ task.title }}</span>
+        </nav>
+
+        <header class="mb-10">
+            <div class="flex flex-wrap items-center gap-2 mb-3">
+                {% if task.number %}
+                <span class="text-xs px-2 py-0.5 rounded-full bg-brand-50 dark:bg-cyan-900/40 border border-brand-200 dark:border-cyan-700/50 text-brand-700 dark:text-cyan-400 font-medium">
+                    Задача {{ task.number }}
+                </span>
+                {% endif %}
+                <span class="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-400">
+                    Семестр {{ task.semester }}
+                </span>
+                {% if task.code_url %}
+                <a href="{{ task.code_url }}" target="_blank" rel="noopener"
+                   class="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-400 hover:text-brand-600 dark:hover:text-cyan-400 transition-colors inline-flex items-center gap-1">
+                    <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+                    </svg>
+                    main.cpp
+                </a>
+                {% endif %}
+            </div>
+            <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">{{ task.title }}</h1>
+            {% if task.description %}
+            <p class="text-base mt-3 text-gray-600 dark:text-slate-400 leading-relaxed">{{ task.description }}</p>
+            {% endif %}
+        </header>
+
+        {% comment %}
+        Теория задачи. Статьи – обычные статьи учебника (track='spetskurs'),
+        поэтому им бесплатно достались типографика, прогресс чтения, MathJax
+        и режим показа с проектора.
+        {% endcomment %}
+        {% if articles %}
+        <section class="mb-12">
+            <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-5">Разбор задачи</h2>
+            <div class="flex flex-col gap-px">
+                {% for article in articles %}
+                <a href="{{ article.get_absolute_url }}"
+                   class="group flex items-start gap-3 p-4 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 first:rounded-t-xl last:rounded-b-xl hover:border-brand-400 dark:hover:border-cyan-600/50 transition-colors">
+                    <span class="mt-0.5 w-6 h-6 shrink-0 rounded-md bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400 text-xs font-semibold flex items-center justify-center tabular-nums">
+                        {{ forloop.counter }}
+                    </span>
+                    <span class="min-w-0">
+                        <span class="block font-semibold text-gray-900 dark:text-white group-hover:text-brand-600 dark:group-hover:text-cyan-400 transition-colors">{{ article.title }}</span>
+                        {% if article.description %}
+                        <span class="block mt-0.5 text-sm text-gray-600 dark:text-slate-400">{{ article.description }}</span>
+                        {% endif %}
+                    </span>
+                </a>
+                {% endfor %}
+            </div>
+        </section>
+        {% else %}
+        {% comment %}
+        Разбор ещё не выпущен. Статьи задачи существуют, но сняты с публикации,
+        пока не вычитаны, – и молчаливо пропущенная секция читалась бы как
+        «у задачи ничего и не будет». Сама задача при этом на курсе есть, и
+        симуляция ниже работает.
+        {% endcomment %}
+        <section class="mb-12 rounded-xl border border-dashed border-gray-300 dark:border-slate-700 p-6 text-center">
+            <h2 class="text-xl font-bold text-gray-900 dark:text-white">Разбор задачи готовится</h2>
+            <p class="text-sm mt-2 text-gray-600 dark:text-slate-400 max-w-xl mx-auto leading-relaxed">
+                Физика явления, вывод расчётной схемы, построчный разбор
+                <code class="px-1 py-0.5 rounded bg-gray-100 dark:bg-slate-800 font-mono">main.cpp</code>
+                и задания появятся здесь к началу курса.
+                {% if task.html_path %}Симуляция уже работает – она ниже.{% endif %}
+                Пока можно читать
+                <a href="{% url 'spetskurs:basics' %}" class="text-brand-600 dark:text-cyan-400 hover:underline">«Основы C++»</a>.
+            </p>
+        </section>
+        {% endif %}
+
+        {# Симуляция. Тот же партиал, что и на отдельной странице симуляции. #}
+        {% if task.html_path %}
+        <section class="mb-12">
+            <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-5">Симуляция</h2>
+            {% include 'spetskurs/_simulation_frame.html' %}
+        </section>
+        {% endif %}
+
+        <div class="mt-12 pt-8 border-t border-gray-200 dark:border-slate-800 grid grid-cols-2 gap-4">
+            {% if prev_task %}
+            <a href="{{ prev_task.get_absolute_url }}"
+               class="group flex items-center gap-3 p-4 bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 hover:border-gray-300 dark:hover:border-slate-600 transition-colors">
+                <svg class="w-5 h-5 text-gray-400 dark:text-slate-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+                </svg>
+                <span class="min-w-0">
+                    <span class="block text-xs text-gray-400 dark:text-slate-500 mb-0.5">Предыдущая</span>
+                    <span class="block text-sm font-medium text-gray-700 dark:text-slate-300 truncate">{{ prev_task.title }}</span>
+                </span>
+            </a>
+            {% else %}<div></div>{% endif %}
+
+            {% if next_task %}
+            <a href="{{ next_task.get_absolute_url }}"
+               class="group flex items-center justify-end gap-3 p-4 bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 hover:border-gray-300 dark:hover:border-slate-600 transition-colors text-right">
+                <span class="min-w-0">
+                    <span class="block text-xs text-gray-400 dark:text-slate-500 mb-0.5">Следующая</span>
+                    <span class="block text-sm font-medium text-gray-700 dark:text-slate-300 truncate">{{ next_task.title }}</span>
+                </span>
+                <svg class="w-5 h-5 text-gray-400 dark:text-slate-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                </svg>
+            </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
