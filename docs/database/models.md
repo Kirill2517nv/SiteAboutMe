@@ -554,86 +554,78 @@ classDiagram
 
 ## spetskurs — Курс численной физики
 
+Одна модель. `TheoryPage` и `TheoryBlock` удалены в 0.5.0: это была урезанная
+копия `textbook.Article` / `ArticleBlock`, из которой учебник когда-то и вырос.
+Теория спецкурса теперь живёт на моделях учебника, и ей достались типографика,
+MathJax, прогресс чтения и показ с проектора.
+
 ```mermaid
 classDiagram
-    class TheoryPage {
+    class CourseTask {
         +int id
         +str slug [unique]
         +str title
-        +str description
-        +ImageField thumbnail
-        +int semester
-        +int order
-        +bool is_published
-        +get_absolute_url() str
-    }
-
-    class TheoryBlock {
-        +int id
-        +TheoryPage theory_page [FK]
-        +str block_type
-        +str title
-        +text content
-        +str code_language
-        +ImageField image
-        +int order
-    }
-
-    class Simulation {
-        +int id
-        +str slug [unique]
-        +str title
+        +int number
         +str description
         +ImageField thumbnail
         +str html_path
+        +int frame_width
+        +int frame_height
+        +str code_url
         +int semester
         +int order
         +bool is_published
         +get_absolute_url() str
+        +frame_ratio str
     }
 
-    TheoryPage "1" -- "*" TheoryBlock
+    class Article {
+        +str track
+        +CourseTask course_task [FK, nullable]
+    }
+
+    CourseTask "1" -- "*" Article : articles
 ```
 
-### TheoryPage
+### CourseTask
 
-Страница теоретических материалов курса, сгруппированная по семестрам.
-
-| Поле | Тип | Описание |
-|------|-----|----------|
-| `slug` | SlugField(100) | URL-идентификатор, unique |
-| `title` | CharField(200) | Заголовок страницы |
-| `description` | TextField | Краткое описание, blank |
-| `thumbnail` | ImageField | Превью, `spetskurs/theory/`, nullable |
-| `semester` | PositiveSmallIntegerField | 1 или 2 |
-| `order` | PositiveIntegerField | Порядок сортировки, default=0 |
-| `is_published` | BooleanField | Опубликована, default=False |
-
-### TheoryBlock
-
-Контентный блок внутри страницы теории. Поддерживает текст, LaTeX-формулы, код с подсветкой и изображения.
-
-| Поле | Тип | Описание |
-|------|-----|----------|
-| `theory_page` | FK(TheoryPage) | Родительская страница |
-| `block_type` | CharField(20) | `text`, `formula`, `code`, `image` |
-| `title` | CharField(200) | Заголовок блока, blank |
-| `content` | TextField | Содержимое (текст, LaTeX, код), blank |
-| `code_language` | CharField(20) | `cpp`, `c`, `python`, `bash` |
-| `image` | ImageField | Изображение, `spetskurs/theory/images/`, nullable |
-| `order` | PositiveIntegerField | Порядок сортировки, default=0 |
-
-### Simulation
-
-WASM-симуляция, запускаемая в браузере. Скомпилированные файлы (`.js`, `.wasm`, `.html`) хранятся в `static/spetskurs/wasm/` и деплоятся на сервер вручную (не в git).
+Задача спецкурса — единица курса. Связывает четыре вещи, которые раньше жили
+порознь: физику (статьи учебника), исходник `main.cpp`, WASM-симуляцию и
+задания. Бывшая `Simulation`, означавшая только третий пункт.
 
 | Поле | Тип | Описание |
 |------|-----|----------|
 | `slug` | SlugField(100) | URL-идентификатор, unique |
-| `title` | CharField(200) | Название симуляции |
+| `title` | CharField(200) | Название задачи |
+| `number` | PositiveSmallIntegerField | Номер («Задача 2»), nullable — пусто, номер не выводится |
 | `description` | TextField | Описание, blank |
-| `thumbnail` | ImageField | Превью, `spetskurs/simulations/`, nullable |
-| `html_path` | CharField(300) | Путь к HTML-файлу в `static/`, например `spetskurs/wasm/pendulum.html` |
-| `semester` | PositiveSmallIntegerField | 1 или 2 |
+| `thumbnail` | ImageField | Превью, `spetskurs/tasks/`, nullable. Пусто — карточка рисует чертёж явления (`_task_cover.html`) |
+| `html_path` | CharField(300) | Путь к HTML симуляции в `static/`, например `spetskurs/wasm/Task_2.html` |
+| `frame_width` / `frame_height` | PositiveSmallIntegerField | Пропорция кадра, default 16 / 10. У каждой задачи своя: `Task_2` вертикальная (850x1200), `Task_3` — 1200x800, и общая пропорция сплющила бы половину |
+| `code_url` | URLField | Ссылка на `main.cpp` на GitHub, blank |
+| `semester` | PositiveSmallIntegerField | 1 (общие задачи) или 2 (проекты) |
 | `order` | PositiveIntegerField | Порядок сортировки, default=0 |
 | `is_published` | BooleanField | Опубликована, default=False |
+
+`frame_ratio` собирается из двух чисел, а не хранится строкой: строка из
+админки попала бы в атрибут `style` как есть.
+
+Скомпилированные `.js`, `.wasm` и `.html` лежат в `static/spetskurs/wasm/` и
+выкладываются на сервер вручную, не через git — см.
+[Выкладка симуляций](../spetskurs-deploy.md).
+
+### Статьи задачи
+
+Теория — обычные `textbook.Article` с `track='spetskurs'`. FK `course_task`
+делит их надвое:
+
+| `course_task` | Что это | Где показывается |
+|---------------|---------|------------------|
+| заполнен | Разбор конкретной задачи | Карточка задачи, `/spetskurs/task/<slug>/` |
+| пусто | «Основы C++» — язык в объёме, нужном чтобы прочитать свой `main.cpp` | `/spetskurs/basics/` |
+
+Разборы выпускаются по одной статье, когда вычитаны: пока `is_published=False`,
+все страницы задачи говорят «Разбор готовится», а симуляция работает. Порядок
+выпуска — в [Выкладке симуляций](../spetskurs-deploy.md).
+
+> Модели приложения `textbook` в этом справочнике пока не описаны.

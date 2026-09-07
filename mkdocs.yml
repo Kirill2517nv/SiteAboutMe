@@ -73,6 +73,8 @@ nav:
     - "Структура курса": textbook-structure.md
     - "Бриф: урок": textbook-lesson-brief.md
     - "Ревизия блока": textbook-block-revision.md
+  - "Спецкурс":
+    - "Выкладка симуляций": spetskurs-deploy.md
   - "Уроки":
     - "Slidev-презентации": slidev-guide.md
   - "Фронтенд":

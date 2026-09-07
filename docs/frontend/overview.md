@@ -91,7 +91,7 @@ base.html
 - **Тренажёр ЕГЭ** → `/ege/`
 - **Спецкурс** → `/spetskurs/`
 - **Игры** → `/games/`
-- **Об авторе** → `/about/`, **Выпускники** → `/alumni/`
+- **Об авторе** → `/about/`
 - **User** — dropdown: профиль, выход
 - Mobile: hamburger → Alpine `mobileMenu` toggle
 

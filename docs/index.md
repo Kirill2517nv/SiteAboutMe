@@ -26,7 +26,8 @@ graph LR
     Q -->|Celery| R[Redis]
     Q -->|WebSocket| D[Daphne]
     Q -->|Docker| S[Sandbox]
-    SP[spetskurs] -->|Simulation, TheoryBlock| W[WASM]
+    SP[spetskurs] -->|CourseTask| W[WASM]
+    SP -->|Article track=spetskurs| T[textbook]
 ```
 
 | Приложение | Описание | Моделей |
@@ -35,7 +36,7 @@ graph LR
 | **pages** | Главная, О нас — блоки контента | 1 |
 | **lessons** | Разделы, уроки, блоки контента | 3 |
 | **quizzes** | Тесты, вопросы, выполнение кода, помощь, EGE | 13 |
-| **spetskurs** | Курс численной физики: WASM-симуляции, теория | 3 |
+| **spetskurs** | Курс численной физики: задачи с симуляцией; теория – на моделях учебника | 1 |
 
 ## Быстрый старт
 
@@ -88,7 +89,7 @@ Site/
 │   ├── tasks.py        # Celery tasks
 │   ├── routing.py      # WS URL routing
 │   └── utils.py        # Docker sandbox
-├── spetskurs/          # Numerical physics course: WASM simulations
+├── spetskurs/          # Numerical physics course: tasks + WASM simulations
 ├── static/
 │   ├── css/            # Tailwind styles
 │   ├── js/             # Alpine.js, CodeMirror, WS clients
