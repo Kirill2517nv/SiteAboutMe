@@ -1,5 +1,7 @@
+from pathlib import Path
+
 from django.contrib.auth.models import User
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
 from textbook.models import Article
@@ -93,3 +95,24 @@ class UnpublishedTaskArticlesTests(TestCase):
         self.client.force_login(self.student)
         siblings = self.client.get(second.get_absolute_url()).context['sidebar_items']
         self.assertEqual([i['article'].pk for i in siblings], [second.pk])
+
+
+class SimulationWheelTest(SimpleTestCase):
+    """Колесо над кадром масштабирует график, а страница стоит.
+
+    Библиотека курса уже возвращает EM_TRUE («не выполнять действие по
+    умолчанию»), но вешает обработчик колеса на window внутри iframe, а Chrome
+    делает такие слушатели пассивными – и preventDefault() там молча
+    игнорируется. Наш слушатель отличается от него ровно `{passive: false}`,
+    поэтому выглядит дублирующим и первым просится под нож – а без него график
+    масштабируется и страница уезжает одновременно.
+    """
+
+    def test_wheel_listener_is_not_passive(self):
+        frame = Path('templates/spetskurs/_simulation_frame.html').read_text(encoding='utf-8')
+
+        self.assertIn('holdWheel()', frame, 'слушатель колеса не ставится')
+        self.assertIn("addEventListener('load', () => this.holdWheel())", frame,
+                      'слушатель не переставляется после reload(): src меняется, документ новый')
+        self.assertIn('{ passive: false }', frame,
+                      'без явного passive: false Chrome игнорирует preventDefault')
