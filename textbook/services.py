@@ -38,6 +38,14 @@ def replace_blocks(article, blocks):
         for b in article.blocks.filter(block_type='image').order_by('order')
         if b.image
     ])
+    # Разбор, открытый учителем ученикам, переживает пересев текста: сид правит
+    # формулировки, а видимость – это то, что учитель сделал на занятии, и
+    # молча закрывать разбор обратно он не просил. Ключ – заголовок: у разбора
+    # он свой в пределах статьи, а порядок блоков от правки к правке едет.
+    opened = {
+        b.title for b in article.blocks.all()
+        if b.visibility == 'students' and b.title
+    }
     article.blocks.all().delete()
     for b in blocks:
         block = ArticleBlock.objects.create(article=article, **b)
@@ -46,6 +54,9 @@ def replace_blocks(article, blocks):
             if name:
                 block.image.name = name
                 block.save(update_fields=['image'])
+        if block.visibility == 'teacher' and block.title in opened:
+            block.visibility = 'students'
+            block.save(update_fields=['visibility'])
 
 
 def sync_question_texts(quiz, specs):
@@ -180,6 +191,39 @@ def visible_articles(user=None):
         return Article.objects.all()
     return Article.objects.filter(is_published=True).filter(
         Q(section__isnull=True) | Q(section__is_published=True))
+
+
+def visible_blocks(article, user=None):
+    """Блоки статьи, которые можно показать этому человеку.
+
+    Разбор задания лежит блоком в той же статье и до занятия закрыт: сперва
+    ученик решает сам. Ось видимости у блока своя (`ArticleBlock.visibility`),
+    потому что разбор бывает и текстом, и формулой, и кодом – типом блока его
+    не выразить.
+
+    Учитель видит всё и открывает разбор кнопкой прямо со страницы. Гость не
+    видит закрытого разбора никогда, даже открытого ученикам: страница задачи
+    доступна без входа, и решение, лежащее в открытом интернете, перестаёт
+    быть заданием.
+
+    Ученик видит на месте закрытого разбора заглушку «разберём на занятии» –
+    иначе задание выглядит брошенным без ответа, и его идут искать на стороне.
+    Поэтому блок остаётся в списке, но текст разбора стирается здесь, а не
+    прячется в шаблоне: разметка большая, и одной забытой ветки в ней хватило
+    бы, чтобы отдать решение всем.
+    """
+    blocks = list(article.blocks.all())
+    if user is not None and user.is_superuser:
+        return blocks
+    if user is not None and user.is_authenticated:
+        for block in blocks:
+            if block.visibility == 'teacher':
+                # Правка живёт только в памяти этого запроса: объект не
+                # сохраняют, а заглушку шаблон рисует по `visibility`.
+                block.content = ''
+                block.image = None
+        return blocks
+    return [block for block in blocks if block.visibility == 'all']
 
 
 # Подсказка закрыта, пока ученик не упрётся в задачу сам: три неудачные

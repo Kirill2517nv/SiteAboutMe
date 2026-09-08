@@ -1,7 +1,9 @@
 """Тесты учебника. Запуск: python manage.py test textbook"""
 from datetime import timedelta
 
+from django.contrib.auth.models import User
 from django.test import SimpleTestCase, TestCase, override_settings
+from django.urls import reverse
 from django.utils import timezone
 
 from quizzes.models import Question, Quiz
@@ -703,6 +705,173 @@ class ArticlePresentModeTests(TestCase):
         """Сайдбар и хвост страницы помечены present-hide."""
         self.assertIn('article-sidebar-col hidden md:block present-hide', self.html)
         self.assertGreaterEqual(self.html.count('present-hide'), 5)
+
+
+@override_settings(STORAGES={
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+})
+class SolutionBlockTests(TestCase):
+    """Разбор задания в статье: закрыт до занятия, открывает его учитель.
+
+    Три роли и три разных ответа, поэтому и тестов столько: гостю блока нет
+    вовсе, ученик видит заглушку без решения, учитель – решение и рубильник.
+    Главное, что здесь сторожится: текст разбора не должен доехать до чужого
+    браузера даже в исходнике страницы – спрятать его стилями значит отдать.
+    """
+
+    SOLUTION = 'Ответ: 35.8 градуса'
+
+    @classmethod
+    def setUpTestData(cls):
+        from textbook.models import Article, ArticleBlock
+
+        section = Section.objects.create(title='Блок 1', slug='sol1', order=1,
+                                         is_published=True)
+        cls.article = Article.objects.create(
+            section=section, slug='sol-a1', title='Задания', order=1, is_published=True)
+        ArticleBlock.objects.create(article=cls.article, block_type='text',
+                                    title='1. Задание', content='Условие.', order=1)
+        cls.solution = ArticleBlock.objects.create(
+            article=cls.article, block_type='text', title='Разбор задания 1',
+            content=cls.SOLUTION, order=2, visibility='teacher')
+        cls.student = User.objects.create_user('pupil', password='pw')
+        cls.teacher = User.objects.create_superuser('teacher', password='pw')
+
+    def _html(self, user=None):
+        if user:
+            self.client.force_login(user)
+        else:
+            self.client.logout()
+        return self.client.get(self.article.get_absolute_url()).content.decode()
+
+    def _toggle_url(self):
+        return reverse('textbook:block_visibility_toggle', args=[self.solution.pk])
+
+    def test_guest_gets_no_block_at_all(self):
+        html = self._html()
+        self.assertNotIn(self.SOLUTION, html)
+        self.assertNotIn('article-solution', html)
+
+    def test_student_sees_placeholder_without_the_answer(self):
+        html = self._html(self.student)
+        self.assertIn('article-solution', html)
+        self.assertIn('Разбор откроем на занятии', html)
+        self.assertNotIn(self.SOLUTION, html)
+
+    def test_panel_folds_away(self):
+        """Разбор занимает экран, поэтому панель сворачивается – нативным
+        <details>, чтобы работало и без JS, и на проекторе."""
+        html = self._html(self.teacher)
+        self.assertIn('<details class="article-solution', html)
+        self.assertIn('<summary class="article-solution__head"', html)
+        # Свёрнута при открытии страницы: разбор не должен попадаться на глаза
+        # раньше, чем задание решено, – ни ученику, ни учителю у доски.
+        self.assertNotIn('article-solution" open', html)
+
+    def test_teacher_sees_the_answer_and_the_switch(self):
+        html = self._html(self.teacher)
+        self.assertIn(self.SOLUTION, html)
+        self.assertIn(self._toggle_url(), html)
+        self.assertIn('видно только вам', html)
+
+    def test_only_teacher_may_open_it(self):
+        self.client.force_login(self.student)
+        self.assertEqual(self.client.post(self._toggle_url()).status_code, 403)
+        self.solution.refresh_from_db()
+        self.assertEqual(self.solution.visibility, 'teacher')
+
+    def test_opened_reaches_students_but_never_guests(self):
+        self.client.force_login(self.teacher)
+        self.client.post(self._toggle_url())
+        self.solution.refresh_from_db()
+        self.assertEqual(self.solution.visibility, 'students')
+
+        self.assertIn(self.SOLUTION, self._html(self.student))
+        self.assertNotIn(self.SOLUTION, self._html(), 'решение утекло гостю')
+
+    def test_switch_closes_it_back(self):
+        self.client.force_login(self.teacher)
+        self.client.post(self._toggle_url())
+        self.client.post(self._toggle_url())
+        self.solution.refresh_from_db()
+        self.assertEqual(self.solution.visibility, 'teacher')
+
+    def test_ordinary_block_has_nothing_to_open(self):
+        """У блока «всем» нет закрытого состояния – рубильник не должен его выдумывать."""
+        plain = self.article.blocks.get(order=1)
+        self.client.force_login(self.teacher)
+        url = reverse('textbook:block_visibility_toggle', args=[plain.pk])
+        self.assertEqual(self.client.post(url).status_code, 404)
+
+    def test_reseeding_the_text_keeps_it_open(self):
+        """Сид правит формулировки; открытый разбор он закрывать не должен.
+
+        replace_blocks сносит блоки и создаёт заново – без переноса видимости
+        очередная правка опечатки тихо забрала бы у класса разобранный ответ.
+        """
+        from textbook.services import replace_blocks
+
+        self.solution.visibility = 'students'
+        self.solution.save(update_fields=['visibility'])
+
+        replace_blocks(self.article, [
+            dict(block_type='text', title='1. Задание', content='Условие.', order=1),
+            dict(block_type='text', title='Разбор задания 1', order=2,
+                 content=self.SOLUTION + ' (поправили опечатку)', visibility='teacher'),
+        ])
+        self.assertEqual(self.article.blocks.get(order=2).visibility, 'students')
+
+
+@override_settings(STORAGES={
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+})
+class ArticleLeadTests(TestCase):
+    """Первый текстовый блок рисуется вводкой – кроме статьи-списка заданий.
+
+    Синяя карточка вводки означает «это предисловие ко всему, что ниже».
+    В статье с заданиями предисловия нет, она открывается сразу пунктом «1. …»,
+    и первый пункт в этой карточке читался бы как введение к остальным семи.
+    Правило держится на заголовке блока, поэтому и сторожим его заголовком:
+    условие в шаблоне легко «упростить» обратно, а увидеть это можно только
+    открыв статью заданий глазами.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from textbook.models import Article, ArticleBlock
+
+        section = Section.objects.create(title='Блок 1', slug='lead1', order=1,
+                                         is_published=True)
+        cls.lesson = Article.objects.create(
+            section=section, slug='lead-a1', title='Урок', order=1, is_published=True)
+        ArticleBlock.objects.create(article=cls.lesson, block_type='text',
+                                    title='С чего всё пошло', content='Текст.', order=1)
+
+        cls.tasks = Article.objects.create(
+            section=section, slug='lead-a2', title='Задания', order=2, is_published=True)
+        for i, title in enumerate(['1. Попасть в мишень', '2. Максимум дальности'], start=1):
+            ArticleBlock.objects.create(article=cls.tasks, block_type='text',
+                                        title=title, content='Текст.', order=i)
+
+    def _html(self, article):
+        return self.client.get(article.get_absolute_url()).content.decode()
+
+    def test_ordinary_article_keeps_the_lead(self):
+        html = self._html(self.lesson)
+        self.assertIn('article-lead', html)
+        self.assertIn('С чего всё пошло', html)
+
+    def test_task_list_opens_without_the_lead(self):
+        html = self._html(self.tasks)
+        self.assertNotIn('article-lead', html)
+
+    def test_task_list_keeps_its_heading(self):
+        """Без карточки заголовок обязан вернуться в обычный h2 – иначе
+        первый пункт остался бы вовсе без названия."""
+        self.assertIn('<h2 class="article-block-title">1. Попасть в мишень</h2>',
+                      self._html(self.tasks))
 
 
 class ProjectorFontScaleTest(SimpleTestCase):

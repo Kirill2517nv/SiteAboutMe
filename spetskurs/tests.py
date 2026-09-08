@@ -1,6 +1,9 @@
+from io import StringIO
 from pathlib import Path
 
 from django.contrib.auth.models import User
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
@@ -116,3 +119,45 @@ class SimulationWheelTest(SimpleTestCase):
                       'слушатель не переставляется после reload(): src меняется, документ новый')
         self.assertIn('{ passive: false }', frame,
                       'без явного passive: false Chrome игнорирует preventDefault')
+
+
+class PublishSpetskursCommandTests(TestCase):
+    """`publish_spetskurs` – единственный способ выпустить разбор мимо админки.
+
+    seed-команда всегда создаёт черновик, поэтому без выпуска задача навсегда
+    остаётся с «разбор готовится». Сторожим две вещи: выпуск доходит до базы, а
+    опечатка в слаге падает, а не отчитывается «готово» с нулём обновлённых
+    строк.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.task = CourseTask.objects.create(
+            slug='ballistics', title='Движение под углом к горизонту', number=1,
+        )
+        cls.first, cls.second = (Article.objects.create(
+            slug=slug, title=title, track='spetskurs',
+            course_task=cls.task, order=order, is_published=False,
+        ) for order, (slug, title) in enumerate(
+            [('ballistics-1', 'Физика'), ('ballistics-2', 'Шаг по времени')], start=1
+        ))
+
+    def test_named_article_published_alone(self):
+        call_command('publish_spetskurs', 'ballistics', 'ballistics-1', stdout=StringIO())
+
+        self.first.refresh_from_db()
+        self.second.refresh_from_db()
+        self.assertTrue(self.first.is_published)
+        self.assertFalse(self.second.is_published, 'выпущено больше, чем названо')
+
+    def test_whole_task_published_without_slugs(self):
+        call_command('publish_spetskurs', 'ballistics', stdout=StringIO())
+
+        self.assertEqual(Article.objects.filter(is_published=True).count(), 2)
+
+    def test_typo_raises(self):
+        for args in (('ballistics', 'ballistics-9'), ('ballistiks',)):
+            with self.assertRaises(CommandError):
+                call_command('publish_spetskurs', *args, stdout=StringIO())
+
+        self.assertFalse(Article.objects.filter(is_published=True).exists())

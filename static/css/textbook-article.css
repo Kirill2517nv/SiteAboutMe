@@ -226,6 +226,46 @@ html.dark :is(.article-body, .article-lead__text) a:hover { color: var(--color-d
 .article-summary-card__body p:last-child { margin-bottom: 0; }
 .article-summary-card__body strong { color: var(--color-text-heading); font-weight: 600; }
 
+/* ---- Разбор задания: закрыт до занятия, открывает учитель ----
+   Родня .article-outlook-panel, но янтарная: янтарь во всём проекте означает
+   «видно учителю» (панель ответа в тренажёре ЕГЭ), и разбор читается тем же
+   цветом, что и ответ к задаче. Цвета заданы явно, а не токенами: токены
+   статьи – это фирменный синий, а здесь нужен ровно чужой, предупреждающий
+   оттенок. */
+.article-solution {
+  border: 1.5px solid #fde68a;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin: 0 0 18px;
+}
+/* Шапка панели – это <summary>: клик по ней сворачивает разбор. Свою стрелку
+   рисуем сами, потому что ::marker в Safari не поддаётся ни размеру, ни цвету. */
+.article-solution__head {
+  background: #fffbeb; padding: 14px 24px; cursor: pointer; list-style: none;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.article-solution__head::-webkit-details-marker { display: none; }
+.article-solution__head::after {
+  content: "▾"; margin-left: auto; color: #b45309;
+  transition: transform .15s;
+}
+.article-solution:not([open]) .article-solution__head::after { transform: rotate(-90deg); }
+.article-solution__head span { font-size: 14px; font-weight: 700; color: #92400e; }
+.article-solution__state { font-size: 12px; font-weight: 600; color: #b45309; }
+.article-solution__actions { margin-top: 16px; }
+.article-solution__toggle {
+  font-size: 12px; font-weight: 600; cursor: pointer;
+  padding: 6px 12px; border-radius: var(--radius-md);
+  background: #f59e0b; color: #fff; border: none;
+}
+.article-solution__toggle:hover { background: #d97706; }
+.article-solution__body { padding: 18px 24px; background: var(--color-surface); }
+/* Заглушка ученику – та же рамка без содержимого: задание не выглядит
+   брошенным без ответа, и разбор не идут искать на стороне. */
+.article-solution--locked .article-solution__body {
+  font-size: var(--fs-p); color: var(--color-text-muted);
+}
+
 /* ---- «Что нас ждёт в этом блоке»: панель с шапкой-вывеской (стиль 5a) ---- */
 .article-outlook-panel {
   border: 1.5px solid var(--color-brand-100);
@@ -289,6 +329,12 @@ html.dark .article-column {
   --color-brand-100: #1e3a8a;
   --color-purple-bg: #2e1065;
 }
+/* Янтарь панели разбора в тёмной теме: тот же смысл, приглушённый фон. */
+html.dark .article-solution { border-color: #78350f; }
+html.dark .article-solution__head { background: #451a03; }
+html.dark .article-solution__head span { color: #fcd34d; }
+html.dark .article-solution__state { color: #fbbf24; }
+
 /* Шапка таблицы должна отличаться от фона страницы, а он в тёмной теме тоже --color-bg. */
 html.dark :is(.article-body, .article-summary-card__body, .article-lead__text, .article-outlook-panel__body) th { background: #1e293b; }
 

@@ -278,6 +278,21 @@ class ArticleBlock(models.Model):
     )
     order = models.PositiveIntegerField(default=0, verbose_name="Порядок")
 
+    # Разбор задания живёт в той же статье, что и само задание, и до занятия
+    # его видит только учитель. Это отдельная ось, а не тип блока: разбор
+    # бывает формулой, кодом и текстом, и типом его не выразить.
+    VISIBILITY_CHOICES = [
+        ('all',      'Всем'),
+        ('teacher',  'Только учителю'),
+        ('students', 'Открыт ученикам'),
+    ]
+    visibility = models.CharField(
+        max_length=10, choices=VISIBILITY_CHOICES, default='all',
+        verbose_name="Кому виден",
+        help_text="teacher – скрыт до разбора; students – учитель открыл его "
+                  "авторизованным. Гостю не виден ни в том, ни в другом случае"
+    )
+
     class Meta:
         ordering = ['order']
         verbose_name = "Блок статьи"
@@ -285,6 +300,11 @@ class ArticleBlock(models.Model):
 
     def __str__(self):
         return f"{self.article.title} – {self.get_block_type_display()} (#{self.order})"
+
+    @property
+    def is_solution(self):
+        """Блок-разбор: не «всем». Оформляется рамкой и несёт кнопку учителя."""
+        return self.visibility != 'all'
 
 
 class ArticleQuiz(models.Model):

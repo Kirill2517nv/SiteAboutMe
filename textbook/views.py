@@ -1,7 +1,9 @@
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth.models import User
+from django.core.exceptions import PermissionDenied
 from django.db.models import Count, F, Prefetch, Q, Sum
-from django.shortcuts import get_object_or_404, render
+from django.http import Http404
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
@@ -9,7 +11,7 @@ from django.views.decorators.http import require_POST
 from accounts.models import StudentGroup
 from quizzes.models import Question, Quiz, UserAnswer, UserResult
 
-from .models import Article, ArticleProgress, ArticleQuiz, Section
+from .models import Article, ArticleBlock, ArticleProgress, ArticleQuiz, Section
 from .services import (
     attempted_quiz_ids,
     correct_answers_count,
@@ -20,6 +22,7 @@ from .services import (
     section_is_closed,
     section_quiz_stats,
     visible_articles,
+    visible_blocks,
     visible_group_ids,
 )
 
@@ -179,7 +182,7 @@ def article_detail_view(request, slug):
         ).prefetch_related('blocks', 'self_check_quizzes__quiz'),
         slug=slug,
     )
-    blocks = article.blocks.all()
+    blocks = visible_blocks(article, request.user)
 
     # Микротест ничего не блокирует — он лишь показывает ученику, как он ответил:
     # зелёный (все верно), жёлтый (половина и больше), красный (меньше половины).
@@ -511,3 +514,29 @@ def mark_article_read_view(request, slug):
 
     from django.http import JsonResponse
     return JsonResponse({'status': progress.status})
+
+
+@login_required
+@require_POST
+def block_visibility_toggle_view(request, pk):
+    """Учитель открывает разбор ученикам и закрывает обратно, не заходя в админку.
+
+    То же поле `ArticleBlock.visibility`, что и в админке, но рубильник нужен
+    посреди занятия: разобрали задание у доски – открыли разбор, и он появился
+    у всех, кто вошёл. Ходить ради этого в /admin/ – десяток кликов, которых на
+    уроке нет. Прецедент тот же, что у набора задач в классе
+    (`quizzes.views_practice.classroom_toggle_view`).
+
+    Блоки со `visibility='all'` рубильник не трогает: это обычный текст статьи,
+    у него нет состояния «закрыт», и открывать его нечего.
+    """
+    if not request.user.is_superuser:
+        raise PermissionDenied('Разбор открывает учитель')
+
+    block = get_object_or_404(ArticleBlock, pk=pk)
+    if not block.is_solution:
+        raise Http404('У этого блока нет закрытого состояния')
+
+    block.visibility = 'students' if block.visibility == 'teacher' else 'teacher'
+    block.save(update_fields=['visibility'])
+    return redirect(block.article.get_absolute_url())

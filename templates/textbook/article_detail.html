@@ -30,10 +30,7 @@
                     <a href="{{ item.article.get_absolute_url }}"
                        class="flex items-center gap-2 px-2.5 py-2 rounded-lg text-sm transition-colors
                               {% if item.article.id == article.id %}bg-brand-50 dark:bg-slate-800 text-brand-700 dark:text-cyan-400 font-semibold{% else %}text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-800{% endif %}">
-                        {% comment %}
-                        Цвет галочки – результат микротеста урока, тот же, что у бейджа
-                        «Проверь себя». Если тест не решался, красим по статусу чтения.
-                        {% endcomment %}
+                        {# Цвет галочки – результат микротеста; без попытки красим по статусу чтения (_lesson_check_color) #}
                         {% if item.quiz_state == 'green' %}
                         <svg class="w-[18px] h-[18px] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="#16a34a" stroke-width="2" title="Все ответы верны"><circle cx="12" cy="12" r="9"></circle><path stroke-linecap="round" stroke-linejoin="round" d="M8.5 12.5l2.5 2.5 4.5-5"></path></svg>
                         {% elif item.quiz_state == 'yellow' %}
@@ -148,13 +145,43 @@
             <div class="space-y-8 pswp-gallery md:pl-2">
                 {% for block in blocks %}
                 <article data-slide>
-                    {% comment %}
-                    Три текстовых блока повторяются почти в каждом уроке и рисуются
-                    по-особому: вводка (первый блок), «Коротко» и «Что нас ждёт в
-                    этом блоке». У них свой заголовок внутри карточки, поэтому общий
-                    h2 для них не выводим.
-                    {% endcomment %}
-                    {% if block.block_type == 'text' and forloop.first %}
+                    {% if block.is_solution %}
+                    {# Разбор задания: янтарь = «видно учителю». Решение стёрто во view – services.visible_blocks #}
+                    {# Панель свёрнута по умолчанию: разбор занимает экран и не должен попадаться на глаза раньше, чем задание решено #}
+                    <details class="article-solution{% if block.visibility == 'teacher' and not user.is_superuser %} article-solution--locked{% endif %}">
+                        <summary class="article-solution__head">
+                            <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="#b45309" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                            </svg>
+                            <span>{{ block.title|default:"Разбор" }}</span>
+                            {% if user.is_superuser %}
+                            <span class="article-solution__state">{% if block.visibility == 'teacher' %}видно только вам{% else %}открыт ученикам{% endif %}</span>
+                            {% endif %}
+                        </summary>
+                        <div class="article-solution__body">
+                            {% if block.visibility == 'teacher' and not user.is_superuser %}
+                            Разбор откроем на занятии.
+                            {% elif block.block_type == 'formula' %}
+                            <div class="text-center">\[ {{ block.content }} \]</div>
+                            {% elif block.block_type == 'code' %}
+                            <pre><code class="language-{{ block.code_language }}">{{ block.content }}</code></pre>
+                            {% else %}
+                            {{ block.content|markdownify }}
+                            {% endif %}
+                            {% if user.is_superuser %}
+                            {# Кнопка живёт в теле, а не в шапке: клик по шапке сворачивает панель, и submit ловил бы тот же клик. На проектор её не выносим #}
+                            <form method="post" action="{% url 'textbook:block_visibility_toggle' block.pk %}" class="present-hide article-solution__actions">
+                                {% csrf_token %}
+                                <button type="submit" class="article-solution__toggle">{% if block.visibility == 'teacher' %}Открыть ученикам{% else %}Скрыть от учеников{% endif %}</button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </details>
+
+                    {% else %}
+                    {# Вводка, «Коротко» и «Что нас ждёт» несут заголовок внутри карточки – общий h2 им не выводим #}
+                    {# Статья-список заданий («1. …») вводки не имеет: см. ArticleLeadTests #}
+                    {% if block.block_type == 'text' and forloop.first and block.title|slice:":3" != "1. " %}
                     {# вводка – свой заголовок в шапке карточки, рядом с медальоном-номером #}
                     {% elif block.title and block.block_type != 'widget' and block.title != 'Коротко' and block.title != 'Что нас ждёт в этом блоке' %}
                     <h2 class="article-block-title">{{ block.title }}</h2>
@@ -186,7 +213,7 @@
                         </div>
                     </div>
 
-                    {% elif block.block_type == 'text' and forloop.first %}
+                    {% elif block.block_type == 'text' and forloop.first and block.title|slice:":3" != "1. " %}
                     <div class="article-lead">
                         {% if block.title %}
                         <div class="article-lead__head">
@@ -249,6 +276,7 @@
                         <noscript>Для работы интерактивного виджета включите JavaScript.</noscript>
                     </div>
                     {% endif %}
+                    {% endif %}{# /is_solution #}
                 </article>
                 {% endfor %}
             </div>
@@ -256,11 +284,7 @@
             <!-- Маркер конца статьи для трекинга «прочитано» -->
             <div id="article-end" class="h-px"></div>
 
-            {% comment %}
-            У статей ЕГЭ вместо самопроверки – переход в тренировку по этому
-            заданию. Фиксированного набора задач у теории ЕГЭ нет: банк
-            пополняется, и практикум из него собирается каждый раз заново.
-            {% endcomment %}
+            {# У статей ЕГЭ вместо самопроверки – переход в тренировку: банк пополняется, набор собирается заново #}
             {% if article.track == 'ege' and article.ege_task %}
             <section class="mt-16 pt-8 border-t border-gray-200 dark:border-slate-800 md:pl-2 present-hide">
                 <div class="rounded-2xl bg-brand-50 dark:bg-slate-800 border border-brand-100 dark:border-slate-700 p-6">
@@ -353,8 +377,7 @@
 {% block extra_js %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
-{% comment %} cmake нет в сборке highlight.min.js: без этого модуля hljs молча
-     помечает блок no-highlight, и тёмный текст ложится на тёмный фон. {% endcomment %}
+{# cmake нет в сборке highlight.min.js: без модуля hljs красит тёмным по тёмному #}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/cmake.min.js"></script>
 <script>
     window.MathJax = {
