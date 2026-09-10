@@ -11,6 +11,14 @@
 // аргументом – JSON вида {"<widget_key>": <widget_config>, …}, собранный
 // seed-командой, то есть ровно то, что окажется в базе.
 //
+// Ключ можно уточнить суффиксом после «#» («fano-code#minimal»): до решётки –
+// data-widget, после – только имя в отчёте. Так один виджет проверяется на
+// двух конфигах сразу, например полный и урезанный.
+//
+// Для каждого смонтированного виджета печатается строка «text <имя> <всё, что
+// он написал>»: по ней тест проверяет не только что виджет нарисовал что-то,
+// но и что урезанный вид не нарисовал лишнего.
+//
 // DOM здесь заглушечный: виджеты строят разметку через createElement /
 // appendChild / addEventListener, и этого набора им хватает. Настоящий браузер
 // заменять не пытаемся – проверяем, что фабрика доработала до конца и что-то
@@ -71,34 +79,61 @@ if (!windowStub.TextbookWidgets) {
     process.exit(1);
 }
 
+// Весь текст, который виджет написал: заглушечный элемент хранит его в
+// textContent и innerHTML, детей обходим сами.
+function collectText(node) {
+    const own = [node.textContent, node.innerHTML].filter(Boolean).join(' ');
+    return [own].concat((node.children || []).map(collectText))
+        .filter(Boolean).join(' ');
+}
+
+// Первый <svg> виджета и заданные ему размеры. По ним тест проверяет, что
+// картинка живёт в rem: показ с проектора масштабирует страницу корневым
+// кеглем, и SVG в пикселях остался бы на стене прежним.
+function findSvg(node) {
+    if (node.tagName === 'svg') return node;
+    for (const kid of node.children || []) {
+        const found = findSvg(kid);
+        if (found) return found;
+    }
+    return null;
+}
+
 const configs = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 let fails = 0;
 
-Object.keys(configs).forEach(function (key) {
+Object.keys(configs).forEach(function (name) {
     const el = makeElement('div');
-    el.dataset.widget = key;
+    el.dataset.widget = name.split('#')[0];
     el.dataset.title = 'Проверка';
-    el.dataset.config = JSON.stringify(configs[key]);
+    el.dataset.config = JSON.stringify(configs[name]);
 
     errors.length = 0;
     windowStub.TextbookWidgets.init({ querySelectorAll() { return [el]; } });
 
     if (errors.length) {
         fails++;
-        console.log('FAIL ' + key + ': ' + errors.join(' | '));
+        console.log('FAIL ' + name + ': ' + errors.join(' | '));
         return;
     }
     if (el.dataset.mounted !== '1') {
         fails++;
-        console.log('FAIL ' + key + ': не смонтировался');
+        console.log('FAIL ' + name + ': не смонтировался');
         return;
     }
     if (!el.children.length) {
         fails++;
-        console.log('FAIL ' + key + ': ничего не нарисовал');
+        console.log('FAIL ' + name + ': ничего не нарисовал');
         return;
     }
-    console.log('ok   ' + key + ' смонтировался');
+    console.log('ok   ' + name + ' смонтировался');
+    console.log('text ' + name + ' ' + collectText(el).replace(/\s+/g, ' '));
+
+    const svg = findSvg(el);
+    if (svg) {
+        console.log('svg  ' + name + ' ' +
+            (svg.style.width || '-') + ' ' + (svg.style.height || '-'));
+    }
 });
 
 console.log(fails ? '\nПРОВАЛОВ: ' + fails : '\nвсё смонтировалось');

@@ -3006,6 +3006,7 @@
         const MAX_TAPE = 24;      // длина ленты битов
         const MAX_VARIANTS = 6;   // сколько прочтений показываем
         const GUARD = 200000;     // предохранитель от экспоненциального перебора
+        const REM = 16;           // базовый кегль: в нём же считает ProjectorFontScaleTest
         const SVG_NS = 'http://www.w3.org/2000/svg';
         const LETTERS = ['А', 'Б', 'В', 'Г', 'Д', 'Е', 'Ж', 'З'];
 
@@ -3101,6 +3102,11 @@
         const presets = (Array.isArray(config.presets) && config.presets.length
             ? config.presets
             : DEFAULT_PRESETS).slice(0, 6);
+
+        // Урезанный вид: только таблица кодов и дерево. Нужен разбору задания 4
+        // ЕГЭ, где буквы заданы условием, а лента, пресеты и вердикт – уже
+        // другая задача: там подбирают коды, а не разбирают чужое сообщение.
+        const minimal = config.minimal === true;
 
         let rows = normalizeRows(config.codes);
         if (!rows.length) rows = normalizeRows(presets[0].codes);
@@ -3288,6 +3294,18 @@
                 viewBox: '0 0 ' + width + ' ' + height,
                 class: 'mx-auto block'
             });
+            // Показ с проектора масштабирует страницу корневым кеглем
+            // (present-mode.js ставит documentElement.style.fontSize), поэтому
+            // дерево, заданное только пикселями, оставалось на стене прежним
+            // рядом с выросшим текстом. Те же размеры в rem растут вместе с
+            // ним; viewBox не трогаем – он безразмерный, и все внутренние
+            // координаты пересчитываются сами.
+            //
+            // Так можно именно здесь: размеры этого SVG никто не меряет.
+            // В pixel-grid и growth-curves рядом живёт getBoundingClientRect,
+            // и там такая же правка развалила бы попадание мышью по картинке.
+            svg.style.width = (width / REM) + 'rem';
+            svg.style.height = (height / REM) + 'rem';
 
             // рёбра и подписи 0/1
             (function edges(node) {
@@ -3382,7 +3400,7 @@
         const presetRow = document.createElement('div');
         presetRow.className = 'flex flex-wrap items-center gap-2 justify-center mb-4';
         const presetBtns = [];
-        presets.forEach(function (p, index) {
+        if (!minimal) presets.forEach(function (p, index) {
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.textContent = p.title || ('Пример ' + (index + 1));
@@ -3398,7 +3416,11 @@
         });
 
         const grid = document.createElement('div');
-        grid.className = 'grid gap-3 md:grid-cols-2';
+        // Треть таблице, две трети дереву. Пополам дерево не влезало: в нём
+        // столбец на каждый лист (STEP = 78), а таблица – узкий столбик из
+        // чипа, поля и подписи, и половина карточки уходила в пустоту, пока
+        // дерево рядом ездило под полосой прокрутки.
+        grid.className = 'grid gap-3 md:grid-cols-3';
 
         const tableCard = document.createElement('div');
         tableCard.className = CARD;
@@ -3418,7 +3440,7 @@
         verdictCard.className = 'pt-3 border-t md:pt-0 md:border-t-0 md:border-l md:pl-4 border-gray-200 dark:border-slate-600';
 
         const treeCard = document.createElement('div');
-        treeCard.className = CARD;
+        treeCard.className = CARD + ' md:col-span-2';
         const treeCap = document.createElement('div');
         treeCap.className = 'text-xs text-gray-500 dark:text-slate-400 mb-1 text-center';
         treeCap.textContent = 'Кодовое дерево: шаг влево — 0, шаг вправо — 1. ' +
@@ -3470,9 +3492,9 @@
         decodeGrid.appendChild(verdictCard);
         decodeCard.appendChild(decodeGrid);
 
-        body.appendChild(presetRow);
+        if (!minimal) body.appendChild(presetRow);
         body.appendChild(grid);
-        body.appendChild(decodeCard);
+        if (!minimal) body.appendChild(decodeCard);
 
         // ── таблица кодов ────────────────────────────────────────
         const rowEls = [];
@@ -3511,7 +3533,10 @@
                 line.appendChild(input);
                 line.appendChild(len);
 
-                if (rows.length > 2) {
+                // В урезанном виде состав букв задан условием задачи: ни
+                // добавлять, ни убирать строки нельзя, иначе разбор рядом
+                // начнёт говорить о другой таблице.
+                if (!minimal && rows.length > 2) {
                     const del = document.createElement('button');
                     del.type = 'button';
                     del.className = 'ml-auto px-2 text-gray-400 hover:text-red-500 dark:text-slate-500';
@@ -3530,7 +3555,7 @@
                 tableBody.appendChild(line);
             });
 
-            if (rows.length < MAX_ROWS) {
+            if (!minimal && rows.length < MAX_ROWS) {
                 const add = document.createElement('button');
                 add.type = 'button';
                 add.className = CHIP;
@@ -3763,9 +3788,12 @@
                 btn.className = index === activePreset ? CHIP_ON : CHIP;
             });
 
+            renderTree(treeHost);
+            // Всё остальное живёт в снятых карточках: в урезанном виде их
+            // некуда рисовать, а info для дерева уже посчитан.
+            if (minimal) return;
             tapeInput.value = tape;
             renderVerdict(info);
-            renderTree(treeHost);
             renderEncodeButtons();
             renderDecode(info);
         }

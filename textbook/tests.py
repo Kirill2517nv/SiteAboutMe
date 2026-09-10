@@ -1117,8 +1117,23 @@ class WidgetMountTests(SimpleTestCase):
             self.skipTest('node не установлен')
 
         from textbook.management.commands import seed_ege_theory_2 as ege2
+        from textbook.management.commands import seed_ege_theory_4 as ege4
 
         configs = {
+            # Разбор задания 4 ставит fano-code в урезанном виде: только
+            # таблица кодов и дерево. Рядом – он же полный, иначе гейт
+            # `minimal`, снёсший разметку всегда, прошёл бы незамеченным.
+            'fano-code#minimal': {
+                'minimal': True,
+                'codes': (
+                    [list(pair) for pair in ege4.KNOWN]
+                    + [[sym, ''] for sym in ege4.UNKNOWN]
+                ),
+            },
+            'fano-code#full': {
+                'codes': [['А', '0'], ['Б', '10'], ['В', '110'], ['Г', '111']],
+                'message': '0110100111',
+            },
             'truth-steps': {
                 'vars': list(ege2.VARS),
                 'sets': [[s[v] for v in ege2.VARS] for s in ege2._zero_sets()],
@@ -1143,3 +1158,37 @@ class WidgetMountTests(SimpleTestCase):
                 capture_output=True, text=True, encoding='utf-8', errors='replace',
             )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+        drawn = {
+            line.split(' ', 2)[1]: line.split(' ', 2)[2]
+            for line in result.stdout.splitlines() if line.startswith('text ')
+        }
+
+        # Урезанный вид оставляет ровно две карточки. Гейты `minimal` в
+        # textbook-widgets.js выглядят лишними («виджет же и так работает») и
+        # первыми просятся под нож – без них в разборе задания 4 снова
+        # появятся лента чужого сообщения, пресеты с готовым ответом и
+        # кнопка, которой в условии букв не прибавить.
+        for keep in ('Таблица кодов', 'Кодовое дерево'):
+            self.assertIn(keep, drawn['fano-code#minimal'],
+                          f'урезанный fano-code потерял «{keep}»')
+        for gone in ('Лента битов', 'Собрать ленту', 'Условие Фано',
+                     '+ добавить символ', 'Префиксный код'):
+            self.assertNotIn(gone, drawn['fano-code#minimal'],
+                             f'урезанный fano-code рисует «{gone}»')
+            self.assertIn(gone, drawn['fano-code#full'],
+                          f'полный fano-code потерял «{gone}» – гейт снёс разметку всем')
+
+        # Кодовое дерево обязано расти вместе с текстом при показе с проектора.
+        # present-mode.js масштабирует страницу корневым кеглем, поэтому SVG,
+        # заданный пикселями, на стене оставался прежним рядом с выросшим
+        # текстом. Размеры в rem выглядят придиркой – px тут «работает» –
+        # и первыми просятся обратно.
+        sizes = {
+            line.split()[1]: line.split()[2:]
+            for line in result.stdout.splitlines() if line.startswith('svg ')
+        }
+        for name in ('fano-code#minimal', 'fano-code#full'):
+            for value in sizes[name]:
+                self.assertTrue(value.endswith('rem'),
+                                f'дерево {name} задано в «{value}» – на проекторе не вырастет')

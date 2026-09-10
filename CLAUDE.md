@@ -200,6 +200,16 @@ sudo tail -f /var/log/nginx/error.log      # Nginx errors
 redis-cli ping                             # Should return PONG
 ```
 
+## Воркер на DeepSeek
+
+Рутина отдаётся дешёвому воркеру: `bash scripts/deepseek-worker.sh "задание"`
+(длинное задание – через `-f файл`). Инструкция, что делегировать, как ставить
+задание и чем проверять результат – **`DEEPSEEK_WORKER.md`**. Коротко: контент
+статей по готовому скелету, фикстуры и единообразные правки – можно;
+архитектуру, миграции и всё, где ошибка не видна в `git diff`, – нельзя.
+Bash воркеру не выдан, поэтому `manage.py`, тесты и `npm run tw:build`
+запускает оркестратор.
+
 ## Skills (Slash-команды)
 
 Проект включает систему агентов и slash-команд в `.claude/skills/`. Полная документация: `.claude/skills/README.md`
