@@ -975,7 +975,7 @@ class Command(BaseCommand):
             dict(block_type='code', code_language='cpp',
                  title='Функция main', content=(
                 'int main() {\n'
-                '    if (!init_gui_library("Задача 3. Математический маятник",\n'
+                '    if (!init_gui_library("Задача 2. Математический маятник",\n'
                 '                          widhtWindow, hieghtWindow)) return -1;\n'
                 '\n'
                 '    add_bool_param("Пауза", false);\n'
