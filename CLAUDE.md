@@ -91,6 +91,20 @@ eg x\)` as raw text while the same question on a variant page rendered fine. The
 - `tasks.py` – Celery tasks for sandboxed Python code execution
 - `routing.py` – WebSocket URL routing (`/ws/quiz/<quiz_id>/`)
 - Frontend: `static/js/quiz-async.js` – WebSocket client with connection status tracking, UI updates without page reload
+- **Песочница – `quizzes/utils.py`, `CONTAINER_SECURITY` + `RUNNER_PY`.** Внутри
+  контейнера ученику позволено всё, что позволено Python: создать файл,
+  прочитать его, запустить процесс. Запрещать `execve` бессмысленно –
+  `solution.py` и так исполняется целиком, а запрет сломал бы запуск самого
+  раннера. Ограничен потолок: сети нет (`network_disabled`, поэтому не работает
+  и pip), контейнер работает от `nobody` (запись только в свой каталог, не в
+  `/etc` и не в корень), `cap_drop: ALL` + `no-new-privileges` (CapEff=0),
+  `pids_limit` против форк-бомбы (без него `os.fork()` в цикле выедает таблицу
+  процессов **сервера**, а не контейнера), память и CPU – через cgroup,
+  `RLIMIT_FSIZE` в раннере – против цикла записи, забивающего диск. Рабочий
+  каталог – `/tmp`, а не `/app`: каталог из `working_dir` принадлежит root с
+  правами 755, и от `nobody` в нём не создать файл – задачи «запиши результат в
+  файл» перестали бы решаться. Проверено пробой изнутри работающей песочницы;
+  `SandboxLimitsTests` сторожит, чтобы строки не потерялись при правке
 
 ## Key Configuration
 

@@ -874,6 +874,53 @@ class ArticleLeadTests(TestCase):
                       self._html(self.tasks))
 
 
+@override_settings(STORAGES={
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+})
+class ArticleBlockTitleTests(TestCase):
+    """Бэктики в заголовке блока – это код, а не бэктики.
+
+    Уроки про методы и операторы состоят из кода прямо в заголовке
+    («`find()` и `rfind()`: где именно стоит кусок»), и выводились они сырым
+    текстом вместе с бэктиками – в блоках 6, 8 и 13 сразу. Полный markdown
+    тут не подходит и первым просится вместо узкого фильтра: заголовок
+    «1. Попасть в мишень» он превращает в нумерованный список внутри h2.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from textbook.models import Article, ArticleBlock
+
+        section = Section.objects.create(title='Блок', slug='ttl', order=1,
+                                         is_published=True)
+        cls.article = Article.objects.create(
+            section=section, slug='ttl-a1', title='Урок', order=1, is_published=True)
+        ArticleBlock.objects.create(article=cls.article, block_type='text',
+                                    title='Вводка', content='Текст.', order=1)
+        for order, title in enumerate(
+            ['`find()` и `rfind()`: где именно', 'Побитовое И (`&`)', '2. Без кода'],
+            start=2,
+        ):
+            ArticleBlock.objects.create(article=cls.article, block_type='text',
+                                        title=title, content='Текст.', order=order)
+
+    def _html(self):
+        return self.client.get(self.article.get_absolute_url()).content.decode()
+
+    def test_backticks_become_code(self):
+        html = self._html()
+        self.assertIn('<code>find()</code> и <code>rfind()</code>: где именно', html)
+        self.assertNotIn('`find()`', html)
+
+    def test_special_characters_stay_escaped(self):
+        """Заголовок `&` – это амперсанд, а не начало HTML-мнемоники."""
+        self.assertIn('Побитовое И (<code>&amp;</code>)', self._html())
+
+    def test_numbered_title_is_not_turned_into_a_list(self):
+        self.assertIn('<h2 class="article-block-title">2. Без кода</h2>', self._html())
+
+
 class ProjectorFontScaleTest(SimpleTestCase):
     """Шкала кегля статьи должна целиком иметь rem-двойник для проектора.
 
@@ -1092,6 +1139,54 @@ class LinkRenderTests(SimpleTestCase):
         self.assertIn('href="https://fipi.ru/"', html)
 
 
+class ArticleFigureTests(SimpleTestCase):
+    """Рисунок статьи – SVG в data-URI, и он обязан пережить санитайзер.
+
+    Так сделаны все пять картинок разбора задания 15 (`_figure()` в
+    seed_ege_theory_15.py). Схема держится на трёх мелочах в
+    `textbook_tags.markdownify`, каждая из которых выглядит необязательной:
+    `img` в списке тегов, `data` в списке протоколов и `div` с атрибутом
+    `class`. Уберут любую – все картинки учебника молча исчезнут со страниц,
+    ни одна другая проверка этого не заметит.
+    """
+
+    # Настоящий однопиксельный SVG, а не строка-заглушка: если протокол data
+    # выкинут из белого списка, атрибут src срежется целиком.
+    SVG_SRC = (
+        'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjA'
+        'wMC9zdmciIHZpZXdCb3g9IjAgMCAxIDEiLz4='
+    )
+
+    def _figure(self):
+        return (
+            f'<div class="ege-fig">'
+            f'<img class="ege-fig__img ege-fig__img--light" alt="схема" src="{self.SVG_SRC}">'
+            f'<img class="ege-fig__img ege-fig__img--dark" alt="схема" src="{self.SVG_SRC}">'
+            f'</div>'
+        )
+
+    def test_data_uri_svg_survives_sanitizer(self):
+        html = str(markdownify(f'Текст.\n\n{self._figure()}\n\nЕщё текст.'))
+        self.assertIn(self.SVG_SRC, html)
+        self.assertEqual(html.count('<img'), 2)
+
+    def test_theme_classes_survive(self):
+        """По этим классам CSS прячет картинку чужой темы."""
+        html = str(markdownify(self._figure()))
+        self.assertIn('ege-fig__img--light', html)
+        self.assertIn('ege-fig__img--dark', html)
+
+    def test_figure_is_not_wrapped_into_paragraph(self):
+        """Обёртка должна остаться блочной.
+
+        Попади она внутрь <p>, markdown применил бы к ней nl2br и разрезал
+        картинку тегами <br> – ровно это происходит с inline-SVG.
+        """
+        html = str(markdownify(f'Текст.\n\n{self._figure()}'))
+        self.assertNotIn('<p><div', html)
+        self.assertNotIn('<br', html)
+
+
 class WidgetMountTests(SimpleTestCase):
     """Виджеты статьи должны смонтироваться на своих же конфигах.
 
@@ -1118,6 +1213,8 @@ class WidgetMountTests(SimpleTestCase):
 
         from textbook.management.commands import seed_ege_theory_2 as ege2
         from textbook.management.commands import seed_ege_theory_4 as ege4
+        from textbook.management.commands import seed_ege_theory_12 as ege12
+        from textbook.management.commands import seed_textbook_block8 as block8
 
         configs = {
             # Разбор задания 4 ставит fano-code в урезанном виде: только
@@ -1139,6 +1236,38 @@ class WidgetMountTests(SimpleTestCase):
                 'sets': [[s[v] for v in ege2.VARS] for s in ege2._zero_sets()],
                 'fragF': 0,
                 'steps': ege2._steps(),
+            },
+            # turing-machine – единственный здесь виджет, который сам
+            # считает: остальные рисуют готовую трассу из seed-команды.
+            # Поэтому его не только монтируем, но и догоняем до остановки
+            # («До конца») – иначе ошибка в шаге ленты дожила бы до статьи,
+            # где ответ разбора и ответ виджета разошлись бы молча.
+            'turing-machine': {
+                'alphabet': ege12.ALPHABET,
+                'states': ege12.STATES,
+                'program': {st: list(row) for st, row in ege12.PROGRAM.items()},
+                'tape': format(ege12.NUMBER, 'b'),
+                'head': 'right',
+                'state': 'q0',
+                '__click': ['До конца'],
+            },
+            # regex-lab – второй виджет, который считает сам: движок у него
+            # браузерный, а диалект шаблонов питоновский, и расходятся они
+            # ровно там, где в учебнике весь текст – на кириллице (`\w` и
+            # `\b` в JS букву «к» буквой не считают). Поэтому сверяем не
+            # разметку, а строку re.findall, которую виджет печатает, с
+            # настоящим питоновским re на том же шаблоне и том же тексте.
+            'regex-lab': {
+                'pattern': block8.REGEX_LAB_PATTERN,
+                'text': block8.REGEX_LAB_TEXT,
+            },
+            'regex-lab#date': {
+                'pattern': block8.REGEX_DATE_PATTERN,
+                'text': block8.REGEX_DATE_TEXT,
+            },
+            'regex-lab#groups': {
+                'pattern': block8.REGEX_GROUP_PATTERN,
+                'text': block8.REGEX_GROUP_TEXT,
             },
             'truth-table': {
                 'vars': list(ege2.VARS),
@@ -1178,6 +1307,38 @@ class WidgetMountTests(SimpleTestCase):
                              f'урезанный fano-code рисует «{gone}»')
             self.assertIn(gone, drawn['fano-code#full'],
                           f'полный fano-code потерял «{gone}» – гейт снёс разметку всем')
+
+        # Лента после прогона обязана дать тот же ответ, что и разбор: число
+        # в статье считает Python (_check в seed-команде), а на странице его
+        # же показывает JS – две реализации одной машины Тьюринга.
+        word, steps = ege12._run()
+        self.assertIn(f'На ленте: {word}', drawn['turing-machine'])
+        self.assertIn(f'В десятичной системе: {ege12.ANSWER}', drawn['turing-machine'])
+        self.assertIn(f'шаг {steps} ', drawn['turing-machine'])
+
+        # Виджет регулярных выражений обязан находить то же, что находит
+        # python: строку re.findall он печатает сам, а здесь она считается
+        # настоящим re. Разойтись они могут молча – на кириллице, на группах
+        # (одна группа даёт строки, две – кортежи) и на пустых совпадениях.
+        import re as _re
+
+        def findall_line(pattern, text):
+            found = _re.findall(pattern, text)
+            shown = ', '.join(
+                '(' + ', '.join(repr(g) for g in item) + ')' if isinstance(item, tuple)
+                else repr(item)
+                for item in found[:12]
+            )
+            tail = ', …' if len(found) > 12 else ''
+            return f"re.findall(r'{pattern}', s) → [{shown}{tail}]"
+
+        for name, pattern, text in (
+            ('regex-lab', block8.REGEX_LAB_PATTERN, block8.REGEX_LAB_TEXT),
+            ('regex-lab#date', block8.REGEX_DATE_PATTERN, block8.REGEX_DATE_TEXT),
+            ('regex-lab#groups', block8.REGEX_GROUP_PATTERN, block8.REGEX_GROUP_TEXT),
+        ):
+            self.assertIn(findall_line(pattern, text), drawn[name],
+                          f'{name}: браузерный движок нашёл не то, что python')
 
         # Кодовое дерево обязано расти вместе с текстом при показе с проектора.
         # present-mode.js масштабирует страницу корневым кеглем, поэтому SVG,

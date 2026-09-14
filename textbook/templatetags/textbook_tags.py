@@ -5,6 +5,7 @@ import re
 import bleach
 import markdown as md
 from django import template
+from django.utils.html import escape
 from django.utils.safestring import mark_safe
 
 register = template.Library()
@@ -97,6 +98,24 @@ def markdownify_inline(value):
     if html.startswith('<p>') and html.endswith('</p>') and '<p>' not in html[3:-4]:
         html = html[3:-4]
     return mark_safe(html)
+
+
+_TITLE_CODE = re.compile(r'`([^`]+)`')
+
+
+@register.filter(name='title_code')
+def title_code(value):
+    """Заголовок блока: бэктики → <code>, и ничего больше.
+
+    Уроки про методы и операторы состоят из кода прямо в заголовке –
+    «`find()` и `rfind()`: где именно стоит кусок», – а сырым текстом бэктики
+    так и выводились бэктиками. Полный markdown сюда не годится: заголовок
+    «1. Попасть в мишень» он превращает в нумерованный список, а строку,
+    начатую с решётки, – в ещё один заголовок внутри h2. Нужен ровно один
+    случай, поэтому разбирается только он.
+    """
+    escaped = escape(value or '')
+    return mark_safe(_TITLE_CODE.sub(r'<code>\1</code>', escaped))
 
 
 @register.filter(name='widget_config_json')

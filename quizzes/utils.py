@@ -12,12 +12,51 @@ CONTAINER_TIMEOUT = 150       # секунд на выполнение
 CONTAINER_MEM_LIMIT = "128m" # RAM контейнера
 CONTAINER_CPU_QUOTA = 100000  # 100% одного ядра (из 100000)
 OUTPUT_MAX_BYTES = 65536     # 64 KB макс. вывода
+CONTAINER_PIDS_LIMIT = 64    # процессов на контейнер
+CONTAINER_FSIZE_LIMIT = 64 * 1024 * 1024  # 64 МБ на файл, который пишет решение
+
+# Рабочий каталог – /tmp, а не собственный /app: контейнер работает от nobody,
+# а каталог, созданный ключом working_dir, принадлежит root с правами 755 –
+# создать в нём файл ученик бы не смог, и задачи «запиши результат в файл»
+# перестали бы решаться. /tmp в образе имеет права 1777.
+CONTAINER_WORKDIR = "/tmp"
+
+# Ограничения контейнера с кодом ученика. Внутри песочницы ученик может всё,
+# что может Python: создавать файлы, читать их, запускать процессы. Это не
+# дыра – solution.py и так исполняется целиком, запрет execve только сломал бы
+# запуск самого раннера. Значение имеет не запрет действий, а их потолок:
+#   network_disabled – ни выкачать, ни выложить наружу (pip тоже не работает);
+#   user=nobody      – запись только в свой каталог, не в /etc и не в корень;
+#   cap_drop ALL     – ни одной capability, даже из дефолтного набора Docker;
+#   no-new-privileges – setuid-бинарь не поднимет права обратно;
+#   pids_limit       – потолок для форк-бомбы: без него `while True: os.fork()`
+#                      выедает таблицу процессов всего сервера, а не контейнера.
+# Память и CPU ограничены cgroup, контейнер живёт один прогон и сносится в
+# finally. Проверено пробой изнутри: CapEff=0, NoNewPrivs=1, запись в /etc и /
+# отбита, сеть недоступна, форков не больше лимита.
+CONTAINER_SECURITY = {
+    "network_disabled": True,
+    "user": "nobody",
+    "pids_limit": CONTAINER_PIDS_LIMIT,
+    "cap_drop": ["ALL"],
+    "security_opt": ["no-new-privileges"],
+}
 
 # Runner-скрипт: замер CPU-времени и памяти решения через resource.getrusage
 # Запускает solution.py через exec() в том же процессе,
 # замеряет память через ru_maxrss (нулевой overhead, в отличие от tracemalloc)
 RUNNER_PY = '''\
-import sys, os, io, time, resource
+import sys, os, io, time, resource, signal
+
+# 0) Потолок на размер файла, который пишет решение. Диск контейнера – это
+# верхний слой образа на диске сервера, и цикл записи без условия выхода
+# (обычная ошибка в задачах «запиши результат в файл») забивал бы его целиком.
+# SIGXFSZ глушим: иначе процесс умирает молча, а так ученик видит привычную
+# ошибку «File too large». Потолок на ОДИН файл – тысяча файлов по чуть-чуть
+# его обойдёт; суммарную квоту даёт только storage_opt на xfs/pquota, которого
+# на обычном overlay2 нет.
+signal.signal(signal.SIGXFSZ, signal.SIG_IGN)
+resource.setrlimit(resource.RLIMIT_FSIZE, (__FSIZE__, __FSIZE__))
 
 # Сохраняем настоящие потоки — маркеры пойдут сюда
 _real_stdout = sys.stdout
@@ -61,6 +100,10 @@ print(f"__MEMORY_KB__:{mem_kb}", file=_real_stderr)
 
 sys.exit(exit_code)
 '''
+
+# Раннер – обычная строка, а не f-строка: внутри него свои фигурные скобки
+# (f"__CPU_TIME_MS__:{cpu_ms:.3f}"), поэтому число подставляем заменой.
+RUNNER_PY = RUNNER_PY.replace('__FSIZE__', str(CONTAINER_FSIZE_LIMIT))
 
 
 def truncate_output(raw_bytes, max_bytes=OUTPUT_MAX_BYTES):
@@ -138,8 +181,8 @@ def run_code_in_docker(code, input_data, extra_files=None):
             detach=True,
             mem_limit=CONTAINER_MEM_LIMIT,
             cpu_quota=CONTAINER_CPU_QUOTA,
-            network_disabled=True,
-            working_dir="/app"
+            working_dir=CONTAINER_WORKDIR,
+            **CONTAINER_SECURITY,
         )
 
         # 2. Подготавливаем файлы: solution.py + runner.py + stdin + extra.
@@ -156,7 +199,7 @@ def run_code_in_docker(code, input_data, extra_files=None):
 
         # 3. Закидываем архив с файлами
         tar_stream = create_tar_from_files(files_to_send)
-        container.put_archive("/app/", tar_stream)
+        container.put_archive(f"{CONTAINER_WORKDIR}/", tar_stream)
 
         # 4. Запускаем через runner.py (demux=True для раздельного stdout/stderr)
         command = 'sh -c "python runner.py < stdin.txt"'

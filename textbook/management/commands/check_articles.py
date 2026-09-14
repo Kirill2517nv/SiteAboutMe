@@ -97,7 +97,12 @@ class Command(BaseCommand):
                             f'{formula[:60]}'))
 
                 html = str(markdownify(block.content))
-                for match in MATH.finditer(html):
+                # Код выкидываем и из HTML, а не только из исходника: доллар
+                # внутри <code> – это не формула. В уроке про регулярные
+                # выражения `$` (конец строки) встречается по делу, и без
+                # этой чистки проверка склеивала два таких знака в «формулу»
+                # с тегами внутри.
+                for match in MATH.finditer(re.sub(r'<code>.*?</code>', '', html, flags=re.S)):
                     formula = match.group(1) or match.group(2)
                     if '<' in formula:
                         problems += 1

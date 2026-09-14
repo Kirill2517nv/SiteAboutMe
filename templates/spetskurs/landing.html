@@ -8,6 +8,36 @@
     {% include 'spetskurs/_subnav.html' %}
 
     {% comment %}
+    Объявление о расписании. Страница синяя, поэтому плашка янтарная – это
+    единственный такой блок на лендинге, и он читается раньше заголовка.
+    Правится руками раз в год вместе с набором: модель ради трёх строк,
+    которые меняются реже, чем вёрстка вокруг них, не нужна.
+    {% endcomment %}
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+        <div class="rounded-xl border-2 border-amber-400 dark:border-amber-500/60 bg-amber-50 dark:bg-amber-900/20 p-5 sm:p-6">
+            <div class="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
+                <div class="flex items-center gap-3 shrink-0">
+                    <span class="relative flex h-3 w-3">
+                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
+                    </span>
+                    <span class="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">Расписание</span>
+                </div>
+
+                <div class="min-w-0">
+                    <p class="text-xl font-bold text-gray-900 dark:text-white">
+                        Первое занятие – 24 сентября
+                    </p>
+                    <p class="mt-1 text-base text-amber-900 dark:text-amber-200/90">
+                        Дальше каждый <span class="font-semibold">четверг в 20:30</span>,
+                        аудитория <span class="font-semibold">1.18</span>.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% comment %}
     Шапка: текст во всю ширину, симуляция под ним. В две колонки не ставится –
     у окна симуляции своя панель параметров фиксированной ширины (её рисует
     ImGui), и в половине экрана график уезжает за край кадра.

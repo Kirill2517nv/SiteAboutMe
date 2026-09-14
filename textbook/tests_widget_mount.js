@@ -40,12 +40,13 @@ function makeElement(tag) {
         spellcheck: false,
         textContent: '',
         innerHTML: '',
+        handlers: {},
         appendChild(child) { this.children.push(child); return child; },
         removeChild(child) {
             this.children = this.children.filter(function (c) { return c !== child; });
             return child;
         },
-        addEventListener() {},
+        addEventListener(type, fn) { (this.handlers[type] = this.handlers[type] || []).push(fn); },
         removeEventListener() {},
         setAttribute() {},
         getAttribute() { return null; },
@@ -102,8 +103,25 @@ function findSvg(node) {
 const configs = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 let fails = 0;
 
+// Кнопка по её подписи. Нужна ключу `__click`: у виджета, который не просто
+// рисует конфиг, а сам считает (turing-machine гоняет ленту), проверять надо
+// не разметку после монтирования, а то, чем кончился прогон.
+function findButton(node, label) {
+    if (node.tagName === 'button' && node.textContent === label) return node;
+    for (const kid of node.children || []) {
+        const found = findButton(kid, label);
+        if (found) return found;
+    }
+    return null;
+}
+
 Object.keys(configs).forEach(function (name) {
     const el = makeElement('div');
+    // `__click` – список подписей кнопок, которые надо нажать после
+    // монтирования. Ключ служебный и до виджета не доходит: снимаем его из
+    // конфига раньше, чем он уйдёт в data-config.
+    const clicks = configs[name].__click || [];
+    delete configs[name].__click;
     el.dataset.widget = name.split('#')[0];
     el.dataset.title = 'Проверка';
     el.dataset.config = JSON.stringify(configs[name]);
@@ -126,6 +144,22 @@ Object.keys(configs).forEach(function (name) {
         console.log('FAIL ' + name + ': ничего не нарисовал');
         return;
     }
+    let clickFailed = false;
+    clicks.forEach(function (label) {
+        const btn = findButton(el, label);
+        if (!btn) {
+            clickFailed = true;
+            console.log('FAIL ' + name + ': нет кнопки «' + label + '»');
+            return;
+        }
+        (btn.handlers.click || []).forEach(function (fn) { fn.call(btn, {}); });
+    });
+    if (clickFailed || errors.length) {
+        fails++;
+        if (errors.length) console.log('FAIL ' + name + ': ' + errors.join(' | '));
+        return;
+    }
+
     console.log('ok   ' + name + ' смонтировался');
     console.log('text ' + name + ' ' + collectText(el).replace(/\s+/g, ' '));
 

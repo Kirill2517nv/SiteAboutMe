@@ -153,6 +153,14 @@ html.dark :is(.article-body, .article-lead__text) a:hover { color: var(--color-d
 :is(.article-body, .article-summary-card__body, .article-lead__text, .article-outlook-panel__body) td:first-child { color: var(--color-text-heading); font-weight: 600; }
 :is(.article-body, .article-summary-card__body, .article-lead__text, .article-outlook-panel__body) :is(th, td):last-child { border-right: none; }
 :is(.article-body, .article-summary-card__body, .article-lead__text, .article-outlook-panel__body) tr:last-child td { border-bottom: none; }
+/* Строка-ответ в таблице перебора: <mark> в любой её ячейке красит строку целиком.
+   Markdown-таблица не даёт повесить класс на <tr>, а :has() в файле уже используется
+   (см. pre:has(> code.language-figure)). Тон — тот же --color-brand-50, которым
+   подсвечиваются угаданные строки виджетов: смысл один, и в тёмной теме он уже
+   переопределён. Сам <mark> обесцвечиваем: браузерный жёлтый внутри залитой строки
+   читается как вторая подсветка поверх первой. */
+:is(.article-body, .article-summary-card__body, .article-lead__text, .article-outlook-panel__body) tr:has(mark) td { background: var(--color-brand-50); }
+:is(.article-body, .article-summary-card__body, .article-lead__text, .article-outlook-panel__body) mark { background: none; color: inherit; }
 
 .article-body figure { text-align: center; margin: 0 0 26px; }
 /* Preflight Tailwind делает img блочным, поэтому text-align его не центрирует. */
@@ -466,6 +474,27 @@ html.dark :is(.article-body, .article-summary-card__body, .article-lead__text, .
    класс .hljs – тогда тёмные чернила статьи ложились на тёмный фон. */
 .code-block pre { margin: 0; border-radius: 0; overflow-x: auto; background: #282c34; color: #abb2bf; }
 .code-block pre code { font-size: 14px; line-height: 1.6; background: transparent; }
+
+/* ============================================================
+   РИСУНОК В ТЕКСТЕ СТАТЬИ — .ege-fig (числовая прямая, координатная плоскость)
+   Картинку рисует seed-команда: SVG уезжает в data-URI внутрь <img>, а это
+   отдельный документ — ни currentColor, ни переменные темы в него не доходят.
+   Поэтому картинок две, светлая и тёмная, и лишнюю прячем здесь. Дешевле, чем
+   держать один «нейтральный» набор цветов: подписи, читаемые на обоих фонах
+   сразу, выходят блёклыми и там, и там.
+   ============================================================ */
+.ege-fig { margin: 0 0 18px; }
+.ege-fig__img { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+.ege-fig__img--dark { display: none; }
+html.dark .ege-fig__img--light { display: none; }
+html.dark .ege-fig__img--dark { display: block; }
+/* На телефоне колонка уже картинки, и вписанная в неё числовая прямая ужимается
+   вдвое — подписи становятся нечитаемы. Поэтому там рисунок показывается в
+   натуральную величину, а прокручивается вбок, как таблица. */
+@media (max-width: 560px) {
+  .ege-fig { overflow-x: auto; }
+  .ege-fig__img { max-width: none; }
+}
 
 html.dark .code-block__head { background: #1e293b; }
 html.dark .code-block__lang, html.dark .code-block__copy { color: #94a3b8; }

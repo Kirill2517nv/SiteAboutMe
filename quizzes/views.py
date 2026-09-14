@@ -117,6 +117,14 @@ def question_file_download_view(request, file_id):
     """
     qf = get_object_or_404(QuestionFile, id=file_id)
 
+    # Запись в базе может пережить сам файл: seed-команды учебника сносят
+    # старый файл из хранилища, чтобы имя не разъехалось с условием, а Django
+    # при удалении вопроса файл с диска не убирает. Без этой проверки такая
+    # запись давала не 404, а FileNotFoundError – пятисотку в логе вместо
+    # понятного «нет такого файла».
+    if not qf.file.storage.exists(qf.file.name):
+        raise Http404('Файл задачи не найден в хранилище')
+
     filename = qf.get_filename()
     content_type, _ = mimetypes.guess_type(filename)
 

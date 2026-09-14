@@ -17,7 +17,7 @@ from textbook.templatetags.textbook_tags import plural
 
 from .models import (
     CodeSubmission, ExamTaskProgress, PracticeItem, PracticeSession, Question,
-    Quiz, QuizAssignment, UserResult,
+    QuestionFile, Quiz, QuizAssignment, UserResult,
 )
 from .tasks import update_practice_item_from_submission as update_practice_from_submission
 from .management.commands.load_ege import _create_test_cases, fix_empty_sub_markers
@@ -2727,3 +2727,48 @@ class ClassTableGroupFilterTests(TestCase):
         response = self.client.get('/ege/class/?group=; DROP TABLE')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['current_group'], 'all')
+
+
+class SandboxLimitsTests(SimpleTestCase):
+    """Ограничения контейнера с кодом ученика.
+
+    Проверено пробой изнутри контейнера: без cap_drop у кода дефолтный набор
+    capabilities и uid 0, без pids_limit форк-бомба выедает таблицу процессов
+    сервера, а не контейнера, без RLIMIT_FSIZE цикл записи забивает диск. Всё
+    это – одна строка в словаре, которую легко потерять при правке, а увидеть
+    пропажу можно только заглянув внутрь работающей песочницы.
+    """
+
+    def test_container_limits_are_set(self):
+        from .utils import (
+            CONTAINER_SECURITY, CONTAINER_WORKDIR, CONTAINER_FSIZE_LIMIT, RUNNER_PY,
+        )
+
+        self.assertTrue(CONTAINER_SECURITY['network_disabled'])
+        self.assertEqual(CONTAINER_SECURITY['user'], 'nobody')
+        self.assertEqual(CONTAINER_SECURITY['cap_drop'], ['ALL'])
+        self.assertIn('no-new-privileges', CONTAINER_SECURITY['security_opt'])
+        self.assertGreater(CONTAINER_SECURITY['pids_limit'], 0)
+        # Каталог, созданный ключом working_dir, принадлежит root с правами
+        # 755 – nobody не создаст в нём файл. Права 1777 есть только у /tmp.
+        self.assertEqual(CONTAINER_WORKDIR, '/tmp')
+        # Число в раннер подставляется заменой – шаблон не должен остаться.
+        self.assertIn(f'({CONTAINER_FSIZE_LIMIT}, {CONTAINER_FSIZE_LIMIT})', RUNNER_PY)
+
+
+class QuestionFileDownloadTests(TestCase):
+    """Запись о файле переживает сам файл: seed-команды учебника сносят старый
+    файл из хранилища, чтобы имя не разъехалось с условием задачи."""
+
+    def test_missing_file_gives_404(self):
+        user = get_user_model().objects.create_user('file-student', 'f@example.com', 'pwd')
+        self.client.force_login(user)
+        quiz = Quiz.objects.create(title='Практикум', slug='praktikum-files')
+        question = Question.objects.create(
+            quiz=quiz, question_type='code', text='Прочитайте файл',
+        )
+        ghost = QuestionFile.objects.create(
+            question=question, file='question_files/ghost-never-written.txt',
+        )
+        response = self.client.get(f'/quizzes/question-file/{ghost.id}/download/')
+        self.assertEqual(response.status_code, 404)

@@ -5968,7 +5968,10 @@
         }
 
         const codePane = document.createElement('div');
-        codePane.className = 'rounded-lg py-2 overflow-x-auto';
+        // Листинг занимает три четверти ширины: строка кода с комментарием
+        // длиннее любого «i = 0», а колонке переменных шире имени с числом
+        // быть незачем.
+        codePane.className = 'rounded-lg py-2 overflow-x-auto md:col-span-3';
         codePane.style.background = HLJS_BG;
         codePane.style.color = HLJS_FG;
         const codeRows = code.map(function (line, i) {
@@ -6008,18 +6011,58 @@
             return { name: name, row: row, val: val };
         });
 
-        const noteLine = document.createElement('div');
-        noteLine.className = 'mt-1 text-sm text-gray-600 dark:text-slate-300 min-h-[2.75rem] flex flex-wrap items-center gap-2';
-        statePane.appendChild(noteLine);
+        // Пояснение к шагу — под обеими колонками во всю ширину: это фраза
+        // предложением, а в четверти экрана она вставала в четыре строки.
+        //
+        // Высота подписи одна на всех шагах: пояснения всех шагов лежат в
+        // ОДНОЙ ячейке грида (grid-area 1/1) друг поверх друга, поэтому блок
+        // высотой с самое длинное из них, а неактивные скрыты через
+        // visibility — место занимают, но не видны. Иначе однострочное
+        // пояснение сменялось трёхстрочным, и кнопки уезжали вниз ровно в тот
+        // момент, когда по «Шаг вперёд» кликают подряд.
+        const noteStack = document.createElement('div');
+        noteStack.className = 'mt-3 grid text-sm text-gray-600 dark:text-slate-300 min-h-[1.5rem]';
+
+        // Индекс 0 — состояние «ещё не запущена», дальше шаги по порядку.
+        const noteNodes = [null].concat(steps).map(function (step) {
+            const node = document.createElement('div');
+            node.className = 'flex flex-wrap items-center gap-2';
+            node.style.gridArea = '1 / 1';
+            if (step && step.check !== undefined && step.check !== null) {
+                const badge = document.createElement('span');
+                badge.className = 'px-2 py-0.5 rounded-md text-xs font-semibold border ' +
+                    (step.check
+                        ? 'bg-emerald-50 border-emerald-300 text-emerald-700 dark:bg-emerald-900/30 dark:border-emerald-700 dark:text-emerald-300'
+                        : 'bg-gray-100 border-gray-300 text-gray-500 dark:bg-slate-700 dark:border-slate-500 dark:text-slate-300');
+                badge.textContent = step.check ? 'условие истинно' : 'условие ложно';
+                node.appendChild(badge);
+            }
+            const text = document.createElement('span');
+            text.textContent = step
+                ? (step.note || '')
+                : 'Программа ещё не запущена – нажмите «Шаг вперёд».';
+            node.appendChild(text);
+            noteStack.appendChild(node);
+            return node;
+        });
 
         const columns = document.createElement('div');
-        columns.className = 'grid gap-4 md:grid-cols-2';
+        columns.className = 'grid gap-4 md:grid-cols-4';
         columns.appendChild(codePane);
         columns.appendChild(statePane);
 
         // ---- вывод программы ----
         const outputPane = document.createElement('div');
-        outputPane.className = 'mt-4 rounded-lg px-4 py-3 font-mono text-sm whitespace-pre-wrap break-words bg-slate-900 text-slate-100 min-h-[3.5rem] max-h-40 overflow-y-auto';
+        outputPane.className = 'mt-4 rounded-lg px-4 py-3 font-mono text-sm whitespace-pre-wrap break-words bg-slate-900 text-slate-100 overflow-y-auto';
+        // Высота окна вывода тоже постоянна — сразу под весь будущий вывод,
+        // иначе первый же print растягивал панель и сдвигал кнопки. Строка
+        // text-sm — 1.25rem, padding py-3 — 1.5rem; потолок 10rem, дальше
+        // прокрутка. В rem, а не в px: показ с проектора масштабирует
+        // страницу корневым кеглем.
+        const outLines = steps.reduce(function (n, s) {
+            return n + (s.out === undefined || s.out === null ? 0 : String(s.out).split('\n').length);
+        }, 0);
+        outputPane.style.height = Math.min(Math.max(outLines, 2) * 1.25 + 1.5, 10) + 'rem';
         const outputTitle = document.createElement('div');
         outputTitle.className = 'mt-4 mb-1 text-xs uppercase tracking-wide text-gray-400 dark:text-slate-500';
         outputTitle.textContent = 'Вывод программы';
@@ -6063,6 +6106,7 @@
         controls.appendChild(counter);
 
         body.appendChild(columns);
+        body.appendChild(noteStack);
         if (hasOutput) {
             body.appendChild(outputTitle);
             body.appendChild(outputPane);
@@ -6097,21 +6141,9 @@
                         : 'bg-white border-gray-200 dark:bg-slate-800 dark:border-slate-600');
             });
 
-            noteLine.innerHTML = '';
-            if (step && step.check !== undefined && step.check !== null) {
-                const badge = document.createElement('span');
-                badge.className = 'px-2 py-0.5 rounded-md text-xs font-semibold border ' +
-                    (step.check
-                        ? 'bg-emerald-50 border-emerald-300 text-emerald-700 dark:bg-emerald-900/30 dark:border-emerald-700 dark:text-emerald-300'
-                        : 'bg-gray-100 border-gray-300 text-gray-500 dark:bg-slate-700 dark:border-slate-500 dark:text-slate-300');
-                badge.textContent = step.check ? 'условие истинно' : 'условие ложно';
-                noteLine.appendChild(badge);
-            }
-            const noteText = document.createElement('span');
-            noteText.textContent = step
-                ? (step.note || '')
-                : 'Программа ещё не запущена — нажмите «Шаг вперёд».';
-            noteLine.appendChild(noteText);
+            noteNodes.forEach(function (node, i) {
+                node.style.visibility = i === pos + 1 ? '' : 'hidden';
+            });
 
             if (hasOutput) {
                 const printed = [];
@@ -8393,7 +8425,7 @@
 
             noteLine.textContent = step
                 ? (step.note || '')
-                : 'Программа ещё не запущена — нажмите «Шаг вперёд».';
+                : 'Программа ещё не запущена – нажмите «Шаг вперёд».';
 
             if (hasOutput) {
                 const printed = [];
@@ -12012,6 +12044,956 @@
         prevBtn.addEventListener('click', function () { if (idx > 0) { idx--; render(); } });
         nextBtn.addEventListener('click', function () { if (idx < steps.length - 1) { idx++; render(); } });
         resetBtn.addEventListener('click', function () { idx = 0; render(); });
+
+        render();
+    });
+
+    // ─────────────────────────────────────────────────────────────
+    // Виджет: turing-machine – машина Тьюринга из задания 12 ЕГЭ.
+    // Лента бесконечна в обе стороны, головка стоит над одной ячейкой,
+    // программа – таблица «состояние × символ → команда». Команда состоит из
+    // трёх частей через запятую: «символ,сдвиг,состояние», например «0,L,q3».
+    // Сдвиг: L – влево, R – вправо, N – на месте, S – останов после команды.
+    // Пустая клетка таблицы означает «такой пары нет»: попав в неё, исполнитель
+    // останавливается с ошибкой. Шаг назад идёт по снимкам состояния, поэтому
+    // ничего не пересчитывает.
+    //
+    // Конфиг: {
+    //   "alphabet": ["λ", "0", "1"],   // нулевой символ – пустая клетка
+    //   "states": ["q0", "q1", "q2"],  // порядок задаёт строки таблицы
+    //   "program": { "q0": ["λ,L,q1", "", ""] },  // выровнен по alphabet
+    //   "tape": "11111101001",         // ячейка 0 – первый символ строки
+    //   "head": "right",               // "right" | "left" | индекс ячейки
+    //   "state": "q0", "maxSteps": 500, "editable": true,
+    //   "presets": [{"title": "число 127", "tape": "1111111", "head": "right"}]
+    // }
+    // Поля, которых нет в пресете, берутся с верхнего уровня конфига; алфавит
+    // и состояния общие для всего виджета – их задаёт таблица. До 6 заготовок.
+    // ─────────────────────────────────────────────────────────────
+    register('turing-machine', function (el, config) {
+        const alphabet = (Array.isArray(config.alphabet) ? config.alphabet : ['λ', '0', '1'])
+            .map(function (s) { return String(s); });
+        // Список состояний не const: ученик вписывает сюда свою задачу, и
+        // строк таблицы ей может понадобиться больше, чем в конфиге.
+        let states = (Array.isArray(config.states) ? config.states : ['q0'])
+            .map(function (s) { return String(s); });
+        if (!alphabet.length || !states.length) {
+            el.innerHTML = '<p class="text-sm text-red-500">turing-machine: нужны непустые alphabet и states</p>';
+            return;
+        }
+        // Сколько состояний пришло из конфига: своё добавленное ученик может
+        // снять, чужое из условия задачи – нет.
+        const fixedStates = states.length;
+
+        const EMPTY = alphabet[0];
+        const SHIFTS = ['L', 'R', 'N', 'S'];
+        // Десять строк – это уже задача, которую на бумаге не решают.
+        const MAX_STATES = 10;
+        const maxSteps = Math.max(1, Math.min(parseInt(config.maxSteps, 10) || 500, 100000));
+        const editable = config.editable !== false;
+        const presets = (Array.isArray(config.presets) ? config.presets : [])
+            .filter(function (p) { return p && typeof p === 'object' && p.title !== undefined; })
+            .slice(0, 6);
+
+        // Команда описывает одну клетку таблицы. null возвращаем и для пустой
+        // клетки, и для неразбираемой записи – для исполнителя это одно и то же.
+        function parseCmd(raw) {
+            const parts = String(raw).split(',').map(function (p) { return p.trim(); });
+            if (parts.length !== 3) return null;
+            if (alphabet.indexOf(parts[0]) < 0) return null;
+            const shift = parts[1].toUpperCase();
+            if (SHIFTS.indexOf(shift) < 0) return null;
+            if (states.indexOf(parts[2]) < 0) return null;
+            return { sym: parts[0], shift: shift, next: parts[2] };
+        }
+
+        // Программа из конфига: состояние → массив команд, выровненный по
+        // алфавиту. Чего в конфиге нет – пустая клетка.
+        function programRows(src) {
+            const fields = src && typeof src === 'object' && !Array.isArray(src) ? src : {};
+            const rows = {};
+            states.forEach(function (st) {
+                const row = Array.isArray(fields[st]) ? fields[st] : [];
+                rows[st] = alphabet.map(function (_, i) {
+                    return row[i] === undefined || row[i] === null ? '' : String(row[i]);
+                });
+            });
+            return rows;
+        }
+
+        // ---- состояние исполнителя ----
+        let table = programRows(config.program);  // команды: состояние → символ → текст
+        let tapeSource = '';       // содержимое поля ленты – из него собирается tape
+        let headSource = 'right';  // начальная головка: "left"/"right" или индекс
+        let stateSource = states[0];
+        let tape = {};             // { индекс: символ }; пустая клетка – нет ключа
+        let head = 0;
+        let state = states[0];
+        let steps = 0;
+        let stopped = false;
+        let message = '';          // текст ошибки; пусто – остановка штатная
+        let changed = null;        // ячейка, которую изменил последний шаг
+        let history = [];          // снимки состояния – для шага назад
+        let timer = null;          // автопрогон
+        let activePreset = -1;
+        const cells = {};          // состояние → ячейки строки таблицы
+        const nameCells = {};      // состояние → ячейка с именем состояния
+
+        const body = widgetFrame(el, el.dataset.title || 'Машина Тьюринга');
+
+        const BTN_PRIMARY = 'px-3 py-1.5 rounded-full text-sm border transition-colors bg-brand-600 text-white border-brand-600 hover:bg-brand-700 dark:bg-cyan-500 dark:border-cyan-500 dark:hover:bg-cyan-400';
+        const BTN_SECONDARY = 'px-3 py-1.5 rounded-full text-sm border transition-colors bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100 dark:bg-slate-700 dark:border-slate-600 dark:text-slate-300';
+        const CHIP = 'px-2.5 py-1 rounded-full text-xs border transition-colors bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100 dark:bg-slate-700 dark:border-slate-600 dark:text-slate-300';
+        const CHIP_ACTIVE = 'px-2.5 py-1 rounded-full text-xs border transition-colors bg-brand-600 text-white border-brand-600 dark:bg-cyan-500 dark:border-cyan-500';
+        const CELL = 'w-10 h-10 shrink-0 flex items-center justify-center font-mono text-base';
+        const BADGE_OK = 'px-2 py-0.5 rounded-md text-xs font-semibold border bg-emerald-50 border-emerald-300 text-emerald-700 dark:bg-emerald-900/30 dark:border-emerald-700 dark:text-emerald-300';
+        const BADGE_ERR = 'px-2 py-0.5 rounded-md text-xs font-semibold border bg-red-50 border-red-300 text-red-700 dark:bg-red-900/30 dark:border-red-700 dark:text-red-300';
+        const TBL_BORDER = 'border border-gray-200 dark:border-slate-600';
+        const RESULT_CLS = 'mt-2 text-sm text-gray-600 dark:text-slate-300';
+
+        // ---- как этим пользоваться ----
+        // Инструкция стоит над лентой, а не под виджетом: цвета надо понимать
+        // до первого нажатия, иначе первый такт выглядит как «что-то мигнуло».
+        // Текст один на все статьи – ключа в конфиге для него нет: виджет
+        // всегда делает одно и то же, и своя формулировка на каждой странице
+        // разошлась бы с тем, что он рисует.
+        const hint = document.createElement('div');
+        hint.className = 'mb-3 text-sm text-gray-500 dark:text-slate-400';
+        const hintLines = [
+            'Кнопки внизу гоняют программу по тактам – вперёд, назад, до остановки. ' +
+            'Жёлтым горят ячейка под головкой и клетка таблицы, которая выполнится ' +
+            'следующим тактом: это одна и та же пара «состояние + символ». Зелёным – ' +
+            'ячейка, изменённая последним тактом.'
+        ];
+        // Вторая строка – только там, где правка разрешена: обещать поля,
+        // которых на странице нет, хуже, чем молчать.
+        if (editable) {
+            hintLines.push(
+                'Лента и все клетки таблицы редактируются: впишите условие своей ' +
+                'задачи, а если строк не хватает – добавьте состояние кнопкой под ' +
+                'таблицей. Любая правка сбрасывает прогон в начало.'
+            );
+        }
+        hintLines.forEach(function (line, i) {
+            const p = document.createElement('p');
+            if (i) p.className = 'mt-1';
+            p.textContent = line;
+            hint.appendChild(p);
+        });
+        body.appendChild(hint);
+
+        // ---- заготовки ----
+        const presetRow = document.createElement('div');
+        presetRow.className = 'flex flex-wrap items-center gap-2 mb-4';
+        const presetBtns = presets.map(function (p, index) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.textContent = String(p.title);
+            btn.className = CHIP;
+            btn.addEventListener('click', function () {
+                activePreset = index;
+                load(p);
+            });
+            presetRow.appendChild(btn);
+            return btn;
+        });
+        if (presets.length) body.appendChild(presetRow);
+
+        // ---- лента ----
+        // Ряд метки и ряд ячеек идут в одной обёртке с прокруткой и собраны
+        // одинаковыми по ширине ячейками, иначе треугольник уехал бы от клетки.
+        const tapeWrap = document.createElement('div');
+        tapeWrap.className = 'overflow-x-auto py-2';
+        const tapeInner = document.createElement('div');
+        tapeInner.className = 'flex flex-col gap-1 w-max';
+        tapeWrap.appendChild(tapeInner);
+        body.appendChild(tapeWrap);
+
+        // ---- строка состояния ----
+        const statusLine = document.createElement('div');
+        statusLine.className = 'flex flex-wrap items-center gap-2 mt-2 text-sm text-gray-600 dark:text-slate-300';
+        body.appendChild(statusLine);
+
+        // ---- таблица программы ----
+        const tableWrap = document.createElement('div');
+        tableWrap.className = 'overflow-x-auto mt-4';
+        const tbl = document.createElement('table');
+        tbl.className = 'text-sm border-collapse w-full';
+        tableWrap.appendChild(tbl);
+        body.appendChild(tableWrap);
+
+        // ---- строки таблицы (только при editable) ----
+        // Своя задача редко ложится в чужое число состояний: банк задания 12
+        // ходит от двух строк до шести. Снять можно только строку, которую
+        // добавили здесь же, – состояния из условия задачи остаются на месте.
+        let addStateBtn = null;
+        let dropStateBtn = null;
+        if (editable) {
+            const rowsRow = document.createElement('div');
+            rowsRow.className = 'flex flex-wrap items-center gap-2 mt-2';
+
+            addStateBtn = document.createElement('button');
+            addStateBtn.type = 'button';
+            addStateBtn.textContent = '+ состояние';
+            addStateBtn.addEventListener('click', function () { addState(); });
+
+            dropStateBtn = document.createElement('button');
+            dropStateBtn.type = 'button';
+            dropStateBtn.textContent = '− состояние';
+            dropStateBtn.addEventListener('click', function () { dropState(); });
+
+            rowsRow.appendChild(addStateBtn);
+            rowsRow.appendChild(dropStateBtn);
+            body.appendChild(rowsRow);
+        }
+
+        // ---- поле ленты и выбор состояния (только при editable) ----
+        let tapeInput = null;
+        let stateSelect = null;
+        if (editable) {
+            const setupRow = document.createElement('div');
+            setupRow.className = 'flex flex-wrap items-center gap-2 mt-4';
+
+            const tapeLabel = document.createElement('span');
+            tapeLabel.className = 'text-sm text-gray-500 dark:text-slate-400';
+            tapeLabel.textContent = 'Лента';
+
+            tapeInput = document.createElement('input');
+            tapeInput.type = 'text';
+            tapeInput.className = 'flex-1 px-2 py-1 rounded-md border font-mono text-sm bg-white border-gray-300 dark:bg-slate-800 dark:border-slate-600 dark:text-white';
+            tapeInput.setAttribute('aria-label', 'Содержимое ленты');
+            tapeInput.addEventListener('input', function () {
+                tapeSource = tapeInput.value;
+                activePreset = -1;
+                reset();
+            });
+
+            stateSelect = document.createElement('select');
+            stateSelect.className = 'px-2 py-1 rounded-md border text-sm bg-white border-gray-300 dark:bg-slate-800 dark:border-slate-600 dark:text-white';
+            stateSelect.setAttribute('aria-label', 'Начальное состояние');
+            fillStateSelect();
+            stateSelect.addEventListener('change', function () {
+                stateSource = stateSelect.value;
+                activePreset = -1;
+                reset();
+            });
+
+            setupRow.appendChild(tapeLabel);
+            setupRow.appendChild(tapeInput);
+            setupRow.appendChild(stateSelect);
+            body.appendChild(setupRow);
+        }
+
+        // ---- управление ----
+        const backBtn = document.createElement('button');
+        backBtn.type = 'button';
+        backBtn.textContent = '◀ Шаг назад';
+
+        const fwdBtn = document.createElement('button');
+        fwdBtn.type = 'button';
+        fwdBtn.textContent = 'Шаг вперёд ▶';
+
+        const runBtn = document.createElement('button');
+        runBtn.type = 'button';
+        runBtn.textContent = '▶ Пуск';
+        runBtn.className = BTN_SECONDARY;
+
+        const endBtn = document.createElement('button');
+        endBtn.type = 'button';
+        endBtn.textContent = 'До конца';
+        endBtn.className = BTN_SECONDARY;
+
+        const resetBtn = document.createElement('button');
+        resetBtn.type = 'button';
+        resetBtn.textContent = 'Сбросить';
+        resetBtn.className = BTN_SECONDARY;
+
+        const controls = document.createElement('div');
+        controls.className = 'flex flex-wrap items-center gap-2 mt-4';
+        [backBtn, fwdBtn, runBtn, endBtn, resetBtn].forEach(function (n) {
+            controls.appendChild(n);
+        });
+        body.appendChild(controls);
+
+        // ---- итог ----
+        const resultLine = document.createElement('div');
+        resultLine.className = RESULT_CLS + ' hidden';
+        body.appendChild(resultLine);
+
+        // ---- чтение и запись ленты ----
+        function read(i) {
+            return Object.prototype.hasOwnProperty.call(tape, i) ? tape[i] : EMPTY;
+        }
+        function write(i, sym) {
+            if (sym === EMPTY) delete tape[i];
+            else tape[i] = sym;
+        }
+        // Границы непустого куска ленты; [null, null] – лента пуста целиком.
+        function bounds() {
+            let lo = null;
+            let hi = null;
+            Object.keys(tape).forEach(function (key) {
+                const i = parseInt(key, 10);
+                if (lo === null || i < lo) lo = i;
+                if (hi === null || i > hi) hi = i;
+            });
+            return [lo, hi];
+        }
+        function cellCommand(st, col) {
+            const row = table[st];
+            return row && row[col] !== undefined ? row[col] : '';
+        }
+
+        // ---- шаг ----
+        function snapshot() {
+            return {
+                tape: Object.assign({}, tape),
+                head: head,
+                state: state,
+                steps: steps,
+                stopped: stopped,
+                message: message,
+                changed: changed
+            };
+        }
+        function restore(s) {
+            tape = Object.assign({}, s.tape);
+            head = s.head;
+            state = s.state;
+            steps = s.steps;
+            stopped = s.stopped;
+            message = s.message;
+            changed = s.changed;
+        }
+
+        function stepOnce() {
+            if (stopped) return;
+            history.push(snapshot());
+
+            const sym = read(head);
+            const raw = cellCommand(state, alphabet.indexOf(sym));
+            const cmd = parseCmd(raw);
+
+            if (!cmd) {
+                // Счётчик шагов здесь не растёт: шага как такового не было.
+                stopped = true;
+                changed = null;
+                message = String(raw).trim() === ''
+                    ? 'В клетке «' + state + ' × ' + sym + '» команды нет – исполнитель остановился.'
+                    : 'Команда «' + String(raw).trim() + '» не разбирается.';
+                return;
+            }
+
+            write(head, cmd.sym);
+            changed = cmd.sym === sym ? null : head;
+
+            if (cmd.shift === 'L') head--;
+            else if (cmd.shift === 'R') head++;
+            state = cmd.next;
+
+            steps++;
+            if (cmd.shift === 'S') {
+                stopped = true;
+                return;
+            }
+            if (steps > maxSteps) {
+                stopped = true;
+                message = 'Больше ' + maxSteps + ' шагов – похоже на зацикливание.';
+            }
+        }
+
+        // ---- автопрогон ----
+        function stopRun() {
+            if (timer !== null) {
+                clearInterval(timer);
+                timer = null;
+            }
+        }
+        function startRun() {
+            if (timer !== null) return;
+            timer = setInterval(function () {
+                stepOnce();
+                if (stopped) stopRun();
+                render();
+            }, 120);
+        }
+
+        // ---- сборка таблицы ----
+        // Пересобирается только когда меняется набор строк: на ввод символа
+        // render() лишь красит классы, иначе поле теряло бы фокус на каждой
+        // букве. Ссылки на прежние ячейки после пересборки не нужны – карты
+        // cells и nameCells чистятся здесь же, а не накапливают снятые строки.
+        function buildTable() {
+            tbl.innerHTML = '';
+            Object.keys(cells).forEach(function (k) { delete cells[k]; });
+            Object.keys(nameCells).forEach(function (k) { delete nameCells[k]; });
+
+            const headRow = document.createElement('tr');
+            const corner = document.createElement('th');
+            corner.className = TBL_BORDER + ' px-2 py-1';
+            headRow.appendChild(corner);
+            alphabet.forEach(function (sym) {
+                const th = document.createElement('th');
+                th.className = TBL_BORDER + ' px-2 py-1 text-center font-mono text-sm text-gray-500 dark:text-slate-400';
+                th.textContent = sym;
+                headRow.appendChild(th);
+            });
+            tbl.appendChild(headRow);
+
+            states.forEach(function (st) {
+                const tr = document.createElement('tr');
+                const nameCell = document.createElement('th');
+                nameCell.className = TBL_BORDER + ' px-2 py-1 text-center font-mono text-sm text-gray-500 dark:text-slate-400';
+                nameCell.textContent = st;
+                nameCells[st] = nameCell;
+                tr.appendChild(nameCell);
+
+                cells[st] = alphabet.map(function (sym, i) {
+                    const td = document.createElement('td');
+                    let input = null;
+                    if (editable) {
+                        input = document.createElement('input');
+                        input.type = 'text';
+                        input.className = 'bg-transparent border-0 w-full text-center font-mono text-sm focus:outline-none';
+                        input.value = table[st][i];
+                        input.setAttribute('aria-label', 'команда для состояния ' + st + ' и символа ' + sym);
+                        input.addEventListener('input', function () {
+                            table[st][i] = input.value;
+                            activePreset = -1;
+                            reset();
+                        });
+                        td.appendChild(input);
+                    }
+                    tr.appendChild(td);
+                    return { td: td, input: input };
+                });
+                tbl.appendChild(tr);
+            });
+        }
+
+        // ---- строки таблицы ----
+        function fillStateSelect() {
+            if (!stateSelect) return;
+            stateSelect.innerHTML = '';
+            states.forEach(function (st) {
+                const opt = document.createElement('option');
+                opt.value = st;
+                opt.textContent = st;
+                stateSelect.appendChild(opt);
+            });
+            stateSelect.value = stateSource;
+        }
+
+        // Имя новой строки – первое свободное `q<номер>`: у ученика на листке
+        // состояния тоже нумерованы подряд, а занятый номер сделал бы две
+        // разные строки одной клеткой в table.
+        function addState() {
+            if (states.length >= MAX_STATES) return;
+            let n = states.length;
+            while (states.indexOf('q' + n) >= 0) n++;
+            const name = 'q' + n;
+            states.push(name);
+            table[name] = alphabet.map(function () { return ''; });
+            buildTable();
+            fillStateSelect();
+            reset();
+        }
+
+        function dropState() {
+            if (states.length <= fixedStates) return;
+            const name = states.pop();
+            delete table[name];
+            if (stateSource === name) stateSource = states[0];
+            buildTable();
+            fillStateSelect();
+            reset();
+        }
+
+        // ---- рисование ----
+        function renderTape() {
+            tapeInner.innerHTML = '';
+            const markRow = document.createElement('div');
+            markRow.className = 'flex gap-1';
+            const tapeRow = document.createElement('div');
+            tapeRow.className = 'flex gap-1';
+
+            const b = bounds();
+            const from = (b[0] === null ? head : Math.min(b[0], head)) - 3;
+            const to = (b[1] === null ? head : Math.max(b[1], head)) + 3;
+            let headCell = null;
+
+            for (let i = from; i <= to; i++) {
+                const mark = document.createElement('div');
+                mark.className = 'w-10 h-10 shrink-0 flex flex-col items-center justify-center';
+                if (i === head) {
+                    const arrow = document.createElement('span');
+                    arrow.className = 'text-xs leading-none text-amber-600 dark:text-amber-400';
+                    arrow.textContent = '▼';
+                    const badge = document.createElement('span');
+                    badge.className = 'px-1 rounded-md text-xs font-semibold bg-brand-600 text-white dark:bg-cyan-500';
+                    badge.textContent = state;
+                    mark.appendChild(arrow);
+                    mark.appendChild(badge);
+                }
+                markRow.appendChild(mark);
+
+                // Цвета собираются по ветвям, а не накладываются: одинаковые
+                // утилиты в class-атрибуте спорят не по порядку записи, а по
+                // порядку в собранном CSS, так что border-gray-300 перебил бы
+                // border-amber-400 через раз.
+                const sym = read(i);
+                const isHead = i === head;
+                const cls = [CELL, sym === EMPTY
+                    ? 'text-gray-300 dark:text-slate-600'
+                    : 'text-gray-900 dark:text-white'];
+                if (isHead) {
+                    // Приоритет у головки: янтарная рамка потолще и заливка.
+                    cls.push('border-2 border-amber-400 bg-amber-50 dark:border-amber-500 dark:bg-amber-900/30');
+                } else if (i === changed) {
+                    cls.push('border border-gray-300 bg-emerald-50 dark:border-slate-600 dark:bg-emerald-900/30');
+                } else {
+                    cls.push('border border-gray-300 bg-white dark:border-slate-600 dark:bg-slate-800');
+                }
+                const cell = document.createElement('div');
+                cell.className = cls.join(' ');
+                cell.textContent = sym;
+                tapeRow.appendChild(cell);
+                if (isHead) headCell = cell;
+            }
+
+            tapeInner.appendChild(markRow);
+            tapeInner.appendChild(tapeRow);
+            // Без behavior: 'smooth': при автопрогоне плавная прокрутка
+            // дёргала бы страницу каждые 120 мс. Проверка самого метода – для
+            // заглушечного DOM в textbook/tests_widget_mount.js: элемента без
+            // scrollIntoView там нет, а исключение фабрики даёт пустую рамку.
+            if (headCell && headCell.scrollIntoView) {
+                headCell.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+            }
+        }
+
+        function renderStatus() {
+            statusLine.innerHTML = '';
+            const text = document.createElement('span');
+            text.className = 'font-mono';
+            text.textContent = 'шаг ' + steps + ' · состояние ' + state +
+                ' · под головкой «' + read(head) + '»';
+            statusLine.appendChild(text);
+            if (stopped) {
+                const badge = document.createElement('span');
+                badge.className = message ? BADGE_ERR : BADGE_OK;
+                badge.textContent = message || 'остановлена';
+                statusLine.appendChild(badge);
+            }
+        }
+
+        function paintTable() {
+            const col = alphabet.indexOf(read(head));
+            states.forEach(function (st) {
+                const current = st === state;
+                nameCells[st].className = TBL_BORDER + ' px-2 py-1 text-center font-mono text-sm ' +
+                    (current
+                        ? 'bg-gray-50 text-gray-900 dark:bg-slate-700/40 dark:text-white'
+                        : 'text-gray-500 dark:text-slate-400');
+                alphabet.forEach(function (_, i) {
+                    const ref = cells[st][i];
+                    const raw = table[st][i];
+                    const invalid = String(raw).trim() !== '' && !parseCmd(raw);
+                    // Клетка, которая выполнится следующим шагом. У штатно
+                    // остановленной машины следующего шага нет – подсвечивать
+                    // нечего; после ошибки, наоборот, подсветка показывает ту
+                    // самую клетку, обо что исполнитель споткнулся.
+                    const next = current && i === col && !(stopped && !message);
+                    let cls = 'border px-2 py-1 text-center font-mono text-sm';
+                    cls += invalid
+                        ? ' text-red-600 border-red-400 dark:text-red-400 dark:border-red-700'
+                        : ' text-gray-800 border-gray-200 dark:text-slate-100 dark:border-slate-600';
+                    // Заливка одной ветвью: две утилиты bg-* в одном классе
+                    // спорят не по порядку записи, а по порядку в собранном
+                    // CSS. Клетка красится тем же янтарём, что и ячейка под
+                    // головкой, – это одна и та же пара «состояние + символ».
+                    // Рамкой её не обвести: у таблицы border-collapse, и
+                    // ring-2 съедался соседями с двух сторон.
+                    if (next) cls += ' bg-amber-50 dark:bg-amber-900/30';
+                    else if (current) cls += ' bg-gray-50 dark:bg-slate-700/40';
+                    ref.td.className = cls;
+                    if (!ref.input) ref.td.textContent = raw;
+                });
+            });
+        }
+
+        function renderResult() {
+            let text = '';
+            if (stopped && !message) {
+                const b = bounds();
+                if (b[0] !== null) {
+                    let word = '';
+                    for (let i = b[0]; i <= b[1]; i++) word += read(i);
+                    text = 'На ленте: ' + word;
+                    // Двоичная запись – по содержимому, отдельного ключа в
+                    // конфиге для этого нет.
+                    if (/^[01]+$/.test(word)) {
+                        text += '. В десятичной системе: ' + parseInt(word, 2) + '.';
+                    }
+                }
+            }
+            resultLine.textContent = text;
+            resultLine.className = RESULT_CLS + (text ? '' : ' hidden');
+        }
+
+        function render() {
+            presetBtns.forEach(function (btn, i) {
+                btn.className = i === activePreset ? CHIP_ACTIVE : CHIP;
+            });
+
+            renderTape();
+            renderStatus();
+            paintTable();
+            renderResult();
+
+            const noHistory = history.length === 0;
+            backBtn.disabled = noHistory;
+            backBtn.className = BTN_SECONDARY + (noHistory ? ' opacity-50 cursor-not-allowed' : '');
+            fwdBtn.disabled = stopped;
+            fwdBtn.className = BTN_PRIMARY + (stopped ? ' opacity-50 cursor-not-allowed' : '');
+            runBtn.textContent = timer !== null ? '⏸ Пауза' : '▶ Пуск';
+            runBtn.disabled = stopped;
+            runBtn.className = BTN_SECONDARY + (stopped ? ' opacity-50 cursor-not-allowed' : '');
+            endBtn.disabled = stopped;
+            endBtn.className = BTN_SECONDARY + (stopped ? ' opacity-50 cursor-not-allowed' : '');
+
+            if (addStateBtn) {
+                const full = states.length >= MAX_STATES;
+                addStateBtn.disabled = full;
+                addStateBtn.className = CHIP + (full ? ' opacity-50 cursor-not-allowed' : '');
+                const bare = states.length <= fixedStates;
+                dropStateBtn.disabled = bare;
+                dropStateBtn.className = CHIP + (bare ? ' opacity-50 cursor-not-allowed' : '');
+            }
+        }
+
+        // ---- сборка и сброс прогона ----
+        // reset() собирает начальное состояние из текущих полей: поле ленты,
+        // поле состояния и клетки таблицы – поэтому правка любого из них и
+        // выбор заготовки ведут сюда же.
+        function reset() {
+            stopRun();
+            tape = {};
+            for (let i = 0; i < tapeSource.length; i++) {
+                if (tapeSource[i] !== EMPTY) tape[i] = tapeSource[i];
+            }
+            const h = String(headSource).toLowerCase();
+            head = h === 'left' ? -1
+                : h === 'right' ? tapeSource.length
+                : (isNaN(parseInt(h, 10)) ? tapeSource.length : parseInt(h, 10));
+            state = states.indexOf(stateSource) < 0 ? states[0] : stateSource;
+            steps = 0;
+            stopped = false;
+            message = '';
+            changed = null;
+            history = [];
+            render();
+        }
+
+        // Заготовка: поля, которых в ней нет, берутся с верхнего уровня конфига.
+        function load(src) {
+            const s = src && typeof src === 'object' ? src : {};
+            function field(key) {
+                return s[key] === undefined || s[key] === null ? config[key] : s[key];
+            }
+            const tapeValue = field('tape');
+            tapeSource = tapeValue === undefined || tapeValue === null ? '' : String(tapeValue);
+            const headValue = field('head');
+            headSource = headValue === undefined || headValue === null ? 'right' : headValue;
+            const stateValue = field('state');
+            stateSource = stateValue === undefined || stateValue === null ? states[0] : String(stateValue);
+            if (states.indexOf(stateSource) < 0) stateSource = states[0];
+            table = programRows(field('program'));
+
+            // Заготовка переписывает и поля клеток: она задаёт программу целиком.
+            if (tapeInput) tapeInput.value = tapeSource;
+            if (stateSelect) stateSelect.value = stateSource;
+            states.forEach(function (st) {
+                alphabet.forEach(function (_, i) {
+                    if (cells[st][i].input) cells[st][i].input.value = table[st][i];
+                });
+            });
+            reset();
+        }
+
+        // ---- кнопки ----
+        backBtn.addEventListener('click', function () {
+            if (!history.length) return;
+            stopRun();
+            restore(history.pop());
+            render();
+        });
+        fwdBtn.addEventListener('click', function () {
+            stopRun();
+            stepOnce();
+            render();
+        });
+        runBtn.addEventListener('click', function () {
+            if (stopped) return;
+            if (timer !== null) stopRun();
+            else startRun();
+            render();
+        });
+        endBtn.addEventListener('click', function () {
+            stopRun();
+            while (!stopped) stepOnce();
+            render();
+        });
+        resetBtn.addEventListener('click', function () {
+            reset();
+        });
+
+        buildTable();
+        load(config);
+    });
+
+    // ─────────────────────────────────────────────────────────────
+    // Виджет: regex-lab – шаблон, текст и совпадения.
+    //
+    // Считает сам (как turing-machine), а не рисует готовую трассу: смысл
+    // регулярки в том, чтобы поменять её и посмотреть, что стало. Правится и
+    // шаблон, и текст.
+    //
+    // Движок браузерный, диалект питоновский – поэтому шаблон перед запуском
+    // проходит через pyToJs(): в Python `\w` и `\b` считают буквой кириллицу,
+    // в JS – нет, и на русском примере виджет показывал бы не то, что покажет
+    // python. Флаг `u` нужен для \p{L}; если с ним шаблон не собирается
+    // (питоновские лишние экранирования вроде \- под `u` вне закона), пробуем
+    // исходный шаблон без перевода.
+    //
+    // Конфиг: { "pattern": "\\d+", "text": "…", "flags": "i",
+    //           "presets": [{"title": "числа", "pattern": "\\d+", "text": "…"}],
+    //           "editable": false }
+    // ─────────────────────────────────────────────────────────────
+    register('regex-lab', function (el, config) {
+        const MAX_SHOWN = 12;          // столько совпадений показываем списком
+        const MAX_MATCHES = 500;       // и столько ищем вообще: длинный текст + `.` = много
+        const WORD = '\\p{L}\\p{N}_';
+        const BOUND = '(?:(?<![' + WORD + '])(?=[' + WORD + '])|(?<=[' + WORD + '])(?![' + WORD + ']))';
+        const NOBOUND = '(?:(?<=[' + WORD + '])(?=[' + WORD + '])|(?<![' + WORD + '])(?![' + WORD + ']))';
+
+        let pattern = typeof config.pattern === 'string' ? config.pattern : '\\d+';
+        let text = typeof config.text === 'string' ? config.text : '';
+        const extraFlags = (config.flags || '').replace(/[^ims]/g, '');
+        const presets = Array.isArray(config.presets) ? config.presets : [];
+        const editable = config.editable !== false;
+
+        // Питоновский шаблон → браузерный. Внутри [...] заменяются только \w и
+        // \W: граница слова там значит backspace, а не границу.
+        function pyToJs(src) {
+            let out = '';
+            let inClass = false;
+            for (let i = 0; i < src.length; i++) {
+                const ch = src[i];
+                if (ch === '\\' && i + 1 < src.length) {
+                    const next = src[i + 1];
+                    i++;
+                    if (next === 'w') { out += inClass ? WORD : '[' + WORD + ']'; continue; }
+                    if (next === 'W' && !inClass) { out += '[^' + WORD + ']'; continue; }
+                    if (next === 'b' && !inClass) { out += BOUND; continue; }
+                    if (next === 'B' && !inClass) { out += NOBOUND; continue; }
+                    out += ch + next;
+                    continue;
+                }
+                if (ch === '[') inClass = true;
+                if (ch === ']') inClass = false;
+                out += ch;
+            }
+            return out;
+        }
+
+        function compile() {
+            try {
+                return { re: new RegExp(pyToJs(pattern), 'gu' + extraFlags) };
+            } catch (e) {
+                try {
+                    return { re: new RegExp(pattern, 'g' + extraFlags) };
+                } catch (e2) {
+                    return { error: e2.message };
+                }
+            }
+        }
+
+        // Пустое совпадение (например, у `\d*`) не двигает курсор – без сдвига
+        // руками цикл повис бы навсегда.
+        function collect(re) {
+            const found = [];
+            let m;
+            re.lastIndex = 0;
+            while ((m = re.exec(text)) !== null) {
+                found.push({ start: m.index, text: m[0], groups: m.slice(1) });
+                if (m[0].length === 0) re.lastIndex++;
+                if (found.length >= MAX_MATCHES) break;
+            }
+            return found;
+        }
+
+        // Ровно правило findall: без групп – всё совпадение, одна группа –
+        // она сама, несколько – кортеж. Ловушка настоящая: добавил скобки
+        // ради повтора – findall начал возвращать не то.
+        function findallItem(m) {
+            if (!m.groups.length) return quote(m.text);
+            if (m.groups.length === 1) return quote(m.groups[0]);
+            return '(' + m.groups.map(quote).join(', ') + ')';
+        }
+
+        function quote(s) {
+            return s === undefined ? 'None' : "'" + String(s) + "'";
+        }
+
+        const body = widgetFrame(el, el.dataset.title || 'Регулярное выражение');
+
+        const inputCls = 'flex-1 min-w-0 rounded-md border px-2 py-1 font-mono text-sm border-gray-200 bg-white text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white';
+        const chipCls = 'px-2.5 py-1 rounded-full text-xs border transition-colors bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100 dark:bg-slate-700 dark:border-slate-600 dark:text-slate-300';
+        const monoNote = 'mt-1 font-mono text-xs text-gray-400 dark:text-slate-500';
+
+        // ── шаблон ───────────────────────────────────────────────
+        const patRow = document.createElement('div');
+        patRow.className = 'flex items-center gap-2';
+        const patLabel = document.createElement('span');
+        patLabel.className = 'font-mono text-sm text-gray-400 dark:text-slate-500';
+        patLabel.textContent = "r'";
+        const patInput = document.createElement('input');
+        patInput.type = 'text';
+        patInput.className = inputCls;
+        patInput.value = pattern;
+        patInput.spellcheck = false;
+        patInput.disabled = !editable;
+        const patTail = document.createElement('span');
+        patTail.className = 'font-mono text-sm text-gray-400 dark:text-slate-500';
+        patTail.textContent = "'";
+        patRow.appendChild(patLabel);
+        patRow.appendChild(patInput);
+        patRow.appendChild(patTail);
+        body.appendChild(patRow);
+
+        // ── пресеты ──────────────────────────────────────────────
+        if (presets.length) {
+            const chips = document.createElement('div');
+            chips.className = 'mt-2 flex flex-wrap gap-2';
+            presets.forEach(function (preset) {
+                const chip = document.createElement('button');
+                chip.type = 'button';
+                chip.className = chipCls;
+                chip.textContent = preset.title || preset.pattern || '';
+                chip.addEventListener('click', function () {
+                    if (typeof preset.pattern === 'string') pattern = preset.pattern;
+                    if (typeof preset.text === 'string') text = preset.text;
+                    patInput.value = pattern;
+                    textArea.value = text;
+                    render();
+                });
+                chips.appendChild(chip);
+            });
+            body.appendChild(chips);
+        }
+
+        // ── текст ────────────────────────────────────────────────
+        const textArea = document.createElement('textarea');
+        textArea.className = 'mt-3 w-full rounded-md border px-2 py-1 font-mono text-sm border-gray-200 bg-white text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white';
+        textArea.rows = 3;
+        textArea.spellcheck = false;
+        textArea.value = text;
+        textArea.disabled = !editable;
+        body.appendChild(textArea);
+
+        // ── результат ────────────────────────────────────────────
+        const hilite = document.createElement('div');
+        hilite.className = 'mt-3 rounded-md border px-3 py-2 font-mono text-sm leading-7 whitespace-pre-wrap break-words border-gray-200 bg-gray-50 text-gray-900 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100';
+        body.appendChild(hilite);
+
+        const summary = document.createElement('div');
+        summary.className = 'mt-2 text-sm text-gray-500 dark:text-slate-400';
+        body.appendChild(summary);
+
+        const findall = document.createElement('div');
+        findall.className = monoNote;
+        body.appendChild(findall);
+
+        const list = document.createElement('div');
+        list.className = 'mt-2 flex flex-col gap-1';
+        body.appendChild(list);
+
+        function paint(found) {
+            hilite.textContent = '';
+            if (!text.length) {
+                const empty = document.createElement('span');
+                empty.className = 'text-gray-400 dark:text-slate-500';
+                empty.textContent = 'Текста нет';
+                hilite.appendChild(empty);
+                return;
+            }
+            let pos = 0;
+            found.forEach(function (m, i) {
+                if (m.start > pos) {
+                    const plain = document.createElement('span');
+                    plain.textContent = text.slice(pos, m.start);
+                    hilite.appendChild(plain);
+                }
+                const mark = document.createElement('span');
+                // Соседние совпадения красятся по-разному: два подряд одним
+                // цветом читаются как одно длинное.
+                mark.className = 'rounded px-0.5 ' + (i % 2
+                    ? 'bg-emerald-200 text-emerald-900 dark:bg-emerald-500/40 dark:text-emerald-50'
+                    : 'bg-emerald-300 text-emerald-900 dark:bg-emerald-500/70 dark:text-emerald-50');
+                mark.textContent = m.text.length ? m.text : '·';
+                hilite.appendChild(mark);
+                pos = m.start + m.text.length;
+            });
+            if (pos < text.length) {
+                const tail = document.createElement('span');
+                tail.textContent = text.slice(pos);
+                hilite.appendChild(tail);
+            }
+        }
+
+        function render() {
+            list.textContent = '';
+            const compiled = compile();
+            if (compiled.error) {
+                hilite.textContent = '';
+                const err = document.createElement('span');
+                err.className = 'text-rose-500';
+                err.textContent = 'Шаблон не собирается: ' + compiled.error;
+                hilite.appendChild(err);
+                summary.textContent = 'Совпадений нет – регулярное выражение с ошибкой.';
+                findall.textContent = '';
+                return;
+            }
+            const found = collect(compiled.re);
+            paint(found);
+            summary.textContent = found.length
+                ? 'Найдено совпадений: ' + found.length
+                : 'Совпадений нет';
+            findall.textContent = 're.findall(r\'' + pattern + '\', s) → ['
+                + found.slice(0, MAX_SHOWN).map(findallItem).join(', ')
+                + (found.length > MAX_SHOWN ? ', …' : '') + ']';
+
+            found.slice(0, MAX_SHOWN).forEach(function (m, i) {
+                const row = document.createElement('div');
+                row.className = 'font-mono text-xs text-gray-500 dark:text-slate-400';
+                let line = '#' + (i + 1) + '  позиция ' + m.start + '  ' + quote(m.text);
+                m.groups.forEach(function (g, gi) {
+                    line += '   группа ' + (gi + 1) + ': ' + quote(g);
+                });
+                row.textContent = line;
+                list.appendChild(row);
+            });
+        }
+
+        patInput.addEventListener('input', function () {
+            pattern = patInput.value;
+            render();
+        });
+        textArea.addEventListener('input', function () {
+            text = textArea.value;
+            render();
+        });
 
         render();
     });
