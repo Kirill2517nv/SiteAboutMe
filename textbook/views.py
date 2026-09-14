@@ -301,6 +301,12 @@ def article_detail_view(request, slug):
     context = {
         'article': article,
         'blocks': blocks,
+        # Реестр виджетов – 148 КБ gzip, а виджет стоит лишь в четверти статей:
+        # на остальных скрипт скачивался, не находил ни одного [data-widget] и
+        # выходил. Флаг считается по тому же списку, который рисует шаблон, –
+        # visible_blocks отдаёт суперпользователю и черновики, поэтому разметка
+        # и скрипт разойтись не могут. Лишнего запроса нет: blocks уже в памяти.
+        'has_widgets': any(b.block_type == 'widget' for b in blocks),
         'self_checks': self_checks,
         'progress': progress,
         'frontier': frontier_here,

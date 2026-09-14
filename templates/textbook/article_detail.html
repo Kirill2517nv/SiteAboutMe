@@ -424,6 +424,12 @@
     });
 </script>
 <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" defer></script>
+{% if has_widgets %}
+{% comment %}
+Реестр виджетов – 148 КБ gzip, и нужен он четверти статей. На остальных скрипт
+скачивался, не находил ни одного [data-widget] и выходил. Здесь же остаётся
+наблюдатель MathJax: он живёт ровно ради виджетов.
+{% endcomment %}
 <script src="{% static 'js/textbook-widgets.js' %}"></script>
 <script>
     // Виджеты перерисовывают себя на каждое действие ученика – уже после того,
@@ -455,5 +461,6 @@
         }));
     })();
 </script>
+{% endif %}
 <script src="{% static 'js/textbook-progress.js' %}"></script>
 {% endblock %}

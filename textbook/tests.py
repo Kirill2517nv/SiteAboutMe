@@ -921,6 +921,60 @@ class ArticleBlockTitleTests(TestCase):
         self.assertIn('<h2 class="article-block-title">2. Без кода</h2>', self._html())
 
 
+@override_settings(STORAGES={
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+})
+class WidgetScriptLoadingTests(TestCase):
+    """Реестр виджетов грузится только там, где виджет есть.
+
+    Файл весит 148 КБ gzip, а виджет стоит в четверти статей: на остальных он
+    скачивался, не находил ни одного [data-widget] и выходил. Условие в шаблоне
+    считается по тому же списку блоков, который шаблон и рисует, – иначе
+    появился бы второй способ узнать «есть ли тут виджет», и он бы разошёлся с
+    первым. Сторожим обе стороны: где виджета нет – скрипта нет, где есть –
+    есть, и вместе с ним наблюдатель MathJax, который живёт ради виджетов.
+    """
+
+    SCRIPT = 'js/textbook-widgets.js'
+
+    @classmethod
+    def setUpTestData(cls):
+        from textbook.models import Article, ArticleBlock
+
+        section = Section.objects.create(title='Блок', slug='wsl', order=1,
+                                         is_published=True)
+        cls.plain = Article.objects.create(
+            section=section, slug='wsl-plain', title='Без виджета', order=1,
+            is_published=True)
+        ArticleBlock.objects.create(article=cls.plain, block_type='text',
+                                    title='Вводка', content='Текст.', order=1)
+
+        cls.rich = Article.objects.create(
+            section=section, slug='wsl-rich', title='С виджетом', order=2,
+            is_published=True)
+        ArticleBlock.objects.create(article=cls.rich, block_type='text',
+                                    title='Вводка', content='Текст.', order=1)
+        ArticleBlock.objects.create(article=cls.rich, block_type='widget',
+                                    widget_key='bits-viewer', order=2)
+
+    def _html(self, article):
+        return self.client.get(article.get_absolute_url()).content.decode()
+
+    def test_article_without_widgets_skips_the_script(self):
+        html = self._html(self.plain)
+        self.assertNotIn(self.SCRIPT, html)
+        self.assertNotIn('MathJax.typesetClear', html)
+
+    def test_article_with_widget_loads_the_script(self):
+        html = self._html(self.rich)
+        self.assertIn(self.SCRIPT, html)
+        self.assertIn('data-widget="bits-viewer"', html)
+        # Наблюдатель уехал под то же условие – без него формулы внутри
+        # виджета остались бы сырым «$...$» после первой же перерисовки.
+        self.assertIn('MathJax.typesetClear', html)
+
+
 class ProjectorFontScaleTest(SimpleTestCase):
     """Шкала кегля статьи должна целиком иметь rem-двойник для проектора.
 
