@@ -174,9 +174,13 @@ html.dark :is(.article-body, .article-lead__text) a:hover { color: var(--color-d
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-border-medium); box-shadow: var(--shadow-sm);
 }
-/* Таблица ASCII в уроке 7.2 – широкая (≈2.6:1), общий бокс 4:3 с object-fit:
-   cover срезал бы у неё верхнюю и нижнюю строки. Показываем целиком. */
-.article-body figure img[src*="teksta-ascii/1."] {
+/* Широкие схемы: общий бокс 4:3 с object-fit: cover срезает им края.
+   Таблица ASCII в уроке 7.2 (≈2.6:1) теряла верхнюю и нижнюю строки, лента
+   цепочек в уроке 8.3 (≈2.4:1) – подписи cur/best слева и плашку ответа
+   справа, то есть ровно то, ради чего картинка нарисована. Показываем целиком:
+   aspect-ratio: auto отдаёт высоту самой картинке. */
+.article-body figure img[src*="teksta-ascii/1."],
+.article-body figure img[src*="zadachi-so-strokami/1."] {
   aspect-ratio: auto; object-fit: contain;
 }
 
