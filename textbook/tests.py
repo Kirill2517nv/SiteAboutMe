@@ -1507,6 +1507,15 @@ class SectionStatsTeacherTests(TestCase):
         self.assertNotContains(both, 'Задача 1')
         self.assertContains(both, 'href="?kind=practicum"')
 
+    def test_answers_page_prints_question_body(self):
+        """Условие задачи на странице разбора: по заголовку не понять, что решал ученик."""
+        url = reverse('textbook:section_stats_errors',
+                      kwargs={'slug': self.section.slug, 'user_id': self.students['9А'].id})
+        page = self.client.get(url)
+        self.assertContains(page, 'Условие 1')
+        self.assertContains(page, 'Условие 2')
+        self.assertContains(page, 'Условие 3')
+
     def test_answers_page_shows_correct_and_wrong(self):
         url = reverse('textbook:section_stats_errors',
                       kwargs={'slug': self.section.slug, 'user_id': self.students['9А'].id})

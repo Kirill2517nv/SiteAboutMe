@@ -1,0 +1,93 @@
+{% comment %}
+Стили условия задачи (Markdown через |markdownify).
+
+Отдельный файл, потому что условие читают на двух страницах: ученик – в самом
+тесте, учитель – в разборе ответов по блоку. Пока блок жил внутри
+quiz_detail.html, вторая страница получала бы голый HTML: без маркеров списка
+(preflight их сбрасывает) и без тёмной плашки вокруг примеров ввода.
+Включать в блок extra_css.
+{% endcomment %}
+<style>
+/* ── Условие задачи (Markdown через |markdownify) ─────────────────────
+       Применяется к учебниковым тестам и практикумам: обычные и ЕГЭ-тесты
+       по-прежнему выводятся как pre-wrap, их формулировки размечены пробелами.
+
+       Единицы здесь относительные, не px: на проекторе страница растёт через
+       корневой font-size, и условие в 16px осталось бы прежним посреди
+       увеличенного текста. Кегли – в rem (растут вместе со страницей), отступы
+       внутри блока – в em (растут вместе с буквами, пропорции сохраняются). */
+    .task-text { color: #374151; font-size: 1rem; line-height: 1.7; }
+    .task-text > :first-child { margin-top: 0; }
+    .task-text > :last-child { margin-bottom: 0; }
+    .task-text p { margin: 0 0 0.75em; }
+    .task-text strong { color: #111827; font-weight: 600; }
+    .task-text ul, .task-text ol { margin: 0 0 0.75em 1.375em; list-style: revert; }
+
+    /* Команды и операторы Python внутри текста.
+       .task-title – заголовок вопроса-однострочника: у него условие целиком
+       лежит в get_title(), и код в нём тоже надо оформлять. */
+    .task-text code, .task-title code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.9em;
+        color: var(--color-brand-700, #1d4ed8);
+        background: var(--color-brand-50, #eff6ff);
+        border: 1px solid var(--color-brand-100, #dbeafe);
+        border-radius: 5px;
+        padding: 0.06em 0.3em;
+        white-space: nowrap;
+    }
+
+    /* Подпись «Пример ввода» / «Пример вывода» – в Markdown это `###### …`.
+       Собственный тег, а не «абзац из одного strong»: :only-child не видит
+       текстовых узлов, и под такое правило попадал обычный абзац со словом
+       в **жирном** посередине. */
+    .task-text h6 {
+        margin: 1em 0 0.375em;
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #64748b;
+    }
+
+    /* Блоки примеров и кода – «терминал» на светлой карточке условия */
+    .task-text pre {
+        margin: 0 0 0.75em;
+        padding: 0.75em 0.875em;
+        background: #0f172a;
+        border: 1px solid #1e293b;
+        border-left: 3px solid var(--color-brand-500, #3b82f6);
+        border-radius: 8px;
+        overflow-x: auto;
+    }
+    /* Сбрасываем padding и фон темы highlight.js (atom-one-dark), но НЕ color:
+       его на токенах ставят .hljs-* – иначе пропадёт подсветка синтаксиса. */
+    .task-text pre code {
+        display: block;
+        padding: 0; border: 0; border-radius: 0;
+        background: transparent;
+        color: #e2e8f0;
+        font-size: 0.875rem; line-height: 1.6;
+        white-space: pre;
+    }
+    .task-text pre code .hljs-comment { color: #7f848e; }
+
+    /* ── Тёмная тема ──────────────────────────────────────────────────────
+       base.html красит .bg-gray-50 в #0f172a, то есть ровно в фон блока кода –
+       без этих правил pre сливался с карточкой условия. Поднимаем его на
+       «поверхность» slate-800 с рамкой. */
+    html.dark .task-text { color: #cbd5e1; }
+    html.dark .task-text strong { color: #f1f5f9; }
+    html.dark .task-text h6 { color: #94a3b8; }
+    html.dark .task-text code {
+        color: #93c5fd;
+        background: #172554;
+        border-color: #1e40af;
+    }
+    html.dark .task-text pre {
+        background: #1e293b;
+        border-color: #334155;
+        border-left-color: var(--color-brand-500, #3b82f6);
+    }
+    html.dark .task-text pre code { color: #e2e8f0; background: transparent; }
+</style>

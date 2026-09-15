@@ -1,4 +1,11 @@
 {% extends 'base.html' %}
+{% load textbook_tags %}
+
+{# Условие рисуется тем же markdownify и теми же стилями, что и у ученика в тесте:
+   учитель должен видеть задачу ровно так, как её видел ученик. #}
+{% block extra_css %}{% include 'quizzes/_task_text_css.html' %}{% endblock extra_css %}
+
+{% block pre_alpine_js %}{% include 'quizzes/_mathjax.html' %}{% endblock pre_alpine_js %}
 
 {% block title %}{% if errors_only %}Ошибки{% else %}Ответы{% endif %} – {{ student.username }}{% endblock %}
 
@@ -52,13 +59,17 @@
                     <span class="text-xs px-2 py-1 rounded-lg whitespace-nowrap {% if item.is_practicum %}bg-brand-50 text-brand-700{% else %}bg-gray-100 text-gray-600{% endif %}">
                         {% if item.is_practicum %}Задача блока{% else %}Самопроверка{% endif %}
                     </span>
-                    <span class="flex-1 font-semibold text-gray-900 dark:text-white">{{ item.question.get_title }}</span>
+                    <span class="task-title flex-1 font-semibold text-gray-900 dark:text-white">{{ item.question.get_title|markdownify_inline }}</span>
                     {% if item.solved %}
                     <span class="text-xs px-2 py-1 rounded-lg bg-green-100 text-green-700 whitespace-nowrap">{% if item.errors %}Решил позже{% else %}Решена{% endif %}</span>
                     {% else %}
                     <span class="text-xs px-2 py-1 rounded-lg bg-red-50 text-red-700 whitespace-nowrap">Не решена</span>
                     {% endif %}
                 </div>
+
+                {% if item.question.get_body %}
+                <div class="task-text mb-3 bg-gray-50 dark:bg-slate-900 rounded-lg p-4">{{ item.question.get_body|markdownify }}</div>
+                {% endif %}
 
                 <p class="text-xs text-gray-400 dark:text-slate-500 mb-3">
                     Попыток: {{ item.attempts|length }}{% if item.errors %} · неверных: {{ item.errors }}{% endif %}
