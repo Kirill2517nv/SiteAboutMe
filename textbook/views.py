@@ -6,6 +6,7 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.http import urlencode
 from django.views.decorators.http import require_POST
 
 from accounts.models import StudentGroup
@@ -382,6 +383,10 @@ def section_stats_view(request, slug):
         .values('user_id').annotate(n=Count('id')).values_list('user_id', 'n')
     )
 
+    def answers_url(user):
+        return reverse('textbook:section_stats_errors',
+                       kwargs={'slug': section.slug, 'user_id': user.id})
+
     def row_for(user):
         practicum = practicum_stats.get(user.id, {})
         self_check = self_check_stats.get(user.id, {})
@@ -396,8 +401,8 @@ def section_stats_view(request, slug):
             'read_time': read_time.get(user.id) or 0,
             'solve_time': int((solve_time.get(user.id) or timezone.timedelta()).total_seconds()),
             'errors': errors,
-            'errors_url': reverse('textbook:section_stats_errors',
-                                  kwargs={'slug': section.slug, 'user_id': user.id}),
+            'answers_url': answers_url(user),
+            'errors_url': answers_url(user) + '?errors=1',
         }
 
     groups = []
@@ -405,17 +410,29 @@ def section_stats_view(request, slug):
                   .prefetch_related('students__user').order_by('name')):
         students = [p.user for p in group.students.all()]
         if students:
-            groups.append({'name': group.name, 'rows': [row_for(u) for u in students]})
+            groups.append({'key': str(group.id), 'name': group.name,
+                           'rows': [row_for(u) for u in students]})
 
     # select_related('profile') — в таблице у каждого ученика показывается аватар
     ungrouped = (User.objects.filter(profile__group__isnull=True, is_superuser=False)
                  .select_related('profile').order_by('username'))
     if ungrouped:
-        groups.append({'name': 'Без группы', 'rows': [row_for(u) for u in ungrouped]})
+        groups.append({'key': 'none', 'name': 'Без группы',
+                       'rows': [row_for(u) for u in ungrouped]})
+
+    # Один класс за раз, как на /ege/class/: страница отвечает на вопрос «что с
+    # этим классом», а не «покажи всех». Мусор в ?group= трактуем как «все».
+    keys = [g['key'] for g in groups]
+    current = request.GET.get('group') or (keys[0] if keys else 'all')
+    if current not in keys:
+        current = 'all'
+    shown = groups if current == 'all' else [g for g in groups if g['key'] == current]
 
     return render(request, 'textbook/section_stats.html', {
         'section': section,
-        'groups': groups,
+        'groups': shown,
+        'tabs': groups,
+        'current_group': current,
         'practicum_total': practicum_total,
         'self_check_total': self_check_total,
         'articles_total': section.articles.filter(track='material', is_published=True).count(),
@@ -424,48 +441,102 @@ def section_stats_view(request, slug):
 
 @user_passes_test(lambda u: u.is_superuser)
 def section_stats_errors_view(request, slug, user_id):
-    """Детализация ошибок одного ученика по блоку: где именно ошибся."""
+    """
+    Ответы одного ученика по блоку: что решил и на чём спотыкается.
+
+    По умолчанию – все попытки, и верные и неверные: из таблицы сюда ведёт
+    фамилия ученика, и учителю нужна вся его работа, а не только провалы.
+    ?errors=1 оставляет одни ошибки – на это ведёт счётчик ошибок в таблице,
+    и число задач на странице обязано совпасть с числом на кнопке.
+    ?kind=practicum / selfcheck – второй срез: задачи практикума и вопросы
+    самопроверок делаются в разных обстоятельствах (дома над задачей сидят,
+    самопроверку щёлкают по ходу чтения), и смешивать их в одном списке значит
+    сравнивать несравнимое. Два фильтра независимы и складываются.
+    """
     section = get_object_or_404(Section, slug=slug)
     student = get_object_or_404(User, id=user_id)
     practicum_id, self_check_ids = _section_quiz_ids(section)
     all_quiz_ids = [q for q in ([practicum_id] + self_check_ids) if q]
+    errors_only = request.GET.get('errors') == '1'
+    kind = request.GET.get('kind')
+    if kind not in ('practicum', 'selfcheck'):
+        kind = ''
 
-    wrong = list(
-        UserAnswer.objects.filter(
-            ATTEMPTED,
-            user_result__user=student, user_result__quiz_id__in=all_quiz_ids, is_correct=False,
-        )
+    shown_quiz_ids = {
+        'practicum': [practicum_id] if practicum_id else [],
+        'selfcheck': self_check_ids,
+    }.get(kind, all_quiz_ids)
+
+    answers = UserAnswer.objects.filter(
+        ATTEMPTED, user_result__user=student, user_result__quiz_id__in=shown_quiz_ids,
+    )
+    if errors_only:
+        answers = answers.filter(is_correct=False)
+    answers = list(
+        answers
         .select_related('question', 'question__quiz', 'selected_choice', 'user_result')
         .order_by('question__quiz_id', 'question_id', '-user_result__date_completed')
     )
 
-    # Группируем по вопросу: важно не «сколько раз ошибся», а «на чём спотыкается».
+    # Группируем по вопросу: важно не «сколько раз ответил», а что с задачей.
     by_question = {}
-    for answer in wrong:
+    for answer in answers:
         entry = by_question.setdefault(answer.question_id, {
             'question': answer.question,
             'is_practicum': answer.question.quiz_id == practicum_id,
             'attempts': [],
-            'solved_later': False,
+            'errors': 0,
+            'solved': False,
         })
         entry['attempts'].append(answer)
+        if not answer.is_correct:
+            entry['errors'] += 1
 
+    # Решена ли задача – считается по всем ответам, а не по показанным: в режиме
+    # ошибок верной попытки в выборке нет, а «решил позже» показать надо.
     solved_ids = set(
         UserAnswer.objects.filter(
-            user_result__user=student, user_result__quiz_id__in=all_quiz_ids, is_correct=True,
+            user_result__user=student, user_result__quiz_id__in=shown_quiz_ids, is_correct=True,
         ).values_list('question_id', flat=True)
     )
     for question_id, entry in by_question.items():
-        entry['solved_later'] = question_id in solved_ids
+        entry['solved'] = question_id in solved_ids
 
     items = sorted(by_question.values(),
                    key=lambda e: (not e['is_practicum'], e['question'].get_title()))
+
+    # Вкладки собираем здесь, а не в шаблоне: у страницы два независимых
+    # параметра, и адрес каждой вкладки обязан сохранять второй.
+    def tab_url(errors_flag, kind_value):
+        params = {}
+        if errors_flag:
+            params['errors'] = '1'
+        if kind_value:
+            params['kind'] = kind_value
+        return '?' + urlencode(params) if params else '?'
+
+    mode_tabs = [
+        {'label': 'Все ответы', 'url': tab_url(False, kind), 'active': not errors_only},
+        {'label': 'Только ошибки', 'url': tab_url(True, kind), 'active': errors_only},
+    ]
+    kind_tabs = [
+        {'label': 'Все задания', 'url': tab_url(errors_only, ''), 'active': not kind},
+        {'label': 'Практикум', 'url': tab_url(errors_only, 'practicum'),
+         'active': kind == 'practicum'},
+        {'label': 'Самопроверки', 'url': tab_url(errors_only, 'selfcheck'),
+         'active': kind == 'selfcheck'},
+    ]
 
     return render(request, 'textbook/section_stats_errors.html', {
         'section': section,
         'student': student,
         'items': items,
-        'total_errors': len(wrong),
+        'errors_only': errors_only,
+        'kind': kind,
+        'mode_tabs': mode_tabs,
+        'kind_tabs': kind_tabs,
+        'total_errors': sum(e['errors'] for e in items),
+        'total_answers': len(answers),
     })
 
 

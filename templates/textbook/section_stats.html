@@ -24,6 +24,24 @@
             {% endif %}
         </header>
 
+        {% if tabs|length > 1 %}
+        {# Один класс за раз: пять таблиц подряд перестают отвечать на свой вопрос #}
+        <nav class="flex flex-wrap gap-2 mb-6">
+            {% for tab in tabs %}
+            <a href="?group={{ tab.key }}"
+               class="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors
+                      {% if current_group == tab.key %}bg-brand-600 text-white{% else %}bg-white dark:bg-slate-800 text-gray-600 dark:text-slate-300 border border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700{% endif %}">
+                {{ tab.name }}
+            </a>
+            {% endfor %}
+            <a href="?group=all"
+               class="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors
+                      {% if current_group == 'all' %}bg-brand-600 text-white{% else %}bg-white dark:bg-slate-800 text-gray-600 dark:text-slate-300 border border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700{% endif %}">
+                Все
+            </a>
+        </nav>
+        {% endif %}
+
         {% for group in groups %}
         <section class="mb-8">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-3">{{ group.name }}</h2>
@@ -45,7 +63,8 @@
                         {% for row in group.rows %}
                         <tr class="border-b border-gray-100 dark:border-slate-700/60 last:border-b-0">
                             <td class="px-4 py-3">
-                                <a href="{% url 'accounts:student_profile' row.user.id %}"
+                                {# Фамилия ведёт в разбор ответов ученика, а не в профиль #}
+                                <a href="{{ row.answers_url }}"
                                    class="flex items-center gap-3 group">
                                     {% if row.user.profile.avatar %}
                                     <img src="{{ row.user.profile.avatar.url }}" alt=""

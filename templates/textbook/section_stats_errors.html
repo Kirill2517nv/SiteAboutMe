@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 
-{% block title %}Ошибки – {{ student.username }}{% endblock %}
+{% block title %}{% if errors_only %}Ошибки{% else %}Ответы{% endif %} – {{ student.username }}{% endblock %}
 
 {% block content %}
 <div class="min-h-screen bg-gray-50 dark:bg-slate-900">
@@ -16,8 +16,33 @@
                 {{ student.get_full_name|default:student.username }}
             </h1>
             <p class="mt-2 text-base text-gray-500 dark:text-slate-400">
-                {{ section.title }} · неверных попыток: {{ total_errors }}, задач с ошибками: {{ items|length }}
+                {{ section.title }} ·
+                {% if errors_only %}
+                неверных попыток: {{ total_errors }}, задач с ошибками: {{ items|length }}
+                {% else %}
+                задач с ответами: {{ items|length }}, попыток: {{ total_answers }}, из них неверных: {{ total_errors }}
+                {% endif %}
             </p>
+            {# Два независимых среза: что показывать и по каким заданиям #}
+            <nav class="mt-4 flex flex-wrap items-center gap-2">
+                {% for tab in mode_tabs %}
+                <a href="{{ tab.url }}"
+                   class="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors {% if tab.active %}bg-brand-600 text-white{% else %}bg-white dark:bg-slate-800 text-gray-600 dark:text-slate-300 border border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700{% endif %}">
+                    {{ tab.label }}
+                </a>
+                {% endfor %}
+                <span class="w-px h-6 bg-gray-200 dark:bg-slate-700 mx-1"></span>
+                {% for tab in kind_tabs %}
+                <a href="{{ tab.url }}"
+                   class="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors {% if tab.active %}bg-brand-600 text-white{% else %}bg-white dark:bg-slate-800 text-gray-600 dark:text-slate-300 border border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700{% endif %}">
+                    {{ tab.label }}
+                </a>
+                {% endfor %}
+                <a href="{% url 'accounts:student_profile' student.id %}"
+                   class="ml-auto px-3 py-1.5 rounded-lg text-sm font-medium bg-white dark:bg-slate-800 text-gray-600 dark:text-slate-300 border border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors">
+                    Профиль
+                </a>
+            </nav>
         </header>
 
         <div class="space-y-4">
@@ -28,23 +53,28 @@
                         {% if item.is_practicum %}Задача блока{% else %}Самопроверка{% endif %}
                     </span>
                     <span class="flex-1 font-semibold text-gray-900 dark:text-white">{{ item.question.get_title }}</span>
-                    {% if item.solved_later %}
-                    <span class="text-xs px-2 py-1 rounded-lg bg-green-100 text-green-700 whitespace-nowrap">Решил позже</span>
+                    {% if item.solved %}
+                    <span class="text-xs px-2 py-1 rounded-lg bg-green-100 text-green-700 whitespace-nowrap">{% if item.errors %}Решил позже{% else %}Решена{% endif %}</span>
                     {% else %}
                     <span class="text-xs px-2 py-1 rounded-lg bg-red-50 text-red-700 whitespace-nowrap">Не решена</span>
                     {% endif %}
                 </div>
 
-                <p class="text-xs text-gray-400 dark:text-slate-500 mb-3">Неверных попыток: {{ item.attempts|length }}</p>
+                <p class="text-xs text-gray-400 dark:text-slate-500 mb-3">
+                    Попыток: {{ item.attempts|length }}{% if item.errors %} · неверных: {{ item.errors }}{% endif %}
+                </p>
 
                 <div class="space-y-3">
                     {% for attempt in item.attempts %}
-                    <div class="border-l-2 border-red-200 pl-3">
-                        <div class="text-xs text-gray-400 dark:text-slate-500 mb-1">{{ attempt.user_result.date_completed|date:"d.m.Y H:i" }}</div>
+                    <div class="border-l-2 {% if attempt.is_correct %}border-green-300{% else %}border-red-200{% endif %} pl-3">
+                        <div class="flex items-center gap-2 text-xs text-gray-400 dark:text-slate-500 mb-1">
+                            <span class="{% if attempt.is_correct %}text-green-600{% else %}text-red-600{% endif %} font-semibold">{% if attempt.is_correct %}Верно{% else %}Неверно{% endif %}</span>
+                            <span>{{ attempt.user_result.date_completed|date:"d.m.Y H:i" }}</span>
+                        </div>
                         {% if attempt.selected_choice %}
-                        <div class="text-sm text-gray-700 dark:text-slate-300">Выбрал: <span class="text-red-600">{{ attempt.selected_choice.text }}</span></div>
+                        <div class="text-sm text-gray-700 dark:text-slate-300">Выбрал: <span class="{% if attempt.is_correct %}text-green-700{% else %}text-red-600{% endif %}">{{ attempt.selected_choice.text }}</span></div>
                         {% elif attempt.text_answer %}
-                        <div class="text-sm text-gray-700 dark:text-slate-300">Ответил: <span class="text-red-600 font-mono">{{ attempt.text_answer }}</span></div>
+                        <div class="text-sm text-gray-700 dark:text-slate-300">Ответил: <span class="{% if attempt.is_correct %}text-green-700{% else %}text-red-600{% endif %} font-mono">{{ attempt.text_answer }}</span></div>
                         {% endif %}
                         {% if attempt.code_answer %}
                         <pre class="mt-2 p-3 bg-gray-50 dark:bg-slate-900 rounded-lg overflow-x-auto text-xs text-gray-700 dark:text-slate-300">{{ attempt.code_answer }}</pre>
@@ -57,7 +87,7 @@
                 </div>
             </article>
             {% empty %}
-            <p class="text-center text-gray-400 dark:text-slate-500 py-16">Ошибок по этому блоку нет.</p>
+            <p class="text-center text-gray-400 dark:text-slate-500 py-16">{% if errors_only %}Ошибок здесь нет.{% else %}Ответов здесь пока нет.{% endif %}</p>
             {% endfor %}
         </div>
 

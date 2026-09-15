@@ -1407,3 +1407,113 @@ class WidgetMountTests(SimpleTestCase):
             for value in sizes[name]:
                 self.assertTrue(value.endswith('rem'),
                                 f'дерево {name} задано в «{value}» – на проекторе не вырастет')
+
+
+class SectionStatsTeacherTests(TestCase):
+    """
+    Отчёт по блоку: один класс за раз, фамилия ведёт в ответы ученика.
+
+    Сторожит две вещи, которые тихо ломаются при правке шаблона: что таблица
+    не рисует чужой класс (учитель выбирает вкладкой) и что страница ученика
+    показывает и верные ответы тоже, а не одни ошибки.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from accounts.models import Profile, StudentGroup
+        from quizzes.models import UserAnswer, UserResult
+        from textbook.models import Article, ArticleQuiz
+
+        cls.teacher = User.objects.create_superuser('teacher', password='x')
+        cls.quiz = Quiz.objects.create(title='Практикум блока')
+        cls.section = Section.objects.create(
+            title='Блок', slug='blok-stats', practicum_quiz=cls.quiz, is_published=True,
+        )
+        cls.good = Question.objects.create(quiz=cls.quiz, question_type='text',
+                                           title='Задача 1', text='Условие 1')
+        cls.bad = Question.objects.create(quiz=cls.quiz, question_type='text',
+                                          title='Задача 2', text='Условие 2')
+
+        groups = {name: StudentGroup.objects.create(name=name) for name in ('9А', '9Б')}
+        cls.students = {}
+        for name, group in groups.items():
+            user = User.objects.create_user(f'student-{name}', password='x',
+                                            last_name=f'Фамилия{name}')
+            Profile.objects.update_or_create(user=user, defaults={'group': group})
+            cls.students[name] = user
+
+        result = UserResult.objects.create(user=cls.students['9А'], quiz=cls.quiz, score=1)
+        UserAnswer.objects.create(user_result=result, question=cls.good,
+                                  text_answer='42', is_correct=True)
+        UserAnswer.objects.create(user_result=result, question=cls.bad,
+                                  text_answer='7', is_correct=False)
+
+        # Самопроверка после статьи – второй источник ответов того же блока.
+        cls.check_quiz = Quiz.objects.create(title='Самопроверка', is_self_check=True)
+        cls.check_question = Question.objects.create(
+            quiz=cls.check_quiz, question_type='text',
+            title='Вопрос самопроверки', text='Условие 3',
+        )
+        article = Article.objects.create(
+            track='material', section=cls.section, slug='statya-stats',
+            title='Статья', is_published=True,
+        )
+        ArticleQuiz.objects.create(article=article, quiz=cls.check_quiz)
+        check_result = UserResult.objects.create(
+            user=cls.students['9А'], quiz=cls.check_quiz, score=0)
+        UserAnswer.objects.create(user_result=check_result, question=cls.check_question,
+                                  text_answer='нет', is_correct=False)
+
+    def setUp(self):
+        self.client.force_login(self.teacher)
+
+    def test_shows_one_group_at_a_time(self):
+        page = self.client.get(reverse('textbook:section_stats', args=[self.section.slug]))
+        body = page.content.decode()
+        self.assertContains(page, 'Фамилия9А')
+        self.assertNotIn('Фамилия9Б', body)
+
+        other = self.client.get(
+            reverse('textbook:section_stats', args=[self.section.slug]),
+            {'group': self.students['9Б'].profile.group_id},
+        )
+        self.assertContains(other, 'Фамилия9Б')
+        self.assertNotIn('Фамилия9А', other.content.decode())
+
+    def test_name_links_to_answers_not_profile(self):
+        page = self.client.get(reverse('textbook:section_stats', args=[self.section.slug]))
+        answers = reverse('textbook:section_stats_errors',
+                          kwargs={'slug': self.section.slug,
+                                  'user_id': self.students['9А'].id})
+        self.assertContains(page, f'href="{answers}"')
+        self.assertNotContains(
+            page, reverse('accounts:student_profile', args=[self.students['9А'].id]))
+
+    def test_kind_filter_splits_practicum_and_self_checks(self):
+        url = reverse('textbook:section_stats_errors',
+                      kwargs={'slug': self.section.slug, 'user_id': self.students['9А'].id})
+
+        practicum = self.client.get(url, {'kind': 'practicum'})
+        self.assertContains(practicum, 'Задача 1')
+        self.assertNotContains(practicum, 'Вопрос самопроверки')
+
+        self_check = self.client.get(url, {'kind': 'selfcheck'})
+        self.assertContains(self_check, 'Вопрос самопроверки')
+        self.assertNotContains(self_check, 'Задача 1')
+
+        # Фильтры складываются, и вкладки сохраняют второй параметр.
+        both = self.client.get(url, {'kind': 'practicum', 'errors': '1'})
+        self.assertContains(both, 'Задача 2')
+        self.assertNotContains(both, 'Задача 1')
+        self.assertContains(both, 'href="?kind=practicum"')
+
+    def test_answers_page_shows_correct_and_wrong(self):
+        url = reverse('textbook:section_stats_errors',
+                      kwargs={'slug': self.section.slug, 'user_id': self.students['9А'].id})
+        page = self.client.get(url)
+        self.assertContains(page, 'Задача 1')
+        self.assertContains(page, 'Задача 2')
+
+        only_errors = self.client.get(url, {'errors': '1'})
+        self.assertContains(only_errors, 'Задача 2')
+        self.assertNotContains(only_errors, 'Задача 1')
