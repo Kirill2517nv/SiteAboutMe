@@ -50,7 +50,7 @@ from textbook.models import Article
 from textbook.services import replace_blocks
 from textbook.templatetags.textbook_tags import plural
 
-SLUG = 'ege-8-kombinatorika'
+SLUG = 'ege-8-pozitsionnye-sistemy-schisleniya-kombinatorika'
 
 # Условие демоверсии: набор букв так, как он дан в условии ФИПИ, длина
 # слова и ответ. Алфавитный порядок разбор выводит из LETTERS сам: буквы
