@@ -106,6 +106,7 @@
     </style>
 </head>
 <body class="min-h-screen bg-gray-50 dark:bg-slate-900 flex flex-col">
+    {% block metrika %}{% if YANDEX_METRIKA_ID and not user.is_superuser %}{% include "_yandex_metrika.html" %}{% endif %}{% endblock metrika %}
     <!-- Навигация -->
     <header class="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-700 sticky top-0 z-50" x-data="{ mobileMenu: false }">
         <nav class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

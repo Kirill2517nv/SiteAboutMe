@@ -3,6 +3,9 @@
 
 {% block title %}Задача {{ ege_number }} – {{ target_user_name }}{% endblock title %}
 
+{# В заголовке имя автора решения – в Яндекс его не отдаём, см. _yandex_metrika.html #}
+{% block metrika %}{% endblock metrika %}
+
 {% block extra_css %}
 {% if question.question_type == 'code' %}
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">

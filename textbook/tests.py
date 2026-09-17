@@ -1480,6 +1480,19 @@ class SectionStatsTeacherTests(TestCase):
         self.assertContains(other, 'Фамилия9Б')
         self.assertNotIn('Фамилия9А', other.content.decode())
 
+    def test_students_sorted_by_displayed_name(self):
+        from accounts.models import Profile
+        group = self.students['9А'].profile.group
+        for username, last in (('a-login', 'Яковлев'), ('b-login', 'Ёжиков'), ('zzz', '')):
+            user = User.objects.create_user(username, password='x', last_name=last)
+            Profile.objects.update_or_create(user=user, defaults={'group': group})
+
+        page = self.client.get(reverse('textbook:section_stats', args=[self.section.slug]),
+                               {'group': group.id})
+        names = [row['user'].username for row in page.context['groups'][0]['rows']]
+        # Логин без фамилии – латиница, она идёт раньше кириллицы.
+        self.assertEqual(names, ['zzz', 'b-login', 'student-9А', 'a-login'])
+
     def test_name_links_to_answers_not_profile(self):
         page = self.client.get(reverse('textbook:section_stats', args=[self.section.slug]))
         answers = reverse('textbook:section_stats_errors',

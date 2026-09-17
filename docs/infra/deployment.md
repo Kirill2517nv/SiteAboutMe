@@ -162,6 +162,7 @@ sudo certbot renew --dry-run
 | `DATABASE_URL` | PostgreSQL connection string |
 | `DEBUG` | False на production |
 | `ALLOWED_HOSTS` | kirill-lab.ru |
+| `YANDEX_METRIKA_ID` | Номер счётчика Яндекс.Метрики. Задаётся только на production: пусто – счётчик не выводится |
 
 !!! danger "Безопасность"
     `.env` файл **не** коммитится в Git. Содержит приватные ключи и credentials.

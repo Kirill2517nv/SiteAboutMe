@@ -22,3 +22,8 @@ def app_version(request):
                 version = m.group(1)
                 break
     return {'APP_VERSION': version}
+
+
+def yandex_metrika(request):
+    """Номер счётчика Метрики для `_yandex_metrika.html` (пусто – счётчика нет)."""
+    return {'YANDEX_METRIKA_ID': settings.YANDEX_METRIKA_ID}

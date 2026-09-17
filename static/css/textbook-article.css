@@ -174,13 +174,16 @@ html.dark :is(.article-body, .article-lead__text) a:hover { color: var(--color-d
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-border-medium); box-shadow: var(--shadow-sm);
 }
-/* Широкие схемы: общий бокс 4:3 с object-fit: cover срезает им края.
-   Таблица ASCII в уроке 7.2 (≈2.6:1) теряла верхнюю и нижнюю строки, лента
-   цепочек в уроке 8.3 (≈2.4:1) – подписи cur/best слева и плашку ответа
-   справа, то есть ровно то, ради чего картинка нарисована. Показываем целиком:
-   aspect-ratio: auto отдаёт высоту самой картинке. */
+/* Картинки не 4:3: общий бокс с object-fit: cover срезает им края, а срезает
+   он ровно то, ради чего картинка нарисована. Таблица ASCII в уроке 7.2
+   (≈2.6:1) теряла верхнюю и нижнюю строки, лента цепочек в уроке 8.3 (≈2.4:1) –
+   подписи cur/best слева и плашку ответа справа, снимок окна turtle в разборе
+   задания 6 (≈1.07:1, то есть наоборот, слишком высокий) – верхнюю и нижнюю
+   стороны прямоугольника, которые в этой задаче и есть условие. Показываем
+   целиком: aspect-ratio: auto отдаёт высоту самой картинке. */
 .article-body figure img[src*="teksta-ascii/1."],
-.article-body figure img[src*="zadachi-so-strokami/1."] {
+.article-body figure img[src*="zadachi-so-strokami/1."],
+.article-body figure img[src*="ege-6-ispolnitel-cherepaha/1."] {
   aspect-ratio: auto; object-fit: contain;
 }
 
@@ -533,3 +536,160 @@ html.dark .code-block__copy:hover { color: #fff; background: #334155; }
    там же лежит SVG-графика со своими координатами, и её масштабирование
    через zoom сломало бы замеры getBoundingClientRect. Если у доски окажется
    мелко – переводить в rem вместе с координатами конкретного виджета. */
+
+/* ============================================================
+   ЛЕНТА КЛЕТОК – .tape
+   Разбор задания 13 объясняется лентой чисел, которую заполняют слева
+   направо: в клетке – само число и сколько программ до него ведёт.
+   Разметку собирает textbook/management/commands/seed_ege_theory_13.py.
+   Геометрия целиком здесь: bleach пропускает div/span с class, но вычищает
+   style, поэтому инлайновых размеров в разметке быть не может.
+   Дуга прыжка команды B не отдельный элемент – её собирают сами клетки,
+   каждая своим куском линии (--arc, --arc-from, --arc-to). Поэтому она не
+   может разъехаться с числами: она из них и состоит.
+   ============================================================ */
+.tape {
+  display: flex;
+  margin: 22px 0 36px;
+  /* Сверху – стрелки шага A с буквой над первой, снизу – дуга прыжка B
+     и подпись под ней. Оба поля посчитаны по вертикальной раскладке,
+     описанной в докстринге _tape(); двигать их надо вместе со смещениями
+     ::after/::before ниже, иначе overflow-x обрежет стрелки. */
+  padding-top: 40px;
+  padding-bottom: 46px;
+  font-size: var(--fs-table);
+  overflow-x: auto;
+}
+
+/* Шаг A: стрелка от центра своей клетки до центра соседней. Ширина ровно
+   в клетку – клетки равной ширины (flex: 1 1 0), поэтому расстояние между
+   центрами соседних клеток и есть ширина клетки.
+   Концы загнуты вниз, зеркально дуге прыжка B: стрелка обязана смотреть
+   в клетку, а не мимо неё. */
+.tape__a {
+  position: absolute;
+  left: 50%;
+  width: 100%;
+  top: -16px;
+  border-top: 2px solid var(--color-brand-600);
+  /* Клетки идут в потоке позже и закрашивают своим фоном всё, что предыдущая
+     выпустила за свою границу. z-index поднимает стрелку над фонами: она
+     рисуется поверх ленты, а не под соседней клеткой. Хватает одного –
+     стрелка становится контекстом наложения для наконечника и буквы. */
+  z-index: 1;
+}
+/* Хвостик вниз – только в конце, в клетку, куда стрелка ведёт. Начало рисуется
+   лишь у первой стрелки: у остальных на этом месте уже стоит наконечник
+   предыдущей, и два конца сливались в мешанину. Горизонтальные участки идут
+   встык, поэтому линия остаётся непрерывной и без начал.
+   Высота равна подъёму линии над лентой (top: -16px), иначе стрелка
+   не достанет до клетки. */
+.tape__a::after,
+.tape__cell:first-child .tape__a::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  border-left: 2px solid var(--color-brand-600);
+}
+/* Начало доходит до клетки (16px – весь подъём линии над лентой), конец
+   обрывается на основании наконечника (11px): у вершины треугольник тоньше
+   двух пикселей линии, и доведённая до острия линия торчала из него
+   прямоугольным огрызком. */
+.tape__cell:first-child .tape__a::before { left: -1px; height: 16px; }
+.tape__a::after { right: -1px; height: 11px; }
+/* Наконечник смотрит вниз, в клетку. Отдельным элементом, а не псевдо:
+   псевдоэлементы стрелки заняты хвостиками. */
+.tape__a-tip {
+  position: absolute;
+  right: -4px;
+  top: 11px;                       /* основание – там, где обрывается линия */
+  width: 0; height: 0;
+  border: 4px solid transparent;   /* 8px в основании */
+  border-bottom: 0;
+  border-top: 7px solid var(--color-brand-600);   /* и 7px в высоту */
+}
+.tape__a-label {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 6px;
+  color: var(--color-brand-600);
+  font-size: var(--fs-cap);
+  font-weight: 600;
+}
+.tape__cell {
+  flex: 1 1 0;
+  min-width: 3.4em;
+  position: relative;
+  padding: 8px 4px;
+  text-align: center;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border-medium);
+  border-right: none;
+}
+.tape__cell:first-child { border-radius: var(--radius-md) 0 0 var(--radius-md); }
+.tape__cell:last-child {
+  border-right: 1px solid var(--color-border-medium);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+}
+.tape__n { display: block; font-weight: 600; color: var(--color-text-heading); }
+.tape__g {
+  display: block;
+  font-size: var(--fs-cap);
+  color: var(--color-brand-600);
+  font-variant-numeric: tabular-nums;
+}
+/* Заливка – тот же --color-brand-50, что и у строки-ответа в таблицах:
+   смысл один, и в тёмной теме он уже переопределён у .article-column. */
+.tape__cell--start,
+.tape__cell--arc-from,
+.tape__cell--arc-to { background: var(--color-brand-50); }
+
+.tape__cell--arc::after,
+.tape__cell--arc-from::after,
+.tape__cell--arc-to::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: -16px;
+  border-top: 2px solid var(--color-brand-600);
+}
+.tape__cell--arc-from::after { left: 50%; }
+.tape__cell--arc-to::after { right: 50%; }
+/* Вертикальные хвостики от клетки к дуге: без них линия висит сама по себе. */
+.tape__cell--arc-from::before,
+.tape__cell--arc-to::before {
+  content: "";
+  position: absolute;
+  left: calc(50% - 1px);
+  bottom: -16px;
+  border-left: 2px solid var(--color-brand-600);
+}
+/* Начало прыжка доходит до клетки, конец обрывается на основании наконечника –
+   по той же причине, что и у стрелки шага A. */
+.tape__cell--arc-from::before { height: 16px; }
+.tape__cell--arc-to::before { height: 11px; }
+/* Наконечник дуги B: смотрит вверх, в клетку, куда прыжок приземляется.
+   Отдельным элементом, а не псевдо: оба псевдоэлемента клетки-цели заняты
+   линией дуги и хвостиком. */
+.tape__tip {
+  position: absolute;
+  left: calc(50% - 4px);
+  bottom: -5px;                    /* основание – там, где обрывается линия */
+  width: 0; height: 0;
+  border: 4px solid transparent;   /* 8px в основании */
+  border-top: 0;
+  border-bottom: 7px solid var(--color-brand-600);   /* и 7px в высоту */
+}
+/* Подпись сидит в средней клетке прыжка, поэтому оказывается по центру дуги
+   без единой вычисленной координаты. Стоит под линией, а не на ней: сидя на
+   линии, она разрывала дугу надвое и читалась как её часть. */
+.tape__b {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: -38px;
+  white-space: nowrap;
+  color: var(--color-brand-600);
+  font-size: var(--fs-cap);
+  font-weight: 600;
+}

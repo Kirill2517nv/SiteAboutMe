@@ -1,8 +1,10 @@
 {% extends 'base.html' %}
 {% load textbook_tags %}
 
-{# Условие рисуется тем же markdownify и теми же стилями, что и у ученика в тесте:
-   учитель должен видеть задачу ровно так, как её видел ученик. #}
+{% comment %}
+Условие рисуется тем же markdownify и теми же стилями, что и у ученика в тесте:
+учитель должен видеть задачу ровно так, как её видел ученик.
+{% endcomment %}
 {% block extra_css %}{% include 'quizzes/_task_text_css.html' %}{% endblock extra_css %}
 
 {% block pre_alpine_js %}{% include 'quizzes/_mathjax.html' %}{% endblock pre_alpine_js %}

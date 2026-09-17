@@ -80,6 +80,7 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'pages.context_processors.app_version',
+                'pages.context_processors.yandex_metrika',
             ],
         },
     },
@@ -153,6 +154,10 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # If True, download endpoints will use Nginx X-Accel-Redirect to stream files.
 # Enable on production behind Nginx with an internal location mapping to MEDIA_ROOT.
 USE_X_ACCEL_REDIRECT = os.getenv('USE_X_ACCEL_REDIRECT', 'False') == 'True'
+
+# Номер счётчика Яндекс.Метрики. Пусто – счётчик не выводится: задаётся только
+# в .env прода, чтобы заходы с localhost не попадали в статистику.
+YANDEX_METRIKA_ID = os.getenv('YANDEX_METRIKA_ID', '')
 
 # Redirect to home URL after login (Default redirects to /accounts/profile/)
 LOGIN_REDIRECT_URL = '/'

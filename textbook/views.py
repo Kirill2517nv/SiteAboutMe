@@ -10,6 +10,7 @@ from django.utils.http import urlencode
 from django.views.decorators.http import require_POST
 
 from accounts.models import StudentGroup
+from accounts.templatetags.profile_tags import surname_first
 from quizzes.models import Question, Quiz, UserAnswer, UserResult
 
 from .models import Article, ArticleBlock, ArticleProgress, ArticleQuiz, Section
@@ -405,20 +406,27 @@ def section_stats_view(request, slug):
             'errors_url': answers_url(user) + '?errors=1',
         }
 
+    # По алфавиту той же строки, что стоит в ячейке («Фамилия Имя», иначе логин):
+    # order_by('last_name') поставил бы учеников без фамилии в начало, хотя в
+    # таблице у них логин. Ё приравнена к Е – в Unicode она стоит после «я».
+    def rows_for(users):
+        return [row_for(u) for u in
+                sorted(users, key=lambda u: surname_first(u).lower().replace('ё', 'е'))]
+
     groups = []
     for group in (StudentGroup.objects.filter(graduation_year__isnull=True)
                   .prefetch_related('students__user').order_by('name')):
         students = [p.user for p in group.students.all()]
         if students:
             groups.append({'key': str(group.id), 'name': group.name,
-                           'rows': [row_for(u) for u in students]})
+                           'rows': rows_for(students)})
 
     # select_related('profile') — в таблице у каждого ученика показывается аватар
     ungrouped = (User.objects.filter(profile__group__isnull=True, is_superuser=False)
-                 .select_related('profile').order_by('username'))
+                 .select_related('profile'))
     if ungrouped:
         groups.append({'key': 'none', 'name': 'Без группы',
-                       'rows': [row_for(u) for u in ungrouped]})
+                       'rows': rows_for(ungrouped)})
 
     # Один класс за раз, как на /ege/class/: страница отвечает на вопрос «что с
     # этим классом», а не «покажи всех». Мусор в ?group= трактуем как «все».
