@@ -186,6 +186,20 @@ def article_detail_view(request, slug):
     )
     blocks = visible_blocks(article, request.user)
 
+    # Настоящие размеры картинок для лайтбокса: PhotoSwipe открывает снимок
+    # в тех пропорциях, что стоят в data-атрибутах, и на зашитых прежде
+    # 1600×1200 любой другой кадр расплющивало. Читаются они из самого файла,
+    # поэтому здесь, а не в шаблоне: у блока может быть запись о картинке без
+    # файла на диске (сид прогнали раньше, чем приехал media), и обращение
+    # к .width уронило бы страницу целиком вместо одной битой иллюстрации.
+    for block in blocks:
+        block.pswp_size = None
+        if block.block_type == 'image' and block.image:
+            try:
+                block.pswp_size = (block.image.width, block.image.height)
+            except (OSError, ValueError):
+                pass
+
     # Микротест ничего не блокирует — он лишь показывает ученику, как он ответил:
     # зелёный (все верно), жёлтый (половина и больше), красный (меньше половины).
     self_checks = []

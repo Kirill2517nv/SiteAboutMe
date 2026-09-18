@@ -12998,6 +12998,578 @@
         render();
     });
 
+    // ─────────────────────────────────────────────────────────────
+    // Виджет: screen-steps – слайд-шоу «скриншот + текст».
+    //
+    // Восемь навыков одной темы подряд: абзац и кадр к нему. Блоками статьи
+    // они растянули бы вступление длиннее самого решения, а ученику нужен
+    // не список, а «покажи, где это в окне Calc».
+    //
+    // Конфиг:
+    //   {
+    //     "steps": [
+    //       {"title": "Листы – таблицы базы",
+    //        "html":  "<p>…готовый HTML…</p>",
+    //        "image": "/media/ege/theory-3/01-sheets.png",
+    //        "alt":   "Окно LibreOffice Calc: вкладки листов внизу"},
+    //       {"title": "Формула и точка с запятой",
+    //        "html":  "<p>…</p>",
+    //        "video": "/media/ege/theory-3/02-formula.mp4",
+    //        "poster": "/media/ege/theory-3/02-formula.png",
+    //        "alt":   "Ввод формулы =СУММ(E2:E10) от знака равно до Enter"}
+    //     ]
+    //   }
+    //
+    // html приходит уже отрендеренным и очищенным из seed-команды (тем же
+    // markdownify, что и текст статьи) – это доверенный контент автора, поэтому
+    // кладём его через innerHTML; title и alt – обычный текст.
+    // Картинки и видео лежат файлами в media, а не в ArticleBlock.image: у блока
+    // одна картинка, у виджета их восемь. Заливают их отдельно и позже, поэтому
+    // шаг без файла и кадр, не сумевший загрузиться, показывают заглушку
+    // «Скриншот готовится» / «Видео готовится», а не битую картинку.
+    //
+    // Надписи к видео – не выжженные в кадр, а `cues` в конфиге:
+    //   "cues": [{"at": 2.5, "text": "нажимаю F4"}, {"at": 6, "text": "…"}]
+    // Реплика появляется на времени `at` и держится до следующей (у последней –
+    // до конца записи), необязательный `until` укорачивает её. Печатается
+    // строкой под кадром: поверх записи окна Calc закрывать нечего, плашка села
+    // бы ровно на те строки таблицы, ради которых кадр и снимали.
+    // Так текст переписывается в seed-команде, а не перезаписью видео: опечатку
+    // в подписи чинить перекодированием мегабайтов – дорого. Плюс подпись
+    // остаётся резкой на любом масштабе, а на проекторе растёт вместе со
+    // страницей (её кегль в rem через text-sm), чего выжженный в пиксели текст
+    // не умеет.
+    // Реплик нужно две-три на запись, а не по одной на каждое движение: они
+    // отмечают, что произошло, а не пересказывают каждое нажатие.
+    //
+    // video вместо image – там, где показывать нужно движение: всплывающая
+    // подсказка аргументов, обводка диапазона при выделении, заполнение столбца
+    // двойным щелчком. На неподвижном кадре этого либо не видно вовсе, либо
+    // видно обрывок, который нужно расшифровывать. Запись без звука (в статье он
+    // ни к чему, на уроке помешает), закольцована и запускается сама – короткий
+    // ролик работает как анимация; controls оставлены, чтобы на проекторе можно
+    // было встать на нужном моменте. poster – первый кадр, иначе до загрузки
+    // на месте видео чёрный прямоугольник. alt у видео уходит в aria-label
+    // и на страницу не печатается: две серые строки под кадром (общее описание
+    // записи и реплика о происходящем) читались как одна размазанная подпись,
+    // и та, что меняется по ходу, теряла всё внимание.
+    //
+    // Клик по кадру-картинке открывает лайтбокс статьи сам: PhotoSwipe в
+    // base.html ловит ссылки внутри .pswp-gallery по data-pswp-width, а статья
+    // обёрнута в неё. Пропорции лайтбокса переписываются на naturalWidth/
+    // naturalHeight после загрузки – с запасными 1600×1200 он растянул бы
+    // скриншот 16:9. Видео в лайтбокс не заворачиваем: PhotoSwipe показывает
+    // картинки, а у видео уже есть свой полноэкранный режим.
+    //
+    // Клавиатуру виджет не перехватывает: стрелки в режиме показа с проектора
+    // уже заняты статьёй (static/js/article-present.js).
+    // ─────────────────────────────────────────────────────────────
+    register('screen-steps', function (el, config) {
+        const steps = Array.isArray(config.steps) ? config.steps : [];
+        if (steps.length === 0) {
+            el.innerHTML = '<p class="text-sm text-red-500">screen-steps: нужен непустой steps</p>';
+            return;
+        }
+
+        const body = widgetFrame(el, el.dataset.title || 'Пошагово');
+
+        const btnPrimary = 'px-3 py-1.5 rounded-full text-sm border transition-colors bg-brand-600 text-white border-brand-600 hover:bg-brand-700 dark:bg-cyan-500 dark:border-cyan-500 dark:hover:bg-cyan-400';
+        const btnSecondary = 'px-3 py-1.5 rounded-full text-sm border transition-colors bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100 dark:bg-slate-700 dark:border-slate-600 dark:text-slate-300';
+
+        let pos = 0;
+
+        // ---- оглавление ----
+        // Все заголовки сразу на виду: ученик видит весь список тем и прыгает
+        // в нужную, а не листает восемь шагов подряд.
+        const toc = document.createElement('div');
+        toc.className = 'flex flex-wrap gap-2 mb-4';
+        const chips = steps.map(function (step, i) {
+            const chip = document.createElement('button');
+            chip.type = 'button';
+            chip.textContent = (i + 1) + '. ' + (step.title || '');
+            chip.addEventListener('click', function () {
+                pos = i;
+                render();
+            });
+            toc.appendChild(chip);
+            return chip;
+        });
+
+        // ---- кадр ----
+        const shot = document.createElement('div');
+
+        // ---- текст шага ----
+        // .article-body даёт ту же типографику, что у текста статьи.
+        const note = document.createElement('div');
+        note.className = 'article-body mt-4';
+
+        // ---- управление ----
+        const prevBtn = document.createElement('button');
+        prevBtn.type = 'button';
+        prevBtn.textContent = '← Назад';
+        prevBtn.addEventListener('click', function () {
+            if (pos > 0) { pos--; render(); }
+        });
+
+        const nextBtn = document.createElement('button');
+        nextBtn.type = 'button';
+        nextBtn.textContent = 'Далее →';
+        nextBtn.addEventListener('click', function () {
+            if (pos < steps.length - 1) { pos++; render(); }
+        });
+
+        const counter = document.createElement('span');
+        counter.className = 'text-sm text-gray-400 dark:text-slate-400 ml-auto';
+
+        const controls = document.createElement('div');
+        controls.className = 'flex flex-wrap items-center gap-2 mt-4';
+        controls.appendChild(prevBtn);
+        controls.appendChild(nextBtn);
+        controls.appendChild(counter);
+
+        body.appendChild(toc);
+        body.appendChild(shot);
+        body.appendChild(note);
+        body.appendChild(controls);
+
+        // Заглушка вместо кадра: файл заливают позже, и до этого шаг обязан
+        // выглядеть аккуратно, а не битой картинкой.
+        function placeholder(step) {
+            const box = document.createElement('div');
+            box.className = 'border-2 border-dashed border-gray-200 dark:border-slate-600 rounded-lg px-3 py-2 text-center';
+            const text = document.createElement('div');
+            text.className = 'text-sm text-gray-400 dark:text-slate-400';
+            text.textContent = (step.video ? 'Видео готовится: ' : 'Скриншот готовится: ')
+                + (step.alt || step.title || '');
+            box.appendChild(text);
+            return box;
+        }
+
+        // Кадр пересоздаётся на каждом шаге: обработчики load/error должны
+        // относиться к тому файлу, который сейчас на экране.
+        function renderShot(step) {
+            shot.textContent = '';
+            if (step.video) {
+                const video = document.createElement('video');
+                video.className = 'block w-full rounded-lg border border-gray-200 dark:border-slate-700';
+                video.src = step.video;
+                if (step.poster) video.poster = step.poster;
+                // muted обязателен: со звуком браузер запретит автозапуск.
+                video.muted = true;
+                video.loop = true;
+                video.autoplay = true;
+                video.controls = true;
+                video.playsInline = true;
+                video.preload = 'metadata';
+                video.setAttribute('aria-label', step.alt || step.title || '');
+                video.addEventListener('error', function () {
+                    // Видео могло уже уехать со экрана вместе со сменой шага.
+                    if (!shot.contains(video)) return;
+                    shot.textContent = '';
+                    shot.appendChild(placeholder(step));
+                });
+
+                shot.appendChild(video);
+
+                // Реплика печатается строкой под кадром, а не плашкой поверх
+                // него: на скриншоте окна Calc закрывать нечем – под плашкой
+                // оказывались как раз те строки таблицы, ради которых кадр
+                // и снимали. Строка не прячется, когда реплики нет: иначе
+                // подпись и текст шага подпрыгивали бы на каждом появлении.
+                // Высота в rem – показ с проектора масштабирует страницу
+                // корневым кеглем.
+                const cues = Array.isArray(step.cues) ? step.cues : [];
+                if (cues.length > 0) {
+                    const label = document.createElement('div');
+                    label.className = 'mt-2 text-sm text-gray-400 dark:text-slate-400';
+                    label.style.minHeight = '1.5rem';
+                    video.addEventListener('timeupdate', function () {
+                        const t = video.currentTime;
+                        let active = null;
+                        cues.forEach(function (cue, i) {
+                            const from = Number(cue.at) || 0;
+                            const next = cues[i + 1] ? Number(cues[i + 1].at) : Infinity;
+                            const to = cue.until === undefined ? next : Number(cue.until);
+                            if (t >= from && t < to) active = cue;
+                        });
+                        label.textContent = active ? (active.text || '') : '';
+                    });
+                    shot.appendChild(label);
+                }
+                return;
+            }
+            if (!step.image) {
+                shot.appendChild(placeholder(step));
+                return;
+            }
+            const link = document.createElement('a');
+            link.href = step.image;
+            link.target = '_blank';
+            // Запасная пропорция на время загрузки, настоящую сообщит load.
+            link.dataset.pswpWidth = '1600';
+            link.dataset.pswpHeight = '1200';
+            const img = document.createElement('img');
+            img.className = 'block w-full rounded-lg border border-gray-200 dark:border-slate-700';
+            img.src = step.image;
+            img.alt = step.alt || step.title || '';
+            img.loading = 'lazy';
+            img.addEventListener('load', function () {
+                if (!img.naturalWidth || !img.naturalHeight) return;
+                link.dataset.pswpWidth = String(img.naturalWidth);
+                link.dataset.pswpHeight = String(img.naturalHeight);
+            });
+            img.addEventListener('error', function () {
+                // Ошибка кадра, с которого уже ушли, не должна затереть текущий.
+                if (link.parentNode !== shot) return;
+                shot.textContent = '';
+                shot.appendChild(placeholder(step));
+            });
+            link.appendChild(img);
+            shot.appendChild(link);
+        }
+
+        function render() {
+            chips.forEach(function (chip, i) {
+                chip.className = i === pos ? btnPrimary : btnSecondary;
+            });
+
+            const step = steps[pos];
+            renderShot(step);
+            note.innerHTML = step.html || '';
+            counter.textContent = 'шаг ' + (pos + 1) + ' из ' + steps.length;
+
+            const atStart = pos === 0;
+            prevBtn.disabled = atStart;
+            prevBtn.className = btnSecondary + (atStart ? ' opacity-50 cursor-not-allowed' : '');
+            const atEnd = pos === steps.length - 1;
+            nextBtn.disabled = atEnd;
+            nextBtn.className = btnPrimary + (atEnd ? ' opacity-50 cursor-not-allowed' : '');
+        }
+
+        render();
+    });
+
+    // ─────────────────────────────────────────────────────────────
+    // Виджет: ip-mask – IP-адрес и маска по битам: где номер сети, где узла.
+    //
+    // Конфиг: { "ip": "192.168.159.86", "mask": "255.255.252.0" }.
+    //
+    // Три строки по 32 бита: адрес узла, маска, адрес сети. Номера узла и
+    // широковещательного адреса нет намеренно: пять строк нулей и единиц
+    // читались сплошной рябью. Биты сети синие, узла оранжевые, над таблицей
+    // шапка зон – цветная полоса и подпись «номер сети · 21 бит»: одних цветов
+    // с легендой внизу было мало, чтобы прочитать, где какая зона. Граница
+    // между зонами – то, что в задании 10 ищут. Таблица – grid «подпись | октет ×4», десятичное значение стоит под
+    // своим октетом: у строк разной ширины при выравнивании по центру октеты
+    // разъезжались. Главная мысль разбора – границу почти никогда не проводят
+    // по точке, – проговаривается под таблицей: какие октеты копируются,
+    // какие обнуляются и какой разрезан.
+    //
+    // Маска бывает только сплошной (единицы подряд, потом нули), поэтому её
+    // биты не переключаются по одному: клик ставит границу. Клик по единице
+    // обрезает маску перед ней, по нулю – продлевает до него включительно.
+    // Маску можно и вписать – точками или числом «/22», – несплошная
+    // подсвечивается красным, а таблица держит последнее верное значение.
+    //
+    // Числа – беззнаковые 32 бита: побитовые операции JS возвращают int32,
+    // поэтому каждый результат проходит через >>> 0.
+    // ─────────────────────────────────────────────────────────────
+    register('ip-mask', function (el, config) {
+        function parseIp(text) {
+            const m = /^\s*(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\s*$/.exec(text || '');
+            if (!m) return null;
+            let value = 0;
+            for (let i = 1; i <= 4; i++) {
+                const octet = parseInt(m[i], 10);
+                if (octet > 255) return null;
+                value = value * 256 + octet;
+            }
+            return value;
+        }
+
+        function maskFromPrefix(p) {
+            // << 32 в JS – это << 0, поэтому /0 отдельно.
+            return p === 0 ? 0 : (0xFFFFFFFF << (32 - p)) >>> 0;
+        }
+
+        // Префикс маски или null, если маска не сплошная / не разобралась.
+        function parsePrefix(text) {
+            const short = /^\s*\/?\s*(\d{1,2})\s*$/.exec(text || '');
+            if (short) {
+                const p = parseInt(short[1], 10);
+                return p <= 32 ? p : null;
+            }
+            const value = parseIp(text);
+            if (value === null) return null;
+            for (let p = 0; p <= 32; p++) {
+                if (maskFromPrefix(p) === value) return p;
+            }
+            return null;
+        }
+
+        function octets(value) {
+            return [value >>> 24, (value >>> 16) & 255, (value >>> 8) & 255, value & 255];
+        }
+
+        function dotted(value) {
+            return octets(value).join('.');
+        }
+
+        const initialIp = parseIp(config.ip);
+        const initialPrefix = parsePrefix(config.mask);
+        let ip = initialIp === null ? parseIp('192.168.159.86') : initialIp;
+        let prefix = initialPrefix === null ? 22 : initialPrefix;
+
+        const body = widgetFrame(el, el.dataset.title || 'IP-адрес и маска');
+
+        const btnChip = 'px-2.5 py-1 rounded-full text-xs border transition-colors bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100 dark:bg-slate-700 dark:border-slate-600 dark:text-slate-300';
+        const inputBase = 'w-40 text-center rounded-md border px-2 py-1 font-mono text-base bg-white text-gray-900 dark:bg-slate-800 dark:text-white';
+        const inputOk = ' border-gray-200 dark:border-slate-600';
+        const inputBad = ' border-red-400 ring-1 ring-red-400 dark:border-red-400';
+
+        const CELL = 'w-5 h-6 shrink-0 rounded-sm font-mono text-sm flex items-center justify-center';
+        const NET_ON = 'bg-brand-600 text-white dark:bg-cyan-500 dark:text-slate-900';
+        const NET_OFF = 'bg-brand-100 text-brand-700 dark:bg-cyan-500/20 dark:text-cyan-200';
+        const HOST_ON = 'bg-orange-500 text-white dark:bg-orange-500 dark:text-slate-900';
+        const HOST_OFF = 'bg-orange-100 text-orange-800 dark:bg-orange-500/20 dark:text-orange-200';
+        const NET_BAR = 'bg-brand-600 dark:bg-cyan-500';
+        const HOST_BAR = 'bg-orange-500';
+        const NET_TEXT = 'text-brand-700 dark:text-cyan-300';
+        const HOST_TEXT = 'text-orange-700 dark:text-orange-300';
+
+        // ── поля ввода ───────────────────────────────────────────
+        const controls = document.createElement('div');
+        controls.className = 'flex flex-wrap gap-3 justify-center items-center';
+
+        function field(caption, value) {
+            const label = document.createElement('label');
+            label.className = 'flex items-center gap-2 text-sm text-gray-500 dark:text-slate-400';
+            label.appendChild(document.createTextNode(caption));
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.spellcheck = false;
+            input.className = inputBase + inputOk;
+            input.value = value;
+            label.appendChild(input);
+            controls.appendChild(label);
+            return input;
+        }
+
+        const ipInput = field('адрес узла', dotted(ip));
+        const maskInput = field('маска', dotted(maskFromPrefix(prefix)));
+
+        const stepper = document.createElement('div');
+        stepper.className = 'flex items-center gap-2';
+        function stepBtn(text, delta, title) {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = btnChip + ' font-mono';
+            b.textContent = text;
+            b.title = title;
+            b.addEventListener('click', function () {
+                prefix = Math.min(32, Math.max(0, prefix + delta));
+                render();
+            });
+            return b;
+        }
+        const prefixLabel = document.createElement('span');
+        prefixLabel.className = 'w-10 text-center font-mono text-base text-gray-900 dark:text-white';
+        stepper.appendChild(stepBtn('←', -1, 'граница на бит влево: сеть меньше бит, узлов больше'));
+        stepper.appendChild(prefixLabel);
+        stepper.appendChild(stepBtn('→', 1, 'граница на бит вправо'));
+        controls.appendChild(stepper);
+
+        const errorLine = document.createElement('div');
+        errorLine.className = 'mt-2 text-center text-sm text-red-500';
+
+        // ── таблица битов ────────────────────────────────────────
+        const scroller = document.createElement('div');
+        scroller.className = 'mt-4 overflow-x-auto';
+        const table = document.createElement('div');
+        table.className = 'grid w-max mx-auto gap-x-5 gap-y-2 items-start';
+        table.style.gridTemplateColumns = 'auto repeat(4, auto)';
+        scroller.appendChild(table);
+
+        // Строки пересобираются целиком на каждый render: сотня ячеек – не
+        // нагрузка, а граница сдвигается во всех строках разом. Клики по маске
+        // ловятся делегированием.
+        table.addEventListener('click', function (e) {
+            const cell = e.target.closest('[data-pos]');
+            if (!cell) return;
+            const pos = parseInt(cell.dataset.pos, 10);
+            prefix = pos < prefix ? pos : pos + 1;
+            render();
+        });
+
+        const explain = document.createElement('div');
+        explain.className = 'mt-4 space-y-1 text-center text-sm text-gray-600 dark:text-slate-300';
+
+        const reset = document.createElement('div');
+        reset.className = 'mt-3 flex justify-center';
+        const resetBtn = document.createElement('button');
+        resetBtn.type = 'button';
+        resetBtn.className = btnChip;
+        resetBtn.textContent = 'вернуть пример';
+        resetBtn.addEventListener('click', function () {
+            if (initialIp !== null) ip = initialIp;
+            if (initialPrefix !== null) prefix = initialPrefix;
+            render();
+        });
+        reset.appendChild(resetBtn);
+
+        body.appendChild(controls);
+        body.appendChild(errorLine);
+        body.appendChild(scroller);
+        body.appendChild(explain);
+        body.appendChild(reset);
+
+        ipInput.addEventListener('input', function () {
+            const value = parseIp(ipInput.value);
+            ipInput.className = inputBase + (value === null ? inputBad : inputOk);
+            errorLine.textContent = value === null ? 'Адрес – четыре числа от 0 до 255 через точку.' : '';
+            if (value === null) return;
+            ip = value;
+            render('ip');
+        });
+
+        maskInput.addEventListener('input', function () {
+            const p = parsePrefix(maskInput.value);
+            maskInput.className = inputBase + (p === null ? inputBad : inputOk);
+            errorLine.textContent = p === null
+                ? 'Маска – единицы подряд, потом нули: 255.255.252.0 или /22 можно, 255.0.255.0 нельзя.'
+                : '';
+            if (p === null) return;
+            prefix = p;
+            render('mask');
+        });
+
+        // Зазор перед первым битом узла внутри октета – граница видна прямо
+        // в строке. Ширина октета растёт во всех строках (и в шапке зон)
+        // одинаково, выравнивание не страдает.
+        function gap(pos) {
+            return pos === prefix && pos % 8 !== 0 ? ' ml-2' : '';
+        }
+
+        // Шапка над таблицей: цветная полоса над каждой зоной и подпись с
+        // числом бит. Подписи прижаты к краям таблицы – сетевая к левому,
+        // узловая к правому, – поэтому не наезжают друг на друга ни при
+        // какой маске; где кончается зона, показывает полоса.
+        function zonesRow() {
+            let html = '<div></div>';
+            const hostBits = 32 - prefix;
+            for (let o = 0; o < 4; o++) {
+                html += '<div class="flex gap-0.5">';
+                for (let pos = o * 8; pos < o * 8 + 8; pos++) {
+                    const net = pos < prefix;
+                    // Полоса перекрывает зазор до соседней ячейки той же зоны,
+                    // чтобы зона читалась сплошной, а не пунктиром.
+                    const joined = pos % 8 !== 7 && pos !== prefix - 1;
+                    html += '<div class="relative w-5 h-7 shrink-0' + gap(pos) + '">' +
+                        '<div class="absolute bottom-0 left-0 h-1.5 rounded-full ' + (net ? NET_BAR : HOST_BAR) +
+                        (joined ? ' -right-0.5' : ' right-0') + '"></div>';
+                    if (pos === 0 && prefix > 0) {
+                        html += '<div class="absolute left-0 bottom-2.5 whitespace-nowrap text-sm font-semibold ' + NET_TEXT + '">' +
+                            'номер сети · ' + prefix + ' ' + plural(prefix, 'бит', 'бита', 'бит') + '</div>';
+                    }
+                    if (pos === 31 && hostBits > 0) {
+                        html += '<div class="absolute right-0 bottom-2.5 whitespace-nowrap text-sm font-semibold ' + HOST_TEXT + '">' +
+                            'номер узла · ' + hostBits + ' ' + plural(hostBits, 'бит', 'бита', 'бит') + '</div>';
+                    }
+                    html += '</div>';
+                }
+                html += '</div>';
+            }
+            return html;
+        }
+
+        // Одна строка таблицы – пять ячеек grid: подпись и четыре октета, под
+        // битами октета его десятичное значение.
+        function row(caption, value, clickable, cutOctet) {
+            let html = '<div class="h-6 flex items-center justify-end whitespace-nowrap text-sm text-gray-500 dark:text-slate-400">' + caption + '</div>';
+            octets(value).forEach(function (octet, o) {
+                html += '<div class="flex flex-col items-center gap-1"><div class="flex gap-0.5">';
+                for (let pos = o * 8; pos < o * 8 + 8; pos++) {
+                    const on = (value >>> (31 - pos)) & 1;
+                    const net = pos < prefix;
+                    const cls = CELL + ' ' + (net ? (on ? NET_ON : NET_OFF) : (on ? HOST_ON : HOST_OFF)) +
+                        gap(pos) +
+                        (clickable ? ' cursor-pointer hover:ring-2 hover:ring-gray-400' : '');
+                    html += clickable
+                        ? '<button type="button" data-pos="' + pos + '" class="' + cls + '" title="поставить границу здесь">' + on + '</button>'
+                        : '<div class="' + cls + '">' + on + '</div>';
+                }
+                html += '</div><div class="font-mono text-sm ' + (o === cutOctet
+                    ? 'font-bold text-gray-900 dark:text-white'
+                    : 'text-gray-500 dark:text-slate-400') + '">' + octet + '</div></div>';
+            });
+            return html;
+        }
+
+        function render(source) {
+            const mask = maskFromPrefix(prefix);
+            const network = (ip & mask) >>> 0;
+            const hostBits = 32 - prefix;
+            const cut = prefix % 8 === 0 ? -1 : Math.floor(prefix / 8);
+
+            if (source !== 'ip') {
+                ipInput.value = dotted(ip);
+                ipInput.className = inputBase + inputOk;
+            }
+            if (source !== 'mask') {
+                maskInput.value = dotted(mask);
+                maskInput.className = inputBase + inputOk;
+            }
+            if (!source) errorLine.textContent = '';
+            prefixLabel.textContent = '/' + prefix;
+
+            table.innerHTML =
+                zonesRow() +
+                row('адрес узла', ip, false, cut) +
+                row('маска', mask, true, cut) +
+                '<div class="border-t border-gray-200 dark:border-slate-600" style="grid-column: 1 / -1"></div>' +
+                row('адрес сети', network, false, cut);
+
+            // Что происходит с каждым октетом при И с маской.
+            const kept = [], zeroed = [];
+            for (let i = 0; i < 4; i++) {
+                if ((i + 1) * 8 <= prefix) kept.push(i + 1);
+                else if (i * 8 >= prefix) zeroed.push(i + 1);
+            }
+            function list(nums, first) {
+                const word = nums.length === 1 ? 'октет ' : 'октеты ';
+                return (first ? 'О' + word.slice(1) : word) + nums.join(', ');
+            }
+            const lines = [];
+            lines.push('Маска /' + prefix + ': ' + prefix + ' ' + plural(prefix, 'бит', 'бита', 'бит') +
+                ' номера сети, ' + hostBits + ' ' + plural(hostBits, 'бит', 'бита', 'бит') + ' номера узла.');
+            const moves = [];
+            if (kept.length) moves.push(list(kept, true) + ' под 255 – в адрес сети как есть');
+            if (zeroed.length) moves.push(list(zeroed, !moves.length) + ' под 0 – обнуляется');
+            if (moves.length) lines.push(moves.join('; ') + '.');
+            if (cut >= 0) {
+                const a = octets(ip)[cut], m = octets(mask)[cut];
+                lines.push('Октет ' + (cut + 1) + ' разрезан границей – его считают в двоичной: ' +
+                    '<b class="font-mono text-gray-900 dark:text-white">' + a + ' &amp; ' + m + ' = ' + (a & m) + '</b>.');
+            } else {
+                lines.push('Граница прошла ровно по точке – считать в двоичной ничего не нужно.');
+            }
+            const total = Math.pow(2, hostBits);
+            lines.push('Адресов в сети: 2<sup>' + hostBits + '</sup> = ' + total.toLocaleString('ru-RU') +
+                (hostBits >= 2 ? ', компьютерам из них – ' + (total - 2).toLocaleString('ru-RU') +
+                    ' (без адреса сети и широковещательного).' : '.'));
+            explain.innerHTML = lines.map(function (l) { return '<p>' + l + '</p>'; }).join('');
+        }
+
+        function plural(n, one, few, many) {
+            const d10 = n % 10, d100 = n % 100;
+            if (d10 === 1 && d100 !== 11) return one;
+            if (d10 >= 2 && d10 <= 4 && (d100 < 12 || d100 > 14)) return few;
+            return many;
+        }
+
+        render();
+    });
+
     document.addEventListener('DOMContentLoaded', function () {
         init();
     });

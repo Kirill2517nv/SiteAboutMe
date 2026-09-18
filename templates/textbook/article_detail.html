@@ -247,8 +247,10 @@
                     <div class="article-body">
                         <figure>
                             {% if block.image %}
-                            <a href="{{ block.image.url }}" data-pswp-width="1600" data-pswp-height="1200" target="_blank">
-                                <img src="{{ block.image.url }}" alt="{{ block.title }}">
+                            {# Размеры считает вьюха из самого файла: на зашитых 1600×1200 лайтбокс расплющивал любую другую пропорцию. #}
+                            {# Те же числа – атрибутами у img: бокса 4:3 у картинки больше нет, и без них текст прыгает при загрузке. #}
+                            <a href="{{ block.image.url }}"{% if block.pswp_size %} data-pswp-width="{{ block.pswp_size.0 }}" data-pswp-height="{{ block.pswp_size.1 }}"{% endif %} target="_blank">
+                                <img src="{{ block.image.url }}" alt="{{ block.title }}"{% if block.pswp_size %} width="{{ block.pswp_size.0 }}" height="{{ block.pswp_size.1 }}"{% endif %}>
                             </a>
                             {% endif %}
                             {% if block.content %}
