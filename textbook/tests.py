@@ -37,6 +37,12 @@ class UngluedListsTest(SimpleTestCase):
         self.assertIn('<ol>', html)
         self.assertEqual(html.count('<li>'), 2)
 
+    def test_list_resumed_after_table_keeps_its_number(self):
+        """Таблица внутри пункта рвёт список; продолжение обязано начаться с 5, а не с 1."""
+        html = markdownify('4. Пример:\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\n'
+                           '5. дальше;\n6. конец.')
+        self.assertIn('<ol start="5">', html)
+
     def test_normal_markdown_still_works(self):
         html = markdownify('Абзац.\n\n- пункт;\n- пункт.')
         self.assertEqual(html.count('<li>'), 2)
@@ -1268,6 +1274,8 @@ class WidgetMountTests(SimpleTestCase):
         from textbook.management.commands import seed_ege_theory_2 as ege2
         from textbook.management.commands import seed_ege_theory_4 as ege4
         from textbook.management.commands import seed_ege_theory_12 as ege12
+        from textbook.management.commands import seed_ege_theory_19 as ege19
+        from textbook.management.commands import seed_ege_theory_24 as ege24
         from textbook.management.commands import seed_textbook_block8 as block8
 
         configs = {
@@ -1323,6 +1331,48 @@ class WidgetMountTests(SimpleTestCase):
                 'pattern': block8.REGEX_GROUP_PATTERN,
                 'text': block8.REGEX_GROUP_TEXT,
             },
+            # Разбор задания 24 ставит тот же виджет на шаблон своего решения.
+            # Здесь кириллицы нет, зато есть `[-*]` внутри класса и пара
+            # альтернатив подряд – место, где браузерный движок и python
+            # разойтись как раз могут, а на странице это будет выглядеть
+            # как «виджет находит не то, что написано в разборе».
+            'regex-lab#ege24': {
+                'pattern': ege24.PATTERN,
+                'text': ege24.HEAD,
+            },
+            # Трассу второго решения задания 24 собирает Python в seed-команде,
+            # и монтируется она на том же листинге, по которому считает: номер
+            # строки в шаге – индекс в SCAN_LINES. Проверяем, что виджет с
+            # этим конфигом рисуется и доходит до последнего шага с тем же
+            # best, что даёт сам алгоритм.
+            'loop-trace#ege24': {
+                'code': ege24.TRACE_LINES,
+                'vars': ['s', 'right', 'c', 'left', 'num_start',
+                         's[left:right+1]', 'best'],
+                'steps': ege24._scan_trace(),
+                '__click': ['В конец'],
+            },
+            # Заготовка «скобки без ?:»: на ней держится объяснение, зачем
+            # `?:` нужен. Если браузерный движок напечатает куски целиком,
+            # а не кортежи групп, абзац в разборе станет неправдой.
+            'regex-lab#ege24-groups': {
+                'pattern': ege24.GROUP_PATTERN,
+                'text': ege24.HEAD,
+            },
+            # Дерево игры 19-21: у виджета пять формулировок из банка, и вся
+            # его польза в том, что лента S под ними красит разные множества.
+            # Перепутать в одной из них any с all – значит показать ленту, по
+            # которой ученик выпишет неверный ответ, и в git diff это не видно.
+            # Поэтому нажимаем те же кнопки, что и он, и читаем строку ответа.
+            'ege-game-tree#t19': dict(ege19.WIDGET_CONFIG, __click=['Ваня мог за 1 ход']),
+            'ege-game-tree#t20': dict(ege19.WIDGET_CONFIG, __click=['Петя за 2 хода']),
+            'ege-game-tree#t21': dict(ege19.WIDGET_CONFIG, __click=['Ваня за 2 хода']),
+            'ege-game-tree#pile': dict(ege19.WIDGET_CONFIG,
+                                       __click=['Одна куча (банк)', 'Ваня всегда за 1 ход']),
+            # Конструктор условия: переключаем число куч. Кнопка «1» здесь –
+            # та, что в конструкторе: он стоит в разметке выше ползунка
+            # глубины, у которого подписи такие же.
+            'ege-game-tree#custom': dict(ege19.WIDGET_CONFIG, __click=['1']),
             'truth-table': {
                 'vars': list(ege2.VARS),
                 'code': ege2.PY_EXPR,
@@ -1362,6 +1412,15 @@ class WidgetMountTests(SimpleTestCase):
             self.assertIn(gone, drawn['fano-code#full'],
                           f'полный fano-code потерял «{gone}» – гейт снёс разметку всем')
 
+        # Трасса задания 24, докрученная «До конца», обязана показать тот же
+        # лучший кусок, что даёт алгоритм из статьи. Виджет ничего не считает
+        # сам, но подставить не ту колонку или обрезать шаги – может.
+        self.assertIn(f'{ege24._best_scan(ege24.TRACE_TEXT)}',
+                      drawn['loop-trace#ege24'],
+                      'трасса задания 24 кончается не на том best')
+        self.assertIn('s[left:right+1]', drawn['loop-trace#ege24'],
+                      'в трассе задания 24 пропала колонка с куском строки')
+
         # Лента после прогона обязана дать тот же ответ, что и разбор: число
         # в статье считает Python (_check в seed-команде), а на странице его
         # же показывает JS – две реализации одной машины Тьюринга.
@@ -1390,9 +1449,33 @@ class WidgetMountTests(SimpleTestCase):
             ('regex-lab', block8.REGEX_LAB_PATTERN, block8.REGEX_LAB_TEXT),
             ('regex-lab#date', block8.REGEX_DATE_PATTERN, block8.REGEX_DATE_TEXT),
             ('regex-lab#groups', block8.REGEX_GROUP_PATTERN, block8.REGEX_GROUP_TEXT),
+            ('regex-lab#ege24', ege24.PATTERN, ege24.HEAD),
+            ('regex-lab#ege24-groups', ege24.GROUP_PATTERN, ege24.HEAD),
         ):
             self.assertIn(findall_line(pattern, text), drawn[name],
                           f'{name}: браузерный движок нашёл не то, что python')
+
+        # Лента S виджета обязана дать те же ответы, что и разбор: числа в
+        # статье считает Python (_check в seed_ege_theory_19), а на странице их
+        # же заново вычисляет JS – две реализации одной пары win/lose.
+        for name, must in (
+            ('ege-game-tree#t19', f'наименьшее {ege19.ANSWER_19}'),
+            ('ege-game-tree#t20', 'два наименьших {} {}'.format(*ege19.ANSWER_20)),
+            ('ege-game-tree#t21', f'наименьшее {ege19.ANSWER_21}'),
+            ('ege-game-tree#pile', f'наименьшее {ege19.PILE_19}'),
+        ):
+            plain = _re.sub(r'<[^>]+>', '', drawn[name])
+            self.assertIn(must, plain,
+                          f'{name}: виджет посчитал не то, что разбор')
+
+        # Правка условия уводит с пресета и перестраивает игру: одна куча –
+        # это «начало: S», а не «(17, S)». Без этого конструктор мог бы
+        # молча не применяться, а лента осталась бы от пресета.
+        custom = drawn['ege-game-tree#custom']
+        # Проверяем строку правил, а не подпись вкладки: «своя игра» написано
+        # на кнопке всегда, и такое утверждение прошло бы при любой поломке.
+        self.assertIn('условие изменено', custom, 'правка условия не сняла пресет')
+        self.assertIn('начало: S,', custom, 'переключение на одну кучу не применилось')
 
         # Кодовое дерево обязано расти вместе с текстом при показе с проектора.
         # present-mode.js масштабирует страницу корневым кеглем, поэтому SVG,

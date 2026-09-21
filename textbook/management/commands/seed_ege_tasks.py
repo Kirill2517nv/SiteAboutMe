@@ -47,6 +47,13 @@ EGE_TASKS = [
 ]
 
 
+# Заголовок статьи для связки 19–21: три номера живут одной страницей и одним
+# разбором, статья у них общая и лежит на заглушке первого номера. «Задание 19»
+# в её заголовке обещало бы разбор одной задачи из трёх.
+LINKED_ARTICLE_TITLES = {
+    19: 'Задания 19–21. Теория игр: выигрышная стратегия',
+}
+
 class Command(BaseCommand):
     help = 'Создаёт справочник заданий ЕГЭ 1–27 и статьи-заглушки под теорию'
 
@@ -90,7 +97,8 @@ class Command(BaseCommand):
                     updated_tasks += 1
 
             slug = f'ege-{number}-{slugify_ru(title)}'
-            article_title = f'Задание {number}. {title}'
+            article_title = LINKED_ARTICLE_TITLES.get(
+                number, f'Задание {number}. {title}')
 
             existing = Article.objects.filter(track='ege', ege_task=task).first()
             if existing:

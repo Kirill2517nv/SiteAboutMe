@@ -12838,12 +12838,44 @@
         // ради повтора – findall начал возвращать не то.
         function findallItem(m) {
             if (!m.groups.length) return quote(m.text);
-            if (m.groups.length === 1) return quote(m.groups[0]);
-            return '(' + m.groups.map(quote).join(', ') + ')';
+            if (m.groups.length === 1) return findallGroup(m.groups[0]);
+            return '(' + m.groups.map(findallGroup).join(', ') + ')';
+        }
+
+        // Группа, которая в совпадении не участвовала, приходит в findall
+        // пустой строкой, а не None: re.findall(r'(a)(b)?', 'a') даёт
+        // [('a', '')]. None – это ответ m.group(), поэтому в списке
+        // совпадений ниже он и остаётся, а здесь его быть не должно.
+        // Расхождение вылезает только на шаблонах с необязательной группой
+        // (разбор задания 24), и сторожит его WidgetMountTests, сверяя эту
+        // строку с настоящим питоновским re.
+        function findallGroup(g) {
+            return quote(g === undefined ? '' : g);
         }
 
         function quote(s) {
             return s === undefined ? 'None' : "'" + String(s) + "'";
+        }
+
+        // Палитра подсветки: четыре разных тона, а не оттенки одного.
+        // Соседние совпадения обязаны различаться – два подряд похожим цветом
+        // читаются как одно длинное совпадение, а в разборе задания 24 вся
+        // суть в том, где шаблон рвёт строку: `7-99*0`, `0-0` и `0` стоят
+        // вплотную, и на двух оттенках зелёного они сливались в один кусок.
+        // Четыре тона, а не два: при двух цвет повторяется через один, и
+        // короткие совпадения через пробел снова читаются как пара.
+        // Рамка (`ring`) здесь не украшение, а второй признак помимо цвета:
+        // границу совпадения видно и в чёрно-белой печати, и тому, кто тонов
+        // не различает.
+        const HUES = [
+            'bg-emerald-200 text-emerald-950 ring-emerald-600/50 dark:bg-emerald-500/40 dark:text-emerald-50 dark:ring-emerald-300/50',
+            'bg-sky-200 text-sky-950 ring-sky-600/50 dark:bg-sky-500/40 dark:text-sky-50 dark:ring-sky-300/50',
+            'bg-amber-200 text-amber-950 ring-amber-600/50 dark:bg-amber-500/40 dark:text-amber-50 dark:ring-amber-300/50',
+            'bg-fuchsia-200 text-fuchsia-950 ring-fuchsia-600/50 dark:bg-fuchsia-500/40 dark:text-fuchsia-50 dark:ring-fuchsia-300/50',
+        ];
+
+        function hue(i) {
+            return HUES[i % HUES.length];
         }
 
         const body = widgetFrame(el, el.dataset.title || 'Регулярное выражение');
@@ -12936,11 +12968,10 @@
                     hilite.appendChild(plain);
                 }
                 const mark = document.createElement('span');
-                // Соседние совпадения красятся по-разному: два подряд одним
-                // цветом читаются как одно длинное.
-                mark.className = 'rounded px-0.5 ' + (i % 2
-                    ? 'bg-emerald-200 text-emerald-900 dark:bg-emerald-500/40 dark:text-emerald-50'
-                    : 'bg-emerald-300 text-emerald-900 dark:bg-emerald-500/70 dark:text-emerald-50');
+                // Цвет по номеру совпадения – тот же, что у строки в списке
+                // ниже: подсвеченный кусок и запись «#3 позиция 9» должны
+                // находиться друг по другу без счёта пальцем по строке.
+                mark.className = 'rounded px-0.5 ring-1 ring-inset ' + hue(i);
                 mark.textContent = m.text.length ? m.text : '·';
                 hilite.appendChild(mark);
                 pos = m.start + m.text.length;
@@ -12977,11 +13008,20 @@
             found.slice(0, MAX_SHOWN).forEach(function (m, i) {
                 const row = document.createElement('div');
                 row.className = 'font-mono text-xs text-gray-500 dark:text-slate-400';
-                let line = '#' + (i + 1) + '  позиция ' + m.start + '  ' + quote(m.text);
+                // Номер совпадения красится тем же тоном, что и сам кусок в
+                // тексте выше. Иначе список отвечает «где», а подсветка – «что»,
+                // и связать их можно только пересчётом совпадений слева направо.
+                const tag = document.createElement('span');
+                tag.className = 'rounded px-1 ring-1 ring-inset ' + hue(i);
+                tag.textContent = '#' + (i + 1);
+                row.appendChild(tag);
+                let line = '  позиция ' + m.start + '  ' + quote(m.text);
                 m.groups.forEach(function (g, gi) {
                     line += '   группа ' + (gi + 1) + ': ' + quote(g);
                 });
-                row.textContent = line;
+                const rest = document.createElement('span');
+                rest.textContent = line;
+                row.appendChild(rest);
                 list.appendChild(row);
             });
         }
@@ -13568,6 +13608,853 @@
         }
 
         render();
+    });
+
+    // ─────────────────────────────────────────────────────────────
+    // Виджет: ege-game-tree – дерево игры для заданий 19–21.
+    //
+    // Правила игры живут в состоянии виджета, а не в коде: сколько куч, какие
+    // ходы, где кончается игра и в каких границах меняется S. Конфиг задаёт
+    // пресеты (обычно два – разбираемая в статье игра и соседняя из банка), а
+    // ученик правит любой из них прямо на странице. Поэтому виджет один на
+    // весь банк 19–21: «две кучи, +4 или ×2, сумма не меньше 133» и «одна
+    // куча, −3, −5 или //4, не больше 30» – это одни и те же четыре поля.
+    //
+    // Конфиг:
+    //   {"games": [
+    //      {"name": "Две кучи (демо-2027)", "piles": [17, null],
+    //       "moves": [["add", 4], ["mul", 2]], "end": ["ge", 133],
+    //       "range": [1, 115], "s": 29},
+    //      {"name": "Одна куча", "piles": [null],
+    //       "moves": [["sub", 3], ["sub", 5], ["div", 4]], "end": ["le", 30],
+    //       "range": [31, 140], "s": 124}
+    //   ]}
+    // piles: список куч, null на месте той, которая равна S. Операции: add,
+    // sub, mul, div (деление нацело). end: ge (не меньше) или le (не больше)
+    // по сумме куч.
+    //
+    // Четыре панели, каждая отвечает на свой вопрос:
+    //   правила игры – пресеты и конструктор: число куч, список ходов, порог,
+    //                границы S. Своё условие вбивается за полминуты, и это
+    //                главное: банк 19–21 – это одна игра с другими числами;
+    //   формулировки – те пять, что встречаются в банке. Не украшение:
+    //                ученик путает «Ваня мог выиграть» с «при любом ходе Пети
+    //                Ваня выигрывает», а тут видно, что ленты разные;
+    //   лента S    – при каких S выполняется выбранная формулировка. Ответ
+    //                задания виден глазами: это первая зелёная клетка;
+    //   дерево     – что происходит при выбранном S: узлы окрашены по тому,
+    //                выигрывает или проигрывает ТОТ, ЧЬЯ ОЧЕРЕДЬ ходить, и за
+    //                сколько ходов. Клик по узлу делает его корнем – так
+    //                разыгрывается партия ход за ходом.
+    //
+    // Панель правил не перерисовывается вместе с остальным: её поля живут от
+    // монтирования до конца, и render() их не трогает. Иначе ввод числа в поле
+    // «порог» сбрасывал бы фокус после каждой цифры – перерисовку запускает
+    // как раз событие input.
+    // ─────────────────────────────────────────────────────────────
+    register('ege-game-tree', function (el, config) {
+        const SVG_NS = 'http://www.w3.org/2000/svg';
+
+        const CHIP = 'px-2.5 py-1 rounded-full text-xs border transition-colors bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100 dark:bg-slate-700 dark:border-slate-600 dark:text-slate-300';
+        const CHIP_ON = 'px-2.5 py-1 rounded-full text-xs border transition-colors bg-brand-600 text-white border-brand-600 dark:bg-cyan-500 dark:border-cyan-500';
+        const BADGE = 'px-2 py-0.5 rounded-md text-xs font-semibold border bg-gray-100 border-gray-200 text-gray-600 dark:bg-slate-700 dark:border-slate-600 dark:text-slate-300';
+        const FIELD = 'w-16 px-2 py-1 rounded-md border text-sm font-mono bg-white border-gray-300 text-gray-800 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-100';
+        const SELECT = 'px-2 py-1 rounded-md border text-sm bg-white border-gray-300 text-gray-800 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-100';
+        const CAPTION = 'text-xs uppercase tracking-wide text-gray-400 dark:text-slate-500';
+
+        // Цвет узла закреплён за исходом для ходящего, а не за игроком: одна и
+        // та же зелёная плашка на чётном уровне читается как «Петя
+        // выигрывает», на нечётном – как «Ваня выигрывает».
+        const STATE = {
+            end:   { svg: 'fill-gray-100 stroke-gray-400 dark:fill-slate-600 dark:stroke-slate-400',
+                     chip: 'bg-gray-100 border-gray-300 text-gray-600 dark:bg-slate-600 dark:border-slate-400 dark:text-slate-200',
+                     note: 'игра окончена' },
+            win1:  { svg: 'fill-emerald-100 stroke-emerald-500 dark:fill-emerald-800 dark:stroke-emerald-400',
+                     chip: 'bg-emerald-100 border-emerald-400 text-emerald-800 dark:bg-emerald-800 dark:border-emerald-500 dark:text-emerald-100',
+                     note: 'выигрывает этим ходом' },
+            win2:  { svg: 'fill-lime-100 stroke-lime-500 dark:fill-lime-800 dark:stroke-lime-400',
+                     chip: 'bg-lime-100 border-lime-400 text-lime-800 dark:bg-lime-800 dark:border-lime-500 dark:text-lime-100',
+                     note: 'выигрывает вторым ходом' },
+            lose1: { svg: 'fill-rose-100 stroke-rose-500 dark:fill-rose-800 dark:stroke-rose-400',
+                     chip: 'bg-rose-100 border-rose-400 text-rose-800 dark:bg-rose-800 dark:border-rose-500 dark:text-rose-100',
+                     note: 'проигрывает: соперник закончит сразу' },
+            lose2: { svg: 'fill-amber-100 stroke-amber-500 dark:fill-amber-800 dark:stroke-amber-400',
+                     chip: 'bg-amber-100 border-amber-400 text-amber-800 dark:bg-amber-800 dark:border-amber-500 dark:text-amber-100',
+                     note: 'проигрывает: соперник закончит вторым ходом' },
+            open:  { svg: 'fill-slate-50 stroke-slate-300 dark:fill-slate-800 dark:stroke-slate-500',
+                     chip: 'bg-slate-50 border-slate-300 text-slate-600 dark:bg-slate-800 dark:border-slate-500 dark:text-slate-300',
+                     note: 'за два хода не решается' }
+        };
+        const STATE_ORDER = ['win1', 'win2', 'lose1', 'lose2', 'open', 'end'];
+
+        const OPS = [
+            { key: 'add', sign: '+', word: 'добавить' },
+            { key: 'sub', sign: '−', word: 'убрать' },
+            { key: 'mul', sign: '×', word: 'увеличить в' },
+            { key: 'div', sign: '//', word: 'уменьшить в' }
+        ];
+        const OP_SIGN = {};
+        OPS.forEach(function (o) { OP_SIGN[o.key] = o.sign; });
+
+        const MAX_CELLS = 240;     // длиннее ленты не бывает: клетка станет уже 2px
+        const MAX_MOVES = 5;       // в задачах ЕГЭ ходов три, четвёртый – уже выдумка
+
+        function clamp(raw, lo, hi, fallback) {
+            const v = parseInt(raw, 10);
+            if (isNaN(v)) return fallback;
+            return Math.min(Math.max(v, lo), hi);
+        }
+
+        // ── правила игры: конфиг → редактируемое состояние ───────
+        function specFrom(raw) {
+            const piles = Array.isArray(raw.piles) && raw.piles.length ? raw.piles : [null];
+            const moves = (Array.isArray(raw.moves) ? raw.moves : [['add', 1]])
+                .map(function (m) { return { op: m[0], v: clamp(m[1], 1, 99, 1) }; })
+                .filter(function (m) { return OP_SIGN[m.op]; })
+                .slice(0, MAX_MOVES);
+            const range = Array.isArray(raw.range) ? raw.range : [1, 100];
+            const min = clamp(Math.min(range[0], range[1]), 0, 9999, 1);
+            return {
+                name: raw.name || 'Игра',
+                two: piles.length > 1,
+                fixed: clamp(piles.length > 1 ? piles[0] : 0, 0, 999, 0),
+                moves: moves.length ? moves : [{ op: 'add', v: 1 }],
+                cmp: (raw.end && raw.end[0] === 'le') ? 'le' : 'ge',
+                bound: clamp(raw.end && raw.end[1], 1, 99999, 100),
+                min: min,
+                max: clamp(Math.max(range[0], range[1]), min, 9999, min + 99),
+                s: clamp(raw.s, 0, 9999, min)
+            };
+        }
+
+        // Из состояния – работающая игра. Всё, что знает про условие задачи,
+        // собрано здесь: дальше идут только win/lose, одинаковые для всех.
+        function makeGame(spec) {
+            const piles = spec.two ? [spec.fixed, null] : [null];
+            const varIndex = piles.length - 1;
+
+            function apply(x, rule) {
+                if (rule.op === 'add') return x + rule.v;
+                if (rule.op === 'sub') return x - rule.v;
+                if (rule.op === 'mul') return x * rule.v;
+                return Math.floor(x / rule.v);
+            }
+
+            return {
+                min: spec.min,
+                max: spec.max,
+                start: function (s) {
+                    return piles.map(function (p, i) { return i === varIndex ? s : p; });
+                },
+                moves: function (pos) {
+                    const out = [];
+                    // Порядок ходов тот же, что в условии: сначала все кучи по
+                    // первому правилу, потом по второму. С ним колонки дерева
+                    // ложатся так же, как строки таблицы в разборе.
+                    spec.moves.forEach(function (rule) {
+                        pos.forEach(function (x, i) {
+                            const next = pos.slice();
+                            next[i] = apply(x, rule);
+                            out.push(next);
+                        });
+                    });
+                    return out;
+                },
+                over: function (pos) {
+                    const total = pos.reduce(function (a, b) { return a + b; }, 0);
+                    return spec.cmp === 'ge' ? total >= spec.bound : total <= spec.bound;
+                },
+                rulesText: function () {
+                    const list = spec.moves.map(function (rule) {
+                        return OP_SIGN[rule.op] + ' ' + rule.v;
+                    }).join(', ');
+                    return 'ходы: ' + list + (spec.two ? ' к любой из куч' : '') +
+                        ' · игра кончается, когда ' + (spec.two ? 'сумма ' : 'в куче ') +
+                        (spec.cmp === 'ge' ? 'не меньше ' : 'не больше ') + spec.bound +
+                        ' · начало: ' + (spec.two ? '(' + spec.fixed + ', S)' : 'S') +
+                        ', S от ' + spec.min + ' до ' + spec.max;
+                }
+            };
+        }
+
+        const presets = (Array.isArray(config.games) && config.games.length
+            ? config.games : [config]).map(specFrom);
+
+        let presetIndex = 0;
+        // Последнее условие, собранное руками. Нужно, чтобы вкладка «своя
+        // игра» возвращала к нему: иначе сходить на пресет и вернуться можно
+        // было бы только набрав все поля заново.
+        let customSpec = null;
+        let spec = JSON.parse(JSON.stringify(presets[0]));
+        let game = makeGame(spec);
+        let s = spec.s;
+        let viewKey = 'p2';
+        let depth = 2;
+        let path = [];             // разыгранные ходы: позиции от корня
+
+        function clampS(raw) {
+            return clamp(raw, game.min, game.max, game.min);
+        }
+
+        // ── выигрывает / проигрывает ходящий ─────────────────────
+        // Те же две взаимно рекурсивные функции, что в разборе: k убывает
+        // через уровень, поэтому рекурсия конечна и мемоизация не нужна.
+        function win(pos, k) {
+            if (k === 0) return false;
+            return game.moves(pos).some(function (next) {
+                return game.over(next) || lose(next, k - 1);
+            });
+        }
+
+        function lose(pos, k) {
+            return game.moves(pos).every(function (next) {
+                return !game.over(next) && win(next, k);
+            });
+        }
+
+        function stateOf(pos) {
+            if (game.over(pos)) return 'end';
+            if (win(pos, 1)) return 'win1';
+            if (lose(pos, 1)) return 'lose1';
+            if (win(pos, 2)) return 'win2';
+            if (lose(pos, 2)) return 'lose2';
+            return 'open';
+        }
+
+        // ── формулировки из банка ────────────────────────────────
+        // Ходит из начальной позиции всегда Петя, поэтому вопрос про Ваню – это
+        // `lose` для позиции Пети. Отдельно стоит «мог выиграть»: там Петя
+        // имеет право сходить плохо, и это `any` по его ходам, а не `lose`.
+        const VIEWS = [
+            { key: 'p1', chip: 'Петя за 1 ход', task: '19',
+              full: 'Петя выигрывает своим первым ходом',
+              test: function (pos) { return win(pos, 1); } },
+            { key: 'v1any', chip: 'Ваня мог за 1 ход', task: '19',
+              full: 'известно, что Ваня выиграл своим первым ходом – такая ситуация возможна',
+              test: function (pos) {
+                  return game.moves(pos).some(function (next) {
+                      return !game.over(next) && win(next, 1);
+                  });
+              } },
+            { key: 'v1', chip: 'Ваня всегда за 1 ход', task: '19',
+              full: 'Петя не может выиграть за один ход, но при любом ходе Пети Ваня выигрывает своим первым ходом',
+              test: function (pos) { return lose(pos, 1); } },
+            { key: 'p2', chip: 'Петя за 2 хода', task: '20',
+              full: 'Петя не может выиграть за один ход, но выигрывает вторым ходом при любой игре Вани',
+              test: function (pos) { return win(pos, 2) && !win(pos, 1); } },
+            { key: 'v2', chip: 'Ваня за 2 хода', task: '21',
+              full: 'Ваня выигрывает первым или вторым ходом при любой игре Пети, но гарантии выиграть первым у него нет',
+              test: function (pos) { return lose(pos, 2) && !lose(pos, 1); } }
+        ];
+
+        function view() {
+            return VIEWS.filter(function (v) { return v.key === viewKey; })[0] || VIEWS[0];
+        }
+
+        // Лента считается только по показанным клеткам: у своей игры границы
+        // ставит ученик, и перебор «от 1 до 9999» повис бы на каждой правке.
+        function lastCell() {
+            return Math.min(game.max, game.min + MAX_CELLS - 1);
+        }
+
+        function matches() {
+            const test = view().test;
+            const out = [];
+            for (let value = game.min; value <= lastCell(); value++) {
+                if (test(game.start(value))) out.push(value);
+            }
+            return out;
+        }
+
+        function label(pos) {
+            return pos.length > 1 ? '(' + pos.join(', ') + ')' : String(pos[0]);
+        }
+
+        function mover(level) {
+            // Уровень бывает и -1: в подсказке конечной позиции спрашивают, кто
+            // в неё сходил, а у корня родителя нет.
+            return (((level % 2) + 2) % 2) === 0 ? 'Петя' : 'Ваня';
+        }
+
+        function svgEl(name, attrs) {
+            const node = document.createElementNS(SVG_NS, name);
+            Object.keys(attrs || {}).forEach(function (k) { node.setAttribute(k, attrs[k]); });
+            return node;
+        }
+
+        function button(text, cls) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.textContent = text;
+            if (cls) btn.className = cls;
+            return btn;
+        }
+
+        function numberField(value, lo, hi, onChange) {
+            const input = document.createElement('input');
+            input.type = 'number';
+            input.className = FIELD;
+            input.min = String(lo);
+            input.max = String(hi);
+            input.value = String(value);
+            input.addEventListener('input', function () {
+                const v = parseInt(input.value, 10);
+                if (isNaN(v) || v < lo || v > hi) return;   // недописанное число не трогаем
+                onChange(v);
+            });
+            // Возврат значения после клампа: поле обязано показывать то, что
+            // применилось, а не то, что набрали.
+            input.addEventListener('change', function () {
+                const v = clamp(input.value, lo, hi, lo);
+                input.value = String(v);
+                onChange(v);
+            });
+            return input;
+        }
+
+        // ── разметка ─────────────────────────────────────────────
+        const body = widgetFrame(el, el.dataset.title || 'Дерево игры');
+
+        const presetRow = document.createElement('div');
+        presetRow.className = 'flex flex-wrap items-center gap-2';
+        const presetCap = document.createElement('span');
+        presetCap.className = CAPTION;
+        presetCap.textContent = 'игра';
+        presetRow.appendChild(presetCap);
+        const presetBtns = [];
+        presets.forEach(function (preset, i) {
+            const btn = button(preset.name);
+            btn.addEventListener('click', function () {
+                presetIndex = i;
+                spec = JSON.parse(JSON.stringify(presets[i]));
+                s = spec.s;
+                path = [];
+                syncEditor();
+                apply();
+            });
+            presetBtns.push(btn);
+            presetRow.appendChild(btn);
+        });
+        // Третья вкладка рядом с пресетами. Она не прячет конструктор –
+        // тот виден всегда: атрибут `hidden` на элементе с классом `flex` всё
+        // равно не работает, явный display перебивает стиль браузера, а
+        // прятать поля и нечего. Вкладка показывает, что на ленте сейчас не
+        // пресет, и возвращает к своей игре после заглядывания в разобранную.
+        const editBtn = button('своя игра');
+        editBtn.addEventListener('click', function () {
+            if (!customSpec) return;          // править ещё нечего
+            spec = JSON.parse(JSON.stringify(customSpec));
+            s = clamp(spec.s, spec.min, spec.max, spec.min);
+            presetIndex = -1;
+            path = [];
+            syncEditor();
+            apply();
+        });
+        presetRow.appendChild(editBtn);
+
+        // ── конструктор условия ──────────────────────────────────
+        const editor = document.createElement('div');
+        editor.className = 'mt-3 rounded-lg border border-gray-200 dark:border-slate-600 p-3 flex flex-col gap-3';
+
+        const pilesRow = document.createElement('div');
+        pilesRow.className = 'flex flex-wrap items-center gap-2';
+        const pilesCap = document.createElement('span');
+        pilesCap.className = CAPTION;
+        pilesCap.textContent = 'куч';
+        pilesRow.appendChild(pilesCap);
+        const pilesBtns = {};
+        [1, 2].forEach(function (n) {
+            const btn = button(String(n));
+            btn.addEventListener('click', function () {
+                spec.two = (n === 2);
+                path = [];
+                syncEditor();
+                custom();
+            });
+            pilesBtns[n] = btn;
+            pilesRow.appendChild(btn);
+        });
+        const fixedCap = document.createElement('span');
+        fixedCap.className = CAPTION;
+        fixedCap.textContent = 'первая куча';
+        const fixedInput = numberField(spec.fixed, 0, 999, function (v) {
+            spec.fixed = v;
+            path = [];
+            custom();
+        });
+        pilesRow.appendChild(fixedCap);
+        pilesRow.appendChild(fixedInput);
+
+        const movesRow = document.createElement('div');
+        movesRow.className = 'flex flex-wrap items-center gap-2';
+        const movesCap = document.createElement('span');
+        movesCap.className = CAPTION;
+        movesCap.textContent = 'ходы';
+        movesRow.appendChild(movesCap);
+        const movesHost = document.createElement('div');
+        movesHost.className = 'flex flex-wrap items-center gap-2';
+        movesRow.appendChild(movesHost);
+        const addMove = button('+ ход', CHIP);
+        addMove.addEventListener('click', function () {
+            if (spec.moves.length >= MAX_MOVES) return;
+            spec.moves.push({ op: 'add', v: 1 });
+            renderMoves();
+            custom();
+        });
+        movesRow.appendChild(addMove);
+
+        function renderMoves() {
+            movesHost.innerHTML = '';
+            spec.moves.forEach(function (rule, i) {
+                const cell = document.createElement('span');
+                cell.className = 'inline-flex items-center gap-1';
+
+                const select = document.createElement('select');
+                select.className = SELECT;
+                OPS.forEach(function (op) {
+                    const option = document.createElement('option');
+                    option.value = op.key;
+                    option.textContent = op.sign;
+                    if (op.key === rule.op) option.selected = true;
+                    select.appendChild(option);
+                });
+                select.addEventListener('change', function () {
+                    rule.op = select.value;
+                    path = [];
+                    custom();
+                });
+
+                const value = numberField(rule.v, 1, 99, function (v) {
+                    rule.v = v;
+                    path = [];
+                    custom();
+                });
+
+                cell.appendChild(select);
+                cell.appendChild(value);
+
+                // Последний ход не удаляем: игра без ходов – не игра, и виджет
+                // после такой правки нарисовал бы дерево из одного узла.
+                if (spec.moves.length > 1) {
+                    // Глиф не «×»: рядом стоит ход «× 2», и одинаковые
+                    // значки читались как часть условия.
+                    const drop = button('✕', 'px-1.5 text-gray-400 hover:text-rose-500 dark:text-slate-500');
+                    drop.title = 'убрать ход';
+                    drop.setAttribute('aria-label', 'убрать ход');
+                    drop.addEventListener('click', function () {
+                        spec.moves.splice(i, 1);
+                        path = [];
+                        renderMoves();
+                        custom();
+                    });
+                    cell.appendChild(drop);
+                }
+                movesHost.appendChild(cell);
+            });
+        }
+
+        const endRow = document.createElement('div');
+        endRow.className = 'flex flex-wrap items-center gap-2';
+        const endCap = document.createElement('span');
+        endCap.className = CAPTION;
+        endCap.textContent = 'конец игры';
+        const endSelect = document.createElement('select');
+        endSelect.className = SELECT;
+        [['ge', 'не меньше'], ['le', 'не больше']].forEach(function (pair) {
+            const option = document.createElement('option');
+            option.value = pair[0];
+            option.textContent = pair[1];
+            endSelect.appendChild(option);
+        });
+        endSelect.addEventListener('change', function () {
+            spec.cmp = endSelect.value;
+            path = [];
+            custom();
+        });
+        const boundInput = numberField(spec.bound, 1, 99999, function (v) {
+            spec.bound = v;
+            path = [];
+            custom();
+        });
+        boundInput.className = FIELD + ' w-20';
+        endRow.appendChild(endCap);
+        endRow.appendChild(endSelect);
+        endRow.appendChild(boundInput);
+
+        const rangeRow = document.createElement('div');
+        rangeRow.className = 'flex flex-wrap items-center gap-2';
+        const rangeCap = document.createElement('span');
+        rangeCap.className = CAPTION;
+        rangeCap.textContent = 'S от';
+        const minInput = numberField(spec.min, 0, 9999, function (v) {
+            spec.min = v;
+            if (spec.max < v) spec.max = v;
+            maxInput.value = String(spec.max);
+            s = clamp(s, spec.min, spec.max, spec.min);
+            path = [];
+            custom();
+        });
+        const toCap = document.createElement('span');
+        toCap.className = CAPTION;
+        toCap.textContent = 'до';
+        const maxInput = numberField(spec.max, 0, 9999, function (v) {
+            spec.max = Math.max(v, spec.min);
+            s = clamp(s, spec.min, spec.max, spec.min);
+            path = [];
+            custom();
+        });
+        rangeRow.appendChild(rangeCap);
+        rangeRow.appendChild(minInput);
+        rangeRow.appendChild(toCap);
+        rangeRow.appendChild(maxInput);
+
+        editor.appendChild(pilesRow);
+        editor.appendChild(movesRow);
+        editor.appendChild(endRow);
+        editor.appendChild(rangeRow);
+
+        function syncEditor() {
+            fixedInput.value = String(spec.fixed);
+            boundInput.value = String(spec.bound);
+            minInput.value = String(spec.min);
+            maxInput.value = String(spec.max);
+            endSelect.value = spec.cmp;
+            renderMoves();
+        }
+
+        // Правка полей уводит с пресета: кнопка не должна остаться нажатой,
+        // когда на ленте уже другая игра.
+        function custom() {
+            presetIndex = -1;
+            customSpec = JSON.parse(JSON.stringify(spec));
+            apply();
+        }
+
+        function apply() {
+            game = makeGame(spec);
+            s = clampS(s);
+            render();
+        }
+
+        const rulesLine = document.createElement('div');
+        rulesLine.className = 'mt-2 text-xs text-gray-500 dark:text-slate-400';
+
+        const viewRow = document.createElement('div');
+        viewRow.className = 'mt-3 flex flex-wrap items-center gap-2';
+        const viewCap = document.createElement('span');
+        viewCap.className = CAPTION;
+        viewCap.textContent = 'вопрос';
+        viewRow.appendChild(viewCap);
+        const viewBtns = {};
+        VIEWS.forEach(function (v) {
+            const btn = button(v.chip);
+            btn.addEventListener('click', function () {
+                viewKey = v.key;
+                render();
+            });
+            viewBtns[v.key] = btn;
+            viewRow.appendChild(btn);
+        });
+
+        const viewLine = document.createElement('div');
+        viewLine.className = 'mt-2 text-sm text-gray-600 dark:text-slate-300';
+
+        const strip = document.createElement('div');
+        strip.className = 'mt-3 flex items-stretch gap-px overflow-x-auto';
+
+        const answerLine = document.createElement('div');
+        answerLine.className = 'mt-2 text-sm text-gray-700 dark:text-slate-200';
+
+        const sRow = document.createElement('div');
+        sRow.className = 'mt-3 flex flex-wrap items-center gap-3';
+        const sLabel = document.createElement('span');
+        sLabel.className = 'font-mono text-sm text-gray-700 dark:text-slate-200 w-20';
+        const sSlider = document.createElement('input');
+        sSlider.type = 'range';
+        sSlider.className = 'w-40 accent-brand-600 dark:accent-cyan-500';
+        sSlider.setAttribute('aria-label', 'Начальное значение S');
+        sSlider.addEventListener('input', function () {
+            s = clampS(sSlider.value);
+            path = [];
+            render();
+        });
+        sRow.appendChild(sLabel);
+        sRow.appendChild(sSlider);
+
+        const depthCap = document.createElement('span');
+        depthCap.className = CAPTION;
+        depthCap.textContent = 'ходов вперёд';
+        sRow.appendChild(depthCap);
+        const depthBtns = {};
+        [1, 2, 3].forEach(function (d) {
+            const btn = button(String(d));
+            btn.addEventListener('click', function () {
+                depth = d;
+                render();
+            });
+            depthBtns[d] = btn;
+            sRow.appendChild(btn);
+        });
+
+        const pathLine = document.createElement('div');
+        pathLine.className = 'mt-3 flex flex-wrap items-center gap-2 text-sm text-gray-600 dark:text-slate-300';
+
+        const treeHost = document.createElement('div');
+        treeHost.className = 'mt-2 overflow-x-auto';
+
+        const legendRow = document.createElement('div');
+        legendRow.className = 'mt-3 flex flex-wrap items-center gap-1.5';
+
+        const noteLine = document.createElement('div');
+        noteLine.className = 'mt-2 text-sm text-gray-600 dark:text-slate-300';
+
+        body.appendChild(presetRow);
+        body.appendChild(editor);
+        body.appendChild(rulesLine);
+        body.appendChild(viewRow);
+        body.appendChild(viewLine);
+        body.appendChild(strip);
+        body.appendChild(answerLine);
+        body.appendChild(sRow);
+        body.appendChild(pathLine);
+        body.appendChild(treeHost);
+        body.appendChild(legendRow);
+        body.appendChild(noteLine);
+
+        // ── дерево ───────────────────────────────────────────────
+        function renderTree(root, baseLevel) {
+            treeHost.innerHTML = '';
+
+            const CHAR = 7.3;              // ширина моноширинного символа при 12px
+            const H = 26;
+            const ROW = 62;
+            const PAD_LEFT = 52;           // колонка с именем ходящего
+            const PAD_TOP = 26;
+
+            const nodes = [];
+            (function build(pos, level, parent) {
+                const node = { pos: pos, level: level, children: [], parent: parent,
+                               state: stateOf(pos) };
+                nodes.push(node);
+                // Конечная позиция детей не имеет: игра там уже кончилась, и
+                // рисовать ходы после победы значит рисовать то, чего не было.
+                if (level - baseLevel < depth && !game.over(pos)) {
+                    game.moves(pos).forEach(function (next) {
+                        node.children.push(build(next, level + 1, node));
+                    });
+                }
+                return node;
+            })(root, baseLevel, null);
+
+            const widthOf = function (node) { return label(node.pos).length * CHAR + 16; };
+            const maxW = Math.max.apply(null, nodes.map(widthOf));
+            const STEP = maxW + 12;
+            let cursor = 0;
+            let maxLevel = baseLevel;
+            (function layout(node) {
+                node.children.forEach(layout);
+                if (node.children.length === 0) {
+                    node.x = PAD_LEFT + maxW / 2 + cursor * STEP;
+                    cursor++;
+                } else {
+                    const xs = node.children.map(function (c) { return c.x; });
+                    node.x = (Math.min.apply(null, xs) + Math.max.apply(null, xs)) / 2;
+                }
+                node.y = PAD_TOP + (node.level - baseLevel) * ROW;
+                if (node.level > maxLevel) maxLevel = node.level;
+            })(nodes[0]);
+
+            const width = PAD_LEFT + maxW + Math.max(cursor - 1, 0) * STEP + 12;
+            const height = PAD_TOP + (maxLevel - baseLevel) * ROW + 30;
+            const svg = svgEl('svg', {
+                width: width, height: height,
+                viewBox: '0 0 ' + width + ' ' + height, class: 'block'
+            });
+            // Показ с проектора масштабирует страницу корневым кеглем
+            // (present-mode.js ставит documentElement.style.fontSize), поэтому
+            // дерево, заданное только пикселями, осталось бы на стене прежним
+            // рядом с выросшим текстом. Те же размеры в rem растут вместе с
+            // ним, viewBox безразмерный – внутренние координаты пересчитаются
+            // сами. Размеры этого SVG никто не меряет через
+            // getBoundingClientRect, поэтому так тут можно.
+            svg.style.width = (width / 16) + 'rem';
+            svg.style.height = (height / 16) + 'rem';
+
+            for (let level = baseLevel; level <= maxLevel; level++) {
+                const who = svgEl('text', {
+                    x: 4, y: PAD_TOP + (level - baseLevel) * ROW + 4,
+                    class: 'fill-gray-400 dark:fill-slate-500',
+                    'font-size': 12
+                });
+                who.textContent = level === baseLevel ? 'ходит ' + mover(level) : mover(level);
+                svg.appendChild(who);
+            }
+
+            (function edges(node) {
+                node.children.forEach(function (kid) {
+                    svg.appendChild(svgEl('line', {
+                        x1: node.x, y1: node.y + H / 2, x2: kid.x, y2: kid.y - H / 2,
+                        class: 'stroke-gray-300 dark:stroke-slate-600', 'stroke-width': 1.5
+                    }));
+                    edges(kid);
+                });
+            })(nodes[0]);
+
+            nodes.forEach(function (node) {
+                const g = svgEl('g', { class: 'cursor-pointer' });
+                const w = widthOf(node);
+                g.appendChild(svgEl('rect', {
+                    x: node.x - w / 2, y: node.y - H / 2, width: w, height: H, rx: 7,
+                    class: STATE[node.state].svg,
+                    'stroke-width': node === nodes[0] ? 3 : 1.5
+                }));
+                const text = svgEl('text', {
+                    x: node.x, y: node.y + 4, 'text-anchor': 'middle',
+                    class: 'fill-gray-800 dark:fill-slate-100',
+                    'font-size': 12, 'font-family': 'monospace', 'font-weight': 600
+                });
+                text.textContent = label(node.pos);
+                g.appendChild(text);
+
+                const total = node.pos.reduce(function (a, b) { return a + b; }, 0);
+                const tip = svgEl('title', {});
+                tip.textContent = label(node.pos) + ' · сумма ' + total +
+                    (node.state === 'end'
+                        ? ' · игра окончена, победил ' + mover(node.level - 1)
+                        : ' · ходит ' + mover(node.level) + ', ' + STATE[node.state].note);
+                g.appendChild(tip);
+
+                // Клик уводит вглубь: выбранный узел становится корнем, и партия
+                // разыгрывается ход за ходом вместо чтения широкого дерева.
+                if (node !== nodes[0] && !game.over(node.pos)) {
+                    g.addEventListener('click', function () {
+                        const chain = [];
+                        for (let cur = node; cur && cur.parent; cur = cur.parent) chain.unshift(cur.pos);
+                        path = path.concat(chain);
+                        render();
+                    });
+                } else {
+                    g.setAttribute('class', '');
+                }
+                svg.appendChild(g);
+            });
+
+            treeHost.appendChild(svg);
+            return nodes.length;
+        }
+
+        // ── сборка ───────────────────────────────────────────────
+        function render() {
+            presetBtns.forEach(function (btn, i) {
+                btn.className = (i === presetIndex) ? CHIP_ON : CHIP;
+            });
+            editBtn.className = (presetIndex < 0 ? CHIP_ON : CHIP) +
+                (customSpec ? '' : ' opacity-50');
+            [1, 2].forEach(function (n) {
+                pilesBtns[n].className = ((n === 2) === spec.two) ? CHIP_ON : CHIP;
+            });
+            fixedInput.hidden = !spec.two;
+            fixedCap.hidden = !spec.two;
+            addMove.hidden = spec.moves.length >= MAX_MOVES;
+            rulesLine.textContent = game.rulesText() +
+                (presetIndex < 0 ? ' · условие изменено' : '');
+
+            VIEWS.forEach(function (v) {
+                viewBtns[v.key].className = (v.key === viewKey) ? CHIP_ON : CHIP;
+            });
+            const current = view();
+            viewLine.innerHTML = '<span class="font-semibold">Задание ' + current.task +
+                '.</span> ' + escapeHtml(current.full[0].toUpperCase() + current.full.slice(1)) + '.';
+
+            // Лента S: одна клетка – одно значение начальной кучи. Ответ
+            // задания – первая зелёная клетка, и это видно без единой цифры.
+            const good = matches();
+            const goodSet = {};
+            good.forEach(function (value) { goodSet[value] = true; });
+            const last = lastCell();
+            strip.innerHTML = '';
+            for (let value = game.min; value <= last; value++) {
+                const cell = document.createElement('button');
+                cell.type = 'button';
+                cell.className = 'h-7 flex-1 min-w-[3px] rounded-sm border transition-colors ' +
+                    (goodSet[value]
+                        ? 'bg-emerald-400 border-emerald-500 dark:bg-emerald-500 dark:border-emerald-400'
+                        : 'bg-gray-100 border-gray-200 dark:bg-slate-700 dark:border-slate-600') +
+                    (value === s ? ' ring-2 ring-brand-500 dark:ring-cyan-400' : '');
+                cell.title = 'S = ' + value + (goodSet[value] ? ' – подходит' : ' – не подходит');
+                cell.addEventListener('click', function () {
+                    s = value;
+                    path = [];
+                    render();
+                });
+                strip.appendChild(cell);
+            }
+
+            if (good.length === 0) {
+                answerLine.textContent = 'Ни одно S из диапазона не подходит.';
+            } else {
+                const head = good.slice(0, 6).join(', ');
+                answerLine.innerHTML = 'Подходят S: <span class="font-mono">' + head +
+                    (good.length > 6 ? ', …' : '') + '</span> · наименьшее <b>' + good[0] + '</b>' +
+                    (good.length > 1 ? ' · два наименьших <b>' + good[0] + ' ' + good[1] + '</b>' : '') +
+                    (last < game.max ? ' · лента показывает S до ' + last : '');
+            }
+
+            sLabel.textContent = 'S = ' + s;
+            sSlider.min = String(game.min);
+            sSlider.max = String(game.max);
+            sSlider.value = String(s);
+            [1, 2, 3].forEach(function (d) {
+                depthBtns[d].className = (d === depth) ? CHIP_ON : CHIP;
+            });
+
+            const root = path.length ? path[path.length - 1] : game.start(s);
+            const nodeCount = renderTree(root, path.length);
+
+            pathLine.innerHTML = '';
+            const chain = [game.start(s)].concat(path);
+            chain.forEach(function (pos, i) {
+                if (i > 0) {
+                    const arrow = document.createElement('span');
+                    arrow.className = 'text-gray-400 dark:text-slate-500';
+                    arrow.textContent = '→';
+                    pathLine.appendChild(arrow);
+                }
+                const step = button(label(pos),
+                    'font-mono px-2 py-0.5 rounded-md border text-xs ' +
+                    (i === chain.length - 1
+                        ? 'bg-brand-600 text-white border-brand-600 dark:bg-cyan-500 dark:border-cyan-500'
+                        : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100 dark:bg-slate-700 dark:border-slate-600 dark:text-slate-300'));
+                step.title = 'вернуться к этой позиции';
+                step.addEventListener('click', function () {
+                    path = path.slice(0, i);
+                    render();
+                });
+                pathLine.appendChild(step);
+            });
+            const badge = document.createElement('span');
+            badge.className = BADGE;
+            badge.textContent = 'узлов: ' + nodeCount;
+            pathLine.appendChild(badge);
+
+            legendRow.innerHTML = '';
+            STATE_ORDER.forEach(function (key) {
+                const chip = document.createElement('span');
+                chip.className = 'inline-flex items-center rounded-md border px-2 py-1 text-xs ' +
+                    STATE[key].chip;
+                chip.textContent = STATE[key].note;
+                legendRow.appendChild(chip);
+            });
+
+            const rootState = stateOf(root);
+            noteLine.textContent = game.over(root)
+                ? 'В этой позиции игра уже кончилась: ходить некому.'
+                : 'Ходит ' + mover(path.length) + ': ' + STATE[rootState].note +
+                  '. Цвет узла всегда про того, чья очередь ходить, – на чётных уровнях это Петя, на нечётных Ваня.';
+        }
+
+        renderMoves();
+        apply();
     });
 
     document.addEventListener('DOMContentLoaded', function () {

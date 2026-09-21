@@ -1576,6 +1576,34 @@ class QuestionGroupTests(TestCase):
         self.assertFalse(cards[17]['linked'])
         self.assertEqual(cards[17]['groups'], 0)
 
+    def test_theory_badge_belongs_to_the_whole_group(self):
+        # Разбор у связки один и лежит на 19-м номере, но читают его сразу за
+        # три задания: плашка «теория» обязана стоять на всех трёх карточках,
+        # а прочитанный разбор – считаться прочитанным у 20 и 21.
+        from textbook.models import Article, ArticleProgress
+
+        for number in (19, 20, 21):
+            EgeTask.objects.get_or_create(
+                number=number, defaults={'title': f'Задание {number}'})
+        article = Article.objects.create(
+            track='ege', slug='ege-19-teoriya-igr', title='Задания 19-21',
+            ege_task=EgeTask.objects.get(number=19), is_published=True,
+        )
+
+        cards = {t['number']: t for t in ege_stats.task_stats(self.user)}
+        for number in (19, 20, 21):
+            self.assertEqual(cards[number]['theory']['total'], 1,
+                             f'у задания {number} теория не показана')
+            self.assertEqual(cards[number]['theory']['read'], 0)
+
+        ArticleProgress.objects.create(user=self.user, article=article, status='read')
+        cards = {t['number']: t for t in ege_stats.task_stats(self.user)}
+        for number in (19, 20, 21):
+            self.assertEqual(cards[number]['theory']['read'], 1,
+                             f'прочитанный разбор не засчитан заданию {number}')
+        # Чужому номеру связка ничего не отдаёт.
+        self.assertEqual(cards[17]['theory']['total'], 0)
+
     def test_size_cuts_by_whole_groups(self):
         picked = ege_practice.expand_groups(
             [self.groups['g-1'][1], self.groups['g-2'][1]], size=4,

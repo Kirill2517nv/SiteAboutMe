@@ -18,11 +18,19 @@ else
     task="${1:?не передано задание}"
 fi
 
+# Задание уходит в stdin, а не аргументом: контентное задание со скелетом статьи
+# легко перерастает 32 КБ, а это потолок командной строки Windows – claude.exe
+# падал с «Argument list too long» ещё до обращения к модели. Присваивания
+# переменных обязаны стоять на стороне claude, а не перед printf: в конвейере
+# префикс достаётся только первой команде, и claude уходил в настоящий
+# Anthropic, где ругался на неизвестную модель.
+#
 # Воркеру намеренно не выдан Bash: сборку и запуск тестов делает оркестратор.
+printf '%s' "$task" | \
 ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic" \
 ANTHROPIC_AUTH_TOKEN="$key" \
 ANTHROPIC_API_KEY="$key" \
-claude -p "$task" \
+claude -p \
     --model "deepseek-flash[1m]" \
     --permission-mode acceptEdits \
     --strict-mcp-config \

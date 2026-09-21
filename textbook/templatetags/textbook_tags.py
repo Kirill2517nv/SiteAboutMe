@@ -26,6 +26,9 @@ _ALLOWED_ATTRS = {
     '*': ['class'],
     'a': ['href', 'title', 'target', 'rel'],
     'img': ['src', 'alt', 'title', 'width', 'height'],
+    # sane_lists пишет start у списка, прерванного таблицей или абзацем:
+    # без него пункты 5–6 после таблицы нумеровались бы заново с 1.
+    'ol': ['start'],
 }
 _ALLOWED_PROTOCOLS = ['http', 'https', 'mailto', 'data']
 

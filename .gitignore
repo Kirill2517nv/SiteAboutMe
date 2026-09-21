@@ -31,6 +31,9 @@ staticfiles/
 static/spetskurs/wasm/*.js
 static/spetskurs/wasm/*.wasm
 static/spetskurs/wasm/*.html
+# Архив исходников библиотеки для школы, где не открывается GitHub (3,6 МБ,
+# слепок чужого репозитория вместе с сабмодулями) – тоже выкладывается вручную
+static/spetskurs/*.zip
 
 # Библиотека спецкурса – отдельный репозиторий (github.com/Kirill2517nv/GuiLibrary),
 # лежит рядом ради сборки .wasm. В дерево сайта не коммитится: у неё свои

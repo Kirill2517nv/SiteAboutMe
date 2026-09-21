@@ -338,7 +338,7 @@ def task_stats(user):
         .annotate(n=Count('group_id', distinct=True))
     ) if linked else {}
 
-    theory = _theory_by_number(user)
+    theory = _theory_by_number(user, linked)
     modes = mode_rows(user)
 
     result = []
@@ -401,8 +401,18 @@ def linked_numbers():
     )
 
 
-def _theory_by_number(user):
-    """{номер задания: {total, read}} по опубликованным статьям теории."""
+def _theory_by_number(user, linked=()):
+    """{номер задания: {total, read}} по опубликованным статьям теории.
+
+    У связки 19–21 разбор один и лежит на первом номере, поэтому её номера
+    делят одну строку на троих: иначе на карте у 20 и 21 теории будто нет, а
+    прочитав разбор один раз, ученик видел бы его непрочитанным на двух
+    карточках из трёх. Складываем, а не копируем с первого номера: если у 20
+    или 21 появится своя статья, она тоже попадёт в общий счёт.
+
+    `linked` передаётся снаружи, а не считается здесь: вызывающий его уже
+    знает, и это лишний запрос на каждую отрисовку карты.
+    """
     totals = dict(
         Article.objects
         .filter(track='ege', is_published=True, ege_task__isnull=False)
@@ -418,10 +428,18 @@ def _theory_by_number(user):
             .values_list('article__ege_task__number')
             .annotate(n=Count('id'))
         )
-    return {
+    rows = {
         number: {'total': totals.get(number, 0), 'read': read.get(number, 0)}
         for number in TASK_NUMBERS
     }
+    if linked:
+        shared = {
+            'total': sum(rows[number]['total'] for number in linked),
+            'read': sum(rows[number]['read'] for number in linked),
+        }
+        for number in linked:
+            rows[number] = dict(shared)
+    return rows
 
 
 def predicted_score(user):
