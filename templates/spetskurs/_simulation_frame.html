@@ -69,8 +69,12 @@
        канвас под размер iframe (gui_main_loop зовёт glfwSetWindowSize по
        window.innerWidth/innerHeight), поэтому кадр может быть любым – лишь бы
        пульту с параметрами хватало ширины, а графику высоты. Конкретную
-       пропорцию задаёт задача (frame_width/frame_height), здесь – запасная. */
-    .sim-frame-body { aspect-ratio: 16 / 10; min-height: 420px; }
+       пропорцию задаёт задача (frame_width/frame_height), здесь – запасная.
+       width: 100% обязателен: при width: auto браузер переносит max-height
+       хозяина (на лендинге max-h-[70vh]) через aspect-ratio на ширину, кадр
+       сужается, и справа проступает белый фон рамки. С явной шириной
+       обрезается только высота – симуляции любая пропорция годится. */
+    .sim-frame-body { width: 100%; aspect-ratio: 16 / 10; min-height: 420px; }
 
     /* В полном экране пропорция не нужна – занимаем всё, что дали. Inline-стиль
        с aspect-ratio перебивается !important: он стоит на самом элементе.

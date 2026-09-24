@@ -74,6 +74,13 @@
                 </div>
                 <div class="p-5">
                     {% if articles %}
+                    {% if number == 26 %}
+                    <p class="text-sm text-gray-600 dark:text-slate-300 mb-4">
+                        Задание 26 – одно из самых сложных в экзамене, и у него много непохожих вариаций.
+                        Каждая статья ниже разбирает один тип задач. Все вариации здесь не разобраны –
+                        показаны несколько приёмов, которыми такие задачи решаются.
+                    </p>
+                    {% endif %}
                     <div class="space-y-2">
                         {% for article in articles %}
                         <a href="{{ article.get_absolute_url }}"
