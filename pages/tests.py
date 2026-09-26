@@ -52,3 +52,36 @@ class YandexMetrikaTests(TestCase):
         # У учителя в заголовках страниц имена учеников – счётчика нет вовсе.
         self.client.force_login(User.objects.create_superuser('boss', password='x'))
         self.assertNotContains(self.client.get(self.url), 'mc.yandex.ru')
+
+
+class SearchEngineFilesTests(TestCase):
+    """
+    Что видит поисковый робот: корневые robots.txt / favicon.ico и карта сайта.
+
+    Первые два лежат в `public/` и отдаются WhiteNoise из корня домена –
+    робот иконок Яндекса идёт за /favicon.ico, не читая <head>. В карте –
+    только то, что открывается гостю: страница за логином попала бы в выдачу
+    как «Вход на сайт».
+    """
+
+    def test_root_files_served(self):
+        robots = self.client.get('/robots.txt')
+        self.assertEqual(robots.status_code, 200)
+        self.assertIn(b'Sitemap: https://kirill-lab.ru/sitemap.xml', b''.join(robots.streaming_content))
+        self.assertEqual(self.client.get('/favicon.ico').status_code, 200)
+
+    def test_sitemap_lists_published_articles_only(self):
+        from textbook.models import Article, Section
+
+        shown = Section.objects.create(title='Блок', slug='b-open', order=1, is_published=True)
+        hidden = Section.objects.create(title='Скрыт', slug='b-hidden', order=2, is_published=False)
+        Article.objects.create(track='material', section=shown, slug='open-art', title='Открыта',
+                               is_published=True)
+        Article.objects.create(track='material', section=shown, slug='draft-art', title='Черновик')
+        Article.objects.create(track='material', section=hidden, slug='hidden-art', title='В скрытом',
+                               is_published=True)
+
+        body = self.client.get('/sitemap.xml').content.decode()
+        self.assertIn('https://testserver/textbook/article/open-art/', body)
+        self.assertNotIn('draft-art', body)
+        self.assertNotIn('hidden-art', body)

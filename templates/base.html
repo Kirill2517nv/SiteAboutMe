@@ -4,8 +4,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Мой сайт{% endblock title %}</title>
-    
+    <title>{% block title %}Информатика и подготовка к ЕГЭ{% endblock title %} – Kirill Lab</title>
+    {# Без описания Яндекс берёт в сниппет единственный общий текст страниц – строку футера #}
+    <meta name="description" content="{% block description %}Подготовка к ЕГЭ по информатике: разборы всех 27 заданий, тренажёр с банком задач и прогнозом балла. Учебник информатики для 10–11 классов.{% endblock description %}">
+    <meta property="og:site_name" content="Kirill Lab">
+    <link rel="icon" href="{% static 'favicon.svg' %}" type="image/svg+xml">
+    <link rel="icon" href="{% static 'img/favicon-120.png' %}" sizes="120x120" type="image/png">
+    <link rel="apple-touch-icon" href="{% static 'img/apple-touch-icon.png' %}">
+
     <!-- Тема: применяем ДО рендера, чтобы не было мигания -->
     <script>
         (function() {

@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.sitemaps',
     'channels',
     'pages',
     'lessons',
@@ -136,6 +137,9 @@ USE_TZ = True
 STATIC_URL = 'static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']  # Папка со статикой для разработки
 STATIC_ROOT = BASE_DIR / 'staticfiles'  # Сюда соберутся все файлы для Nginx
+# Файлы, которые поисковики ищут в корне домена, а не в /static/:
+# /robots.txt и /favicon.ico (робот иконок Яндекса <head> не читает).
+WHITENOISE_ROOT = BASE_DIR / 'public'
 
 # Whitenoise for serving static files in development with Daphne/ASGI
 STORAGES = {

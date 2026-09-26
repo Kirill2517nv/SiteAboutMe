@@ -1,0 +1,15 @@
+User-agent: *
+Disallow: /admin/
+Disallow: /accounts/
+Disallow: /alumni/
+Disallow: /quizzes/
+Disallow: /ege/practice/
+Disallow: /ege/class/
+Disallow: /ege/student/
+Disallow: /ege/task/*/solved/
+Disallow: /ege/task/*/bank/
+Disallow: /textbook/section/
+Disallow: /games/svoya-igra/
+Disallow: /*?student=
+
+Sitemap: https://kirill-lab.ru/sitemap.xml

@@ -2,7 +2,8 @@
 {% load static %}
 {% load textbook_tags %}
 
-{% block title %}{{ article.title }} – Учебник{% endblock %}
+{% block title %}{{ article.title }} – {% if article.track == 'ege' %}ЕГЭ по информатике{% elif article.track == 'spetskurs' %}Спецкурс{% else %}Учебник{% endif %}{% endblock %}
+{% block description %}{% if article.description %}{{ article.description|striptags|truncatechars:200 }}{% else %}{{ block.super }}{% endif %}{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
