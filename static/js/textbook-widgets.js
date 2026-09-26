@@ -9530,7 +9530,9 @@
         }
         document.addEventListener('pointermove', function (evt) {
             if (!drag) return;
-            const p = svgPoint(drag.svg, evt);
+            // render() пересоздаёт <svg>: меряем живой, а не drag.svg,
+            // который после первого сдвига уже вне документа.
+            const p = svgPoint(graphHost.querySelector('svg') || drag.svg, evt);
             drag.moved++;
             pos[drag.v] = { x: p.x, y: p.y };
             clampPos(drag.v);
@@ -10181,17 +10183,30 @@
     //           кнопка «До возврата». Число у вершины здесь — длина
     //           пройденного пути, а не расстояние, и виджет предупреждает
     //           бейджем, где она оказалась не кратчайшей.
+    //   dag   – динамика по таблице на ориентированном взвешенном графе без
+    //           циклов, разбор задания 23 ЕГЭ: проход по всем рёбрам строит
+    //           new[b] = min(best[a] + w), проходы повторяются, пока таблица
+    //           меняется. Число у вершины – best прошлого прохода, справа –
+    //           обе таблицы. Рёбра рисуются стрелками с весом; в конце подсвечен
+    //           кратчайший путь. Раскладка – по глубине от старта, чтобы все
+    //           стрелки смотрели вниз. Рёбра – [a, b, w], «target» – цель.
     //
     // Конфиг:
     //   {"labels": ["Центр", "Парк"], "n": 5,
     //    "edges": [[0, 1], ["Центр", "Парк"]], "start": "Центр",
-    //    "mode": "queue"|"dfs", "layout": "layers"|"circle",
+    //    "mode": "queue"|"dfs"|"dag", "layout": "layers"|"circle",
+    //    "pos": {"Центр": [0, 0], "Парк": [120, 60]},
     //    "dist": true, "tree": true, "speed": 700, "note": "…",
     //    "presets": [{"title": "…", "labels": […], "edges": […],
     //                 "start": "…", "layout": "circle", "note": "…"}]}
     // Вершину в рёбрах можно задавать подписью или номером, вершин не больше
     // 14, пресетов до 6. Граф неориентированный; петли и кратные рёбра
     // отбрасываются — обходу они ничего не добавляют.
+    // `pos` – ручная раскладка по подписям, в любых единицах: рамка рисунка
+    // подгоняется под граф, поэтому маленький граф рисуется крупно. Нужна,
+    // когда раскладка по слоям врёт – у орграфа задания 23 стрелка 6 → 1
+    // смотрела вверх, и казалось, что из 100 есть дорога в 1. Хватает одной
+    // вершины без координаты – раскладка по слоям.
     // ─────────────────────────────────────────────────────────────
     register('graph-walk', function (el, config) {
         const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -10206,7 +10221,8 @@
         const CAP = 'text-xs uppercase tracking-wide text-gray-400 dark:text-slate-500';
 
         const MAX_V = 14;
-        const VBW = 470;
+        const VBW_DEFAULT = 470;
+        let VBW = VBW_DEFAULT;    // у раскладки по `pos` – по размеру графа
         const NODE_H = 28;
         const LEFT = 58;          // поле слева под подписи слоёв
         let VBH = 300;
@@ -10255,26 +10271,31 @@
 
             // Петли и кратные рёбра обходу ничего не дают: сосед либо есть,
             // либо нет. Молча выбрасываем, чтобы лента не засорялась.
+            // У режима dag ребро a → b и b → a – разные рёбра, и у каждого вес.
             const edges = [];
             const seen = {};
             rawEdges.forEach(function (e) {
                 if (!Array.isArray(e) || e.length < 2) return;
                 const a = idxOf(e[0]), b = idxOf(e[1]);
                 if (a < 0 || b < 0 || a >= labels.length || b >= labels.length || a === b) return;
-                const k = Math.min(a, b) + ':' + Math.max(a, b);
+                const k = directed ? a + '>' + b : Math.min(a, b) + ':' + Math.max(a, b);
                 if (seen[k]) return;
                 seen[k] = true;
-                edges.push({ a: a, b: b });
+                edges.push({ a: a, b: b, w: Number(e[2]) || 0 });
             });
 
             let start = src.start === undefined ? 0 : idxOf(src.start);
             if (!(start >= 0 && start < labels.length)) start = 0;
+            let target = src.target === undefined ? labels.length - 1 : idxOf(src.target);
+            if (!(target >= 0 && target < labels.length)) target = labels.length - 1;
 
             return {
                 labels: labels,
                 edges: edges,
                 start: start,
+                target: target,
                 layout: src.layout === 'circle' ? 'circle' : 'layers',
+                pos: src.pos && typeof src.pos === 'object' ? src.pos : null,
                 note: src.note ? String(src.note) : ''
             };
         }
@@ -10284,10 +10305,174 @@
         function buildAdj(state) {
             const adj = state.labels.map(function () { return []; });
             state.edges.forEach(function (e, ei) {
-                adj[e.a].push({ v: e.b, e: ei });
-                adj[e.b].push({ v: e.a, e: ei });
+                adj[e.a].push({ v: e.b, e: ei, w: e.w });
+                if (!directed) adj[e.b].push({ v: e.a, e: ei, w: e.w });
             });
             return adj;
+        }
+
+        // Глубина вершины в графе без циклов – самый длинный путь до неё от
+        // старта в рёбрах. Строки раскладки по ней ставят каждую стрелку
+        // сверху вниз; вершин не больше 14, поэтому хватает n проходов.
+        function dagDepth(adj, start) {
+            const d = {};
+            d[start] = 0;
+            for (let round = 0; round < adj.length; round++) {
+                adj.forEach(function (list, v) {
+                    if (d[v] === undefined) return;
+                    list.forEach(function (it) {
+                        if (d[it.v] === undefined || d[it.v] < d[v] + 1) d[it.v] = d[v] + 1;
+                    });
+                });
+            }
+            return d;
+        }
+
+        function fmt(x) {
+            return x === Infinity ? '∞' : String(Math.round(x * 1000) / 1000);
+        }
+
+        // ── прогон динамики по таблице (режим dag) ───────────────
+        // Повторяет решение задания 23: таблица best – кратчайшая известная
+        // длина пути из старта. Проход строит новую таблицу new = {старт: 0}
+        // и для каждого ребра a → b, если a уже есть в best, записывает
+        // new[b] = min(new[b], best[a] + w). Таблица не изменилась – стоп.
+        // У вершин рисуется best (прошлый проход): ребро из вершины без
+        // числа пропускается, и это видно глазами. `order` – вершины с
+        // числом (их красим), `tree` – рёбра, давшие минимум в new.
+        function buildDagFrames(state) {
+            const frames = [];
+            const L = state.labels;
+            const s = state.start;
+            let best = {};
+            best[s] = 0;
+            let fresh = null, parent = {}, tree = {}, looks = 0, pass = 0;
+            const pathEdges = {};
+
+            function dict(t) {
+                return Object.keys(t).map(function (k) {
+                    return { v: +k, d: fmt(t[k]) };
+                });
+            }
+            function snap(kind, a, b, edge, note, extra) {
+                frames.push(Object.assign({
+                    kind: kind, cur: a, look: b, edge: edge, note: note,
+                    layer: pass, pass: pass, looks: looks,
+                    visited: {}, dist: Object.assign({}, best),
+                    parent: Object.assign({}, parent),
+                    tree: Object.assign({}, tree),
+                    pathEdges: Object.assign({}, pathEdges),
+                    distList: dict(best),
+                    fresh: fresh ? dict(fresh) : null,
+                    cont: [], head: 0,
+                    order: Object.keys(best).map(Number)
+                }, extra || {}));
+            }
+
+            snap('init', null, null, null,
+                'Таблица best: путь из ' + q(L[s]) + ' в неё же имеет длину 0, ' +
+                'про остальные вершины пока ничего не известно.');
+
+            // Без цикла отрицательного веса таблица сходится не больше чем за
+            // n проходов; предел – на случай опечатки в конфиге, иначе вкладка
+            // на проекторе зависла бы посреди урока.
+            while (pass <= L.length) {
+                pass++;
+                fresh = {};
+                fresh[s] = 0;
+                parent = {};
+                tree = {};
+                snap('pass', null, null, null,
+                    'Проход ' + pass + ': заводим новую таблицу new, в ней пока ' +
+                    'только старт. Идём по рёбрам в том порядке, в каком они ' +
+                    'записаны в файле.');
+                /* eslint-disable no-loop-func */
+                state.edges.forEach(function (e, ei) {
+                    looks++;
+                    const an = q(L[e.a]), bn = q(L[e.b]);
+                    if (best[e.a] === undefined) {
+                        snap('skip', e.a, e.b, ei,
+                            'Ребро ' + an + ' → ' + bn + ': у ' + an + ' в best числа ' +
+                            'нет – путь до неё пока не известен, ребро пропускаем.');
+                        return;
+                    }
+                    const cand = best[e.a] + e.w;
+                    const old = fresh[e.b];
+                    let note = 'Ребро ' + an + ' → ' + bn + ': ' + fmt(best[e.a]) +
+                        ' + ' + fmt(e.w) + ' = ' + fmt(cand) + '. ';
+                    if (e.b === s) {
+                        note += 'Но ' + bn + ' – старт, у него всегда 0.';
+                    } else if (old === undefined || cand < old) {
+                        fresh[e.b] = cand;
+                        Object.keys(tree).forEach(function (k) {
+                            if (state.edges[k].b === e.b) delete tree[k];
+                        });
+                        tree[ei] = true;
+                        parent[e.b] = e.a;
+                        note += old === undefined
+                            ? 'В new у ' + bn + ' пусто – записываем ' + fmt(cand) + '.'
+                            : 'Это меньше, чем ' + fmt(old) + ' в new, – заменяем.';
+                    } else {
+                        note += 'В new у ' + bn + ' уже ' + fmt(old) +
+                            (cand === old ? ' – столько же, ' : ' – меньше, ') +
+                            'оставляем.';
+                    }
+                    snap('look', e.a, e.b, ei, note);
+                });
+                /* eslint-enable no-loop-func */
+
+                const changed = Object.keys(fresh).filter(function (k) {
+                    return best[k] !== fresh[k];
+                });
+                if (!changed.length) {
+                    snap('calc', null, null, null,
+                        'Проход ' + pass + ' закончен: new совпала с best. Раз ' +
+                        'ничего не улучшилось, следующий проход дал бы то же самое – ' +
+                        'значения окончательные.');
+                    break;
+                }
+                const names = changed.map(function (k) { return q(L[k]); }).join(', ');
+                best = fresh;
+                snap('calc', null, null, null,
+                    'Проход ' + pass + ' закончен, new становится best. ' +
+                    (changed.length > 1
+                        ? 'Изменились числа у ' + names + ' – значит, пути через них'
+                        : 'Изменилось число у ' + names + ' – значит, пути через неё') +
+                    ' могли подешеветь, нужен ещё один проход.');
+            }
+            fresh = null;
+
+            const t = state.target, way = [t];
+            const known = best[t] !== undefined;
+            if (known) {
+                let v = t;
+                while (v !== s && parent[v] !== undefined && way.length <= L.length) {
+                    const pv = parent[v];
+                    const ei = state.edges.findIndex(function (ed) {
+                        return ed.a === pv && ed.b === v;
+                    });
+                    pathEdges[ei] = true;
+                    v = pv;
+                    way.unshift(v);
+                }
+            }
+            const unknown = L.map(function (x, i) { return i; })
+                .filter(function (i) { return best[i] === undefined; });
+            let note = known
+                ? 'best[' + q(L[t]) + '] = ' + fmt(best[t]) + ': кратчайший путь ' +
+                  way.map(function (v) { return L[v]; }).join(' → ') +
+                  ', целая часть – ' + Math.floor(best[t]) + '. Проходов ' + pass +
+                  ', просмотров рёбер ' + looks + '. Путь подсвечен для ' +
+                  'наглядности: программа хранит только длины, сам путь она ' +
+                  'не запоминает – в задаче он и не нужен.'
+                : 'Из ' + q(L[s]) + ' в ' + q(L[t]) + ' пути нет.';
+            if (unknown.length) {
+                note += ' У ' + unknown.map(function (v) { return q(L[v]); }).join(', ') +
+                    ' числа так и не появилось: из старта по стрелкам туда не дойти.';
+            }
+            snap('done', null, null, null, note, { cont: known ? way : [] });
+
+            return { list: frames, wrong: null, maxLayer: 0, far: unknown.length };
         }
 
         // Настоящие кратчайшие расстояния — нужны и для раскладки по слоям,
@@ -10439,6 +10624,7 @@
         // ── прогон обхода в ширину в кадры ───────────────────────
         function buildFrames(state, adj, mode) {
             if (mode === 'dfs') return buildDfsFrames(state, adj);
+            if (mode === 'dag') return buildDagFrames(state, adj);
             const frames = [];
             const visited = {}, dist = {}, parent = {}, tree = {};
             const distList = [], order = [];
@@ -10529,11 +10715,15 @@
         const presets = (Array.isArray(config.presets) ? config.presets : []).slice(0, 6);
         const speed = Math.min(Math.max(parseInt(config.speed, 10) || 700, 200), 2500);
 
+        // Режим задаётся конфигом и в интерфейсе не переключается: урок
+        // показывает один обход, а не сравнение вариантов. Объявлен до
+        // buildState: от него зависит, ориентированы ли рёбра.
+        const mode = config.mode === 'dfs' || config.mode === 'dag' ? config.mode : 'queue';
+        const directed = mode === 'dag';
+        // Тропинка, «До возврата», без подписей слоёв – общее у обеих рекурсий.
+        const stackLike = mode !== 'queue';
         let st = buildState(config);
         let adj = buildAdj(st);
-        // Режим задаётся конфигом и в интерфейсе не переключается: урок
-        // показывает один обход, а не сравнение вариантов.
-        const mode = config.mode === 'dfs' ? 'dfs' : 'queue';
         let showDist = config.dist !== false;
         let showTree = config.tree !== false;
         let presetIdx = -1;
@@ -10557,7 +10747,21 @@
             const n = st.labels.length;
             pts = [];
             rows = [];
-            if (st.layout === 'circle' || n === 0) {
+            VBW = VBW_DEFAULT;
+            const given = st.pos && st.labels.every(function (s) {
+                const p = st.pos[s];
+                return Array.isArray(p) && isFinite(p[0]) && isFinite(p[1]);
+            });
+            if (given && n) {
+                // Поле – под подпись вершины и вес ребра у самого края.
+                const M = 36;
+                const xs = st.labels.map(function (s) { return +st.pos[s][0]; });
+                const ys = st.labels.map(function (s) { return +st.pos[s][1]; });
+                const x0 = Math.min.apply(null, xs), y0 = Math.min.apply(null, ys);
+                VBW = Math.max.apply(null, xs) - x0 + 2 * M;
+                VBH = Math.max.apply(null, ys) - y0 + 2 * M;
+                for (let i = 0; i < n; i++) pts[i] = { x: xs[i] - x0 + M, y: ys[i] - y0 + M };
+            } else if (st.layout === 'circle' || n === 0) {
                 VBH = 300;
                 const cx = VBW / 2, cy = VBH / 2;
                 const R = Math.min(VBW, VBH) / 2 - 40;
@@ -10567,7 +10771,7 @@
                 }
                 if (n === 1) pts[0] = { x: cx, y: cy };
             } else {
-                const d = bfsDist(adj, st.start);
+                const d = directed ? dagDepth(adj, st.start) : bfsDist(adj, st.start);
                 const groups = [], far = [];
                 for (let i = 0; i < n; i++) {
                     if (d[i] === undefined) far.push(i);
@@ -10626,9 +10830,15 @@
         const mainRow = document.createElement('div');
         mainRow.className = 'flex flex-wrap items-start gap-4';
         const graphHost = document.createElement('div');
-        graphHost.className = 'flex-1 min-w-[280px]';
+        // У dag справа две короткие строки таблиц – половина ширины им ни к
+        // чему, граф получает две трети. У очереди и тропинки лента длинная,
+        // там колонки поровну.
+        graphHost.className = directed
+            ? 'grow-[2] basis-0 min-w-[280px]'
+            : 'flex-1 min-w-[280px]';
         const panelHost = document.createElement('div');
-        panelHost.className = 'flex-1 min-w-[240px] flex flex-col gap-3';
+        panelHost.className = (directed ? 'grow basis-0 min-w-[200px]' : 'flex-1 min-w-[240px]') +
+            ' flex flex-col gap-3';
         mainRow.appendChild(graphHost);
         mainRow.appendChild(panelHost);
         body.appendChild(mainRow);
@@ -10690,7 +10900,7 @@
 
         const distBtn = document.createElement('button');
         distBtn.type = 'button';
-        distBtn.textContent = 'расстояния';
+        distBtn.textContent = directed ? 'числа у вершин' : 'расстояния';
         distBtn.addEventListener('click', function () {
             showDist = !showDist;
             render();
@@ -10699,7 +10909,7 @@
 
         const treeBtn = document.createElement('button');
         treeBtn.type = 'button';
-        treeBtn.textContent = 'дерево обхода';
+        treeBtn.textContent = directed ? 'рёбра, давшие минимум' : 'дерево обхода';
         treeBtn.addEventListener('click', function () {
             showTree = !showTree;
             render();
@@ -10708,7 +10918,9 @@
 
         const hintLine = document.createElement('div');
         hintLine.className = 'mt-2 text-sm text-gray-500 dark:text-slate-400';
-        hintLine.textContent = 'Кликните по вершине — обход пойдёт от неё. ' +
+        hintLine.textContent = (directed
+            ? 'Кликните по вершине – таблица начнётся с неё. '
+            : 'Кликните по вершине – обход пойдёт от неё. ') +
             'Вершину можно перетащить мышью.';
         body.appendChild(hintLine);
 
@@ -10749,7 +10961,7 @@
 
             // Подписи слоёв слева. У обхода в глубину их не рисуем: слои
             // считаются обходом в ширину и к глубине отношения не имеют.
-            (mode === 'dfs' ? [] : rows).forEach(function (row) {
+            (stackLike ? [] : rows).forEach(function (row) {
                 const t = svgEl('text', {
                     x: 6, y: row.y + 4,
                     class: 'fill-gray-400 dark:fill-slate-500',
@@ -10786,6 +10998,27 @@
                     x1: s.x, y1: s.y, x2: t.x, y2: t.y, class: cls,
                     'stroke-width': w, 'stroke-linecap': 'round'
                 }));
+                if (!directed) return;
+                // Наконечник – два штриха того же цвета: у marker свой fill,
+                // и классы тёмной темы до него не доходят.
+                const ang = Math.atan2(t.y - s.y, t.x - s.x);
+                [-0.45, 0.45].forEach(function (da) {
+                    svg.appendChild(svgEl('line', {
+                        x1: t.x, y1: t.y,
+                        x2: t.x - 10 * Math.cos(ang + da), y2: t.y - 10 * Math.sin(ang + da),
+                        class: cls, 'stroke-width': w, 'stroke-linecap': 'round'
+                    }));
+                });
+                // Вес – у середины ребра, со сдвигом поперёк, чтобы не лечь на линию.
+                const wt = svgEl('text', {
+                    x: (s.x + t.x) / 2 - 9 * Math.sin(ang),
+                    y: (s.y + t.y) / 2 + 9 * Math.cos(ang) + 4,
+                    'text-anchor': 'middle',
+                    class: 'fill-gray-400 dark:fill-slate-500 pointer-events-none',
+                    'font-size': 11, 'font-family': 'monospace'
+                });
+                wt.textContent = fmt(e.w);
+                svg.appendChild(wt);
             });
 
             st.labels.forEach(function (label, i) {
@@ -10831,21 +11064,37 @@
                         class: 'fill-brand-600 dark:fill-cyan-400 pointer-events-none',
                         'font-size': 11, 'font-family': 'monospace', 'font-weight': 700
                     });
-                    d.textContent = String(f.dist[i]);
+                    d.textContent = directed ? fmt(f.dist[i]) : String(f.dist[i]);
                     g.appendChild(d);
+                }
+
+                if (directed && i === st.target) {
+                    const cap = svgEl('text', {
+                        x: p.x, y: p.y + NODE_H / 2 + 11, 'text-anchor': 'middle',
+                        class: 'fill-gray-400 dark:fill-slate-500 pointer-events-none',
+                        'font-size': 11
+                    });
+                    cap.textContent = 'цель';
+                    g.appendChild(cap);
                 }
 
                 const tip = svgEl('title', {});
                 // У рекурсии число рядом с вершиной — не расстояние, а глубина
                 // тропинки, на которой её нашли: называть вещи своими именами.
                 const numWord = mode === 'dfs' ? 'глубина ' : 'расстояние ';
-                tip.textContent = label +
-                    (f.dist[i] === undefined
-                        ? ': пока не встречалась'
-                        : ': ' + numWord + f.dist[i] +
-                          (f.parent[i] === undefined
-                              ? ' (старт)'
-                              : ', пришли из ' + q(st.labels[f.parent[i]])));
+                if (directed) {
+                    tip.textContent = label + (f.dist[i] === undefined
+                        ? ': в best пока нет'
+                        : ': best = ' + fmt(f.dist[i]));
+                } else {
+                    tip.textContent = label +
+                        (f.dist[i] === undefined
+                            ? ': пока не встречалась'
+                            : ': ' + numWord + f.dist[i] +
+                              (f.parent[i] === undefined
+                                  ? ' (старт)'
+                                  : ', пришли из ' + q(st.labels[f.parent[i]])));
+                }
                 g.appendChild(tip);
 
                 g.addEventListener('pointerdown', function (evt) {
@@ -10865,7 +11114,10 @@
         }
         document.addEventListener('pointermove', function (evt) {
             if (!drag) return;
-            const p = svgPoint(drag.svg, evt);
+            // render() пересоздаёт <svg>, и drag.svg после первого же сдвига
+            // уже вне документа: его getBoundingClientRect – нули, и вершина
+            // улетала в угол. Меряем тот svg, что сейчас на странице.
+            const p = svgPoint(graphHost.querySelector('svg') || drag.svg, evt);
             drag.moved++;
             pts[drag.v] = { x: p.x, y: p.y };
             clampPos(drag.v);
@@ -10897,9 +11149,38 @@
             return inner;
         }
 
+        // Режим dag: справа не лента, а две таблицы из кода решения – best
+        // прошлого прохода и new, которая строится сейчас. Ключи без кавычек:
+        // номера вершин в решении – числа (порядок ключей – по возрастанию,
+        // так их хранит объект JS; у print(best) он был бы порядком записи).
+        function renderTables(f) {
+            function line(caption, list) {
+                const inner = panelBox(caption);
+                const d = document.createElement('div');
+                d.className = 'font-mono text-xs leading-6 break-words text-gray-700 dark:text-slate-200';
+                d.textContent = '{' + list.map(function (it) {
+                    return st.labels[it.v] + ': ' + it.d;
+                }).join(', ') + '}';
+                inner.appendChild(d);
+            }
+            line(f.fresh ? 'best – прошлый проход' : 'best', f.distList);
+            if (f.fresh) line('new – этот проход', f.fresh);
+            if (f.kind === 'done' && f.cont.length) {
+                const inner = panelBox('кратчайший путь');
+                const d = document.createElement('div');
+                d.className = 'font-mono text-xs leading-6 text-gray-700 dark:text-slate-200';
+                d.textContent = f.cont.map(function (v) { return st.labels[v]; }).join(' → ');
+                inner.appendChild(d);
+            }
+        }
+
         function renderPanels(f) {
             panelHost.innerHTML = '';
-            const isDfs = mode === 'dfs';
+            if (directed) {
+                renderTables(f);
+                return;
+            }
+            const isDfs = stackLike;
             // У обхода в глубину лента — не очередь, а тропинка: вершины, в
             // которые мы зашли и ещё не вышли.
             const host = panelBox(isDfs ? 'тропинка' : 'очередь');
@@ -10961,6 +11242,21 @@
             statsRow.innerHTML = '';
             const items = [];
             const isDfs = mode === 'dfs';
+            if (directed) {
+                if (f.pass) items.push(['проход ' + f.pass, BADGE]);
+                items.push(['просмотров рёбер: ' + f.looks, BADGE]);
+                items.push(['в best: ' + f.distList.length + ' из ' + st.labels.length, BADGE]);
+                if (f.kind === 'done' && f.dist[st.target] !== undefined) {
+                    items.push(['ответ: ' + Math.floor(f.dist[st.target]), BADGE_OK]);
+                }
+                items.forEach(function (pair) {
+                    const b = document.createElement('span');
+                    b.className = pair[1];
+                    b.textContent = pair[0];
+                    statsRow.appendChild(b);
+                });
+                return;
+            }
             const live = isDfs ? f.cont.length : f.cont.length - f.head;
             items.push([(isDfs ? 'на тропинке: ' : 'в очереди: ') + live, BADGE]);
             items.push(['посещено: ' + Object.keys(f.visited).length + ' из ' +
@@ -11012,7 +11308,8 @@
             endBtn.className = BTN_SEC + (atEnd ? ' opacity-50 cursor-not-allowed' : '');
             // У обхода в ширину кнопка доигрывает слой, у обхода в глубину —
             // спуск до ближайшего возврата.
-            layerBtn.textContent = mode === 'dfs' ? 'До возврата' : 'Слой целиком';
+            layerBtn.textContent = directed ? 'Проход целиком'
+                : (stackLike ? 'До возврата' : 'Слой целиком');
             layerBtn.disabled = atEnd;
             layerBtn.className = BTN_SEC + (atEnd ? ' opacity-50 cursor-not-allowed' : '');
             playBtn.textContent = timer ? '❚❚ Пауза' : '▶ Играть';
@@ -11061,7 +11358,9 @@
             stopPlay();
             const frames = built.list;
             if (pos < frames.length - 1) pos++;
-            if (mode === 'dfs') {
+            if (directed) {
+                while (pos < frames.length - 1 && frames[pos].kind !== 'calc') pos++;
+            } else if (stackLike) {
                 while (pos < frames.length - 1 && frames[pos].kind !== 'back') pos++;
             } else {
                 const L = frames[pos].layer;

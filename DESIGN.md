@@ -8,13 +8,16 @@
 5. [Лейауты](#лейауты)
 6. [Иконки](#иконки)
 7. [Анимации](#анимации)
+8. [Breakpoints](#breakpoints)
 
 ---
 
 ## Основы
 
 ### Технологии
-- **Tailwind CSS** v3.x (CDN, `cdn.tailwindcss.com`)
+- **Tailwind CSS** v3.4.19 – локальная сборка, CDN не используется. `static/css/tailwind.css` собирается из `static/css/tailwind.input.css` (`npm run tw:build`, `npm run tw:watch` – на лету); конфиг `tailwind.config.js` сканирует `templates/**/*.html` и `static/js/**/*.js`
+- **Design tokens** – `static/css/design-tokens.css`: цвета, кегли, отступы, радиусы и тени CSS-переменными
+- **Типографика статьи** – `static/css/textbook-article.css`: шкала кегля статьи и повторяющиеся блоки учебника
 - **Alpine.js** v3.14.3 (интерактивность, `x-data`, `x-show`, `x-transition`)
 - **htmx** v1.9.10 (частичные обновления)
 - **AOS** v2.3.1 (Animate on Scroll)
@@ -22,49 +25,68 @@
 - **PhotoSwipe** v5 (лайтбокс изображений)
 - **Highlight.js** v11.9.0 (подсветка кода, тема `atom-one-dark`)
 - **CodeMirror** v5.65.18 (редактор кода, тема `material-darker`)
+- **MathJax** v3 (формулы, `tex-chtml`)
 
-### Tailwind Config (расширения)
+### Tailwind Config (`tailwind.config.js`)
 ```js
-tailwind.config = {
-    theme: {
-        extend: {
-            fontFamily: {
-                sans: ['Inter', 'system-ui', 'sans-serif'],
-            },
-            colors: {
-                brand: {
-                    50:  '#eff6ff',
-                    100: '#dbeafe',
-                    500: '#3b82f6',
-                    600: '#2563eb',
-                    700: '#1d4ed8',
-                    900: '#1e3a8a',
-                }
-            }
+module.exports = {
+  content: ['./templates/**/*.html', './static/js/**/*.js'],
+  darkMode: 'class',
+  theme: {
+    extend: {
+      fontFamily: {
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+      },
+      colors: {
+        // Полная шкала бренда: пропущенные ступени шаблоны уже использовали
+        // (border-brand-300, text-brand-400), но Tailwind молча не выдаёт класс
+        // для несуществующего оттенка – рамки и подписи оставались бесцветными.
+        brand: {
+          50:  '#eff6ff',
+          100: '#dbeafe',
+          200: '#bfdbfe',
+          300: '#93c5fd',
+          400: '#60a5fa',
+          500: '#3b82f6',
+          600: '#2563eb',
+          700: '#1d4ed8',
+          800: '#1e40af',
+          900: '#1e3a8a',
         }
+      }
     }
+  },
+  plugins: [],
 }
 ```
 
+**Сборка обязательна после новых классов.** Класс, которого не было ни в одном шаблоне, в `tailwind.css` отсутствует – браузер молча его игнорирует, и вёрстка выглядит неизменной.
+
 ### Принципы
-1. **Mobile-first** — адаптивность через `sm:`, `md:`, `lg:` брейкпоинты
-2. **Контент из БД** — стили (шрифты, цвета, фон) задаются через модели ContentBlock/LessonBlock
-3. **Два режима UI** — публичный просмотр + inline-редактирование для staff
-4. **Минимум кастомного CSS** — утилити Tailwind, отдельные CSS только для редактора
+1. **Mobile-first** – адаптивность через `sm:`, `md:`, `lg:` брейкпоинты
+2. **Контент из БД** – стили (шрифты, цвета, фон) задаются через модели ContentBlock/LessonBlock
+3. **Тёмная тема** – класс `dark` на `<html>`, выбор хранится в `localStorage`
+4. **Минимум кастомного CSS** – утилити Tailwind, отдельные CSS-файлы только там, где утилитами не выразить (токены, типографика статьи)
 
 ---
 
 ## Цвета
 
+Палитра продублирована CSS-переменными в `static/css/design-tokens.css` (`--color-brand-600`, `--color-text-muted` и т.д.) – типографика статьи и виджеты ходят через них, а не через утилиты Tailwind.
+
 ### Brand (кастомная палитра)
 | Название | Tailwind | HEX | Использование |
 |----------|----------|-----|---------------|
-| Brand 50 | `brand-50` | `#eff6ff` | — |
+| Brand 50 | `brand-50` | `#eff6ff` | – |
 | Brand 100 | `brand-100` | `#dbeafe` | Фон иконок, badge |
+| Brand 200 | `brand-200` | `#bfdbfe` | – |
+| Brand 300 | `brand-300` | `#93c5fd` | Рамки |
+| Brand 400 | `brand-400` | `#60a5fa` | Шкала точности тренировок |
 | Brand 500 | `brand-500` | `#3b82f6` | Focus ring |
 | Brand 600 | `brand-600` | `#2563eb` | Основные кнопки, логотип, ссылки |
 | Brand 700 | `brand-700` | `#1d4ed8` | Hover кнопок |
-| Brand 900 | `brand-900` | `#1e3a8a` | — |
+| Brand 800 | `brand-800` | `#1e40af` | – |
+| Brand 900 | `brand-900` | `#1e3a8a` | – |
 
 ### Neutral
 | Название | Tailwind | HEX | Использование |
@@ -72,6 +94,7 @@ tailwind.config = {
 | Background | `gray-50` | `#f9fafb` | Фон `<body>`, sidebar header |
 | Card | `white` | `#ffffff` | Карточки, навбар, футер |
 | Border | `gray-100` | `#f3f4f6` | Границы карточек, разделители |
+| Border Medium | `gray-200` | `#e5e7eb` | Рамки навбара и футера, разделители таблиц |
 | Border Input | `gray-300` | `#d1d5db` | Границы инпутов |
 | Text Muted | `gray-500` | `#6b7280` | Мета, подписи, второстепенный текст |
 | Text Body | `gray-600` | `#4b5563` | Навигация, описания, ссылки |
@@ -87,8 +110,8 @@ tailwind.config = {
 | Warning BG | `amber-50`/`yellow-50` | Фон предупреждений |
 | Error | `red-500`/`red-600` | Ошибки, удаление, неверный ответ |
 | Error BG | `red-50`/`red-100` | Фон ошибок |
-| Info | `blue-50`/`blue-500` | Информация, подсказки |
-| Purple | `purple-600`/`purple-100` | Проверочные работы (отличие от учебных) |
+| Info | `blue-50`/`blue-500` | Информация, подсказки; режим «Тренировка» |
+| Purple | `purple-600`/`purple-100` | Разбор по памяти, частичный балл (задания 26–27) |
 | Indigo | `indigo-600`/`indigo-100` | Группы в статистике |
 
 ### Градиенты (используются в result-блоках)
@@ -99,6 +122,12 @@ bg-gradient-to-r from-green-50 to-emerald-50
 <!-- Предупреждение -->
 bg-gradient-to-r from-amber-50 to-orange-50
 ```
+
+### Тёмная тема
+
+Включается классом `dark` на `<html>` (`darkMode: 'class'` в конфиге). Скрипт в `<head>` ставит класс до отрисовки – по `localStorage.theme`, по умолчанию по системной настройке, – поэтому страница не мигает. Светлые утилиты перекрашиваются в `base.html` через `:where(.bg-white)`, `:where(.text-gray-700)` и т.п.: низкая специфичность нужна, чтобы `dark:*` и `hover:*` их перебивали. Типографика статьи переопределяет свою карту переменных в `textbook-article.css`.
+
+Палитра – Slate: фон `#0f172a`, поверхность `#1e293b`, границы `#334155`, приглушённый текст `#94a3b8`, акцент ссылок `#22d3ee`.
 
 ---
 
@@ -111,25 +140,33 @@ bg-gradient-to-r from-amber-50 to-orange-50
 Fallback: `system-ui, sans-serif`
 
 ### Масштаб
-| Элемент | Классы | Где используется |
-|---------|--------|------------------|
-| Page Title | `text-4xl font-bold text-gray-900` | h1 на главной, quiz_list |
-| Section Title | `text-3xl font-bold text-gray-900` | h1 на внутренних страницах |
-| Card Title | `text-xl font-semibold text-gray-900` | Заголовки карточек, блоков |
-| Section Header | `text-2xl font-bold text-gray-900` | "Учебные задачи", "Проверочные работы" |
-| Subtitle | `text-lg text-gray-600` | Описание под заголовком |
-| Body | `text-base text-gray-700` | Контент, prose-блоки |
-| Small | `text-sm text-gray-500` | Мета-информация, даты |
-| Caption | `text-xs text-gray-400` | Метки sidebar, uppercase tracking |
-| Badge | `text-xs font-medium` | Статусы, счетчики |
+
+Шкала закрыта: девять ступеней, других размеров в проекте нет. Роль решает размер, а не страница – до шкалы один и тот же подзаголовок был 12px в отчёте о попытке и 18px на лендинге, а рядом жили произвольные значения между 9 и 17px.
+
+| Роль | Класс | px |
+|------|-------|-----|
+| Ячейки таблиц, бейджи, счётчики, подписи под цифрой | `text-xs` | 12 |
+| Мета, формы, вспомогательный текст, плотный интерфейс | `text-sm` | 14 |
+| Основной текст, лид под заголовком страницы | `text-base` | 16 |
+| Лид лендинга, текст статьи учебника | `text-lg` | 18 |
+| Заголовок в компактной панели (шапка сессии, строка с аватаром), h3 | `text-xl` | 20 |
+| h2 | `text-2xl` | 24 |
+| h1 страницы | `text-2xl sm:text-3xl` | 24 → 30 |
+| h1 лендинга (главные учебника, спецкурса, ЕГЭ, уроков, «Обо мне») | `text-4xl sm:text-5xl` | 36 → 48 |
+
+Крупнее 48px – только display-цифры (балл прогноза, номера заданий на карте, игровое поле «Своей игры»): это графика, а не текст.
+
+Статья учебника ходит через ту же шкалу своими переменными в `static/css/textbook-article.css`: `--fs-h1: 30px`, `--fs-h2: 24px`, `--fs-p: 18px`, `--fs-li: 18px`, `--fs-cap: 14px`, `--fs-table: 16px` (компактный вариант `.article-column--normal` – на ступень ниже). Для проектора у переменных есть rem-двойник: там масштаб задаётся корневым font-size, и px не вырос бы.
+
+**Произвольный кегль мимо ступени роняет `FontScaleTest`** (`textbook/tests.py`): тест ищет в шаблонах `text-[Npx]` и `font-size:`. Ступень выбирается ближайшая, полпикселя «чтобы влезло» не добавляем. Исключения – четыре файла, где буквы работают как графика: `templates/home.html` (CSS-макеты сайта в миниатюре), `templates/games/svoya_igra/play.html` (кегль подобран под клетку поля), `templates/accounts/alumni.html` и `templates/about.html` (год выпуска, стрелки Swiper).
 
 ### Специальные стили текста
 ```html
 <!-- Mono (код, ответы) -->
 font-mono text-sm
 
-<!-- Uppercase label -->
-text-xs font-semibold text-gray-400 uppercase tracking-wider
+<!-- Uppercase label (заголовок таблицы, метка отчёта) -->
+text-xs font-semibold text-gray-600 uppercase tracking-wider
 ```
 
 ---
@@ -166,10 +203,11 @@ text-xs font-semibold text-gray-400 uppercase tracking-wider
     Проверить решение
 </button>
 
-<!-- Purple (проверочные работы) -->
-<button class="px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg
-               hover:bg-purple-700 transition-colors">
-    Начать
+<!-- Переключатель режима (разбор решения: «по скорости» / «по памяти»),
+     активное состояние привязано к Alpine-состоянию -->
+<button class="px-3 py-1.5 text-xs rounded-lg border transition-colors
+               bg-purple-600 text-white border-purple-600">
+    По памяти
 </button>
 
 <!-- Danger (logout, delete) -->
@@ -186,7 +224,7 @@ text-xs font-semibold text-gray-400 uppercase tracking-wider
 ### Карточки
 
 ```html
-<!-- Стандартная карточка (quiz_list, lesson_list) -->
+<!-- Стандартная карточка (страницы со списками: уроки, задачи, попытки) -->
 <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden
             hover:shadow-md transition-all duration-300">
     <div class="p-5">
@@ -194,25 +232,28 @@ text-xs font-semibold text-gray-400 uppercase tracking-wider
     </div>
 </div>
 
-<!-- Карточка Главной (home) — с hover-эффектом на изображение -->
-<article class="group relative rounded-xl shadow-md hover:shadow-xl
-                transition-all duration-300 overflow-hidden bg-white">
-    <img class="w-full transition-transform duration-500 group-hover:scale-105" ...>
+<!-- Карточка с обложкой (уроки, задачи спецкурса) – zoom изображения при наведении -->
+<a href="..."
+   class="group block bg-white rounded-xl shadow-sm hover:shadow-md border border-gray-100
+          overflow-hidden transition-all duration-300">
+    <div class="aspect-video overflow-hidden">
+        <img class="w-full h-full object-cover transition-transform duration-500
+                    group-hover:scale-105" ...>
+    </div>
     <div class="p-5">
-        <h3 class="text-xl font-bold text-gray-900 mb-2
-                   group-hover:text-blue-600 transition-colors">
+        <h3 class="text-base font-semibold text-gray-900
+                   group-hover:text-brand-600 transition-colors">
             Заголовок
         </h3>
-        <p class="text-base text-gray-600 line-clamp-3">Текст</p>
     </div>
-</article>
+</a>
 
-<!-- Карточка профиля — акцентированная -->
-<div class="bg-white rounded-2xl shadow-lg p-6">
+<!-- Шапка профиля – акцентированная -->
+<div class="bg-gradient-to-r from-brand-600 to-brand-700 rounded-2xl p-6 sm:p-8 text-white">
     <!-- content -->
 </div>
 
-<!-- Карточка авторизации — максимальный акцент -->
+<!-- Карточка авторизации – максимальный акцент -->
 <div class="bg-white rounded-2xl shadow-xl p-8">
     <!-- content -->
 </div>
@@ -223,10 +264,9 @@ text-xs font-semibold text-gray-400 uppercase tracking-wider
 |----------|--------|---------|
 | Обычная карточка | `shadow-sm` | `rounded-xl` |
 | Hover карточки | `shadow-md` | `rounded-xl` |
-| Home card | `shadow-md` → hover `shadow-xl` | `rounded-xl` |
-| Профиль | `shadow-lg` | `rounded-2xl` |
+| Блок-карточка «Обо мне» | `shadow-md` | `rounded-xl` |
+| Модальное окно | `shadow-xl` | `rounded-xl` |
 | Авторизация | `shadow-xl` | `rounded-2xl` |
-| Floating toolbar | `shadow-lg` (CSS: `0 4px 20px`) | `rounded-xl` |
 
 ### Badges / Status
 
@@ -236,11 +276,8 @@ text-xs font-semibold text-gray-400 uppercase tracking-wider
     Пройдено
 </span>
 
-<!-- Solved badge -->
-<span class="inline-flex items-center gap-1 px-2.5 py-1 bg-green-100
-             text-green-600 rounded-full text-xs font-semibold">
-    Решено
-</span>
+<!-- Solved badge – свой CSS-класс, не утилиты (quiz_detail.html) -->
+<span class="solved-badge ml-auto">Решено</span>
 
 <!-- Count badge -->
 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full
@@ -249,12 +286,15 @@ text-xs font-semibold text-gray-400 uppercase tracking-wider
 </span>
 ```
 
+`.solved-badge` объявлен в `quiz_detail.html`: `background: #dcfce7`, `color: #16a34a`, `border-radius: 9999px`, `font-size: 0.75rem`, `font-weight: 600`.
+
 ### Цветовая схема badges
 | Состояние | BG | Text |
 |-----------|-----|------|
 | Пройдено / Успех | `bg-green-100` | `text-green-700` |
-| Доступно (учебн.) | `bg-blue-100` | `text-blue-700` |
-| Доступно (провер.) | `bg-purple-100` | `text-purple-700` |
+| Тренировка (режим сессии) | `bg-blue-100` | `text-blue-700` |
+| Экзамен (режим сессии) | `bg-orange-100` | `text-orange-700` |
+| Частичный балл (задания 26–27) | `bg-purple-100` | `text-purple-700` |
 | Недоступно | `bg-gray-100` | `text-gray-500` |
 | Ожидание | `bg-yellow-100` | `text-yellow-700` |
 
@@ -360,23 +400,20 @@ text-xs font-semibold text-gray-400 uppercase tracking-wider
 ### Прогресс-бар
 
 ```html
-<div class="w-full bg-gray-200 rounded-full h-3">
-    <div class="h-3 rounded-full transition-all duration-500
-                bg-green-500"  <!-- или bg-yellow-500, bg-red-500 -->
-         style="width: 75%">
-    </div>
+<div class="h-2 rounded-full bg-gray-100 dark:bg-slate-700 overflow-hidden">
+    <div class="h-full rounded-full bg-brand-400" style="width: 75%"></div>
 </div>
 ```
 
-Пороги: `>= 70%` — green, `>= 50%` — yellow, `< 50%` — red.
+Цветных порогов в проекте один: шкала точности по экзамену на карточке задания (`ege_task.html`) – `>= 75%` `bg-emerald-500`, `>= 50%` `bg-amber-500`, ниже `bg-red-500`. Остальные шкалы (точность тренировок, прогресс чтения, прогноз) – одноцветные, `bg-brand-400` или `bg-brand-600`.
 
 ### Section Header (с иконкой)
 
 ```html
 <div class="flex items-center mb-6">
-    <div class="flex-shrink-0 w-10 h-10 bg-blue-100 rounded-lg
+    <div class="flex-shrink-0 w-10 h-10 bg-brand-100 rounded-lg
                 flex items-center justify-center mr-4">
-        <svg class="w-5 h-5 text-blue-600">...</svg>
+        <svg class="w-5 h-5 text-brand-600">...</svg>
     </div>
     <h2 class="text-2xl font-bold text-gray-900">Учебные задачи</h2>
 </div>
@@ -406,75 +443,72 @@ text-xs font-semibold text-gray-400 uppercase tracking-wider
 
 ### Контейнер страницы
 ```html
-<!-- Широкий (списки, статистика) — max-w-7xl -->
+<!-- Широкий (списки, статистика) – max-w-7xl -->
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
-<!-- Узкий (детали урока, результаты) — max-w-4xl -->
+<!-- Узкий (детали урока, результаты) – max-w-4xl -->
 <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
-<!-- Центрированный (авторизация) — max-w-md -->
+<!-- Центрированный (авторизация) – max-w-md -->
 <div class="min-h-[60vh] flex items-center justify-center px-4 py-12">
     <div class="w-full max-w-md">
 ```
 
 ### Page Header (общий паттерн)
 ```html
-<!-- Центрированный (главная, списки) -->
+<!-- Центрированный (лендинги: учебник, спецкурс, ЕГЭ, уроки) -->
 <div class="text-center mb-12">
-    <h1 class="text-4xl font-bold text-gray-900 mb-4">Заголовок</h1>
+    <h1 class="text-4xl sm:text-5xl font-bold text-gray-900 mb-4">Заголовок</h1>
     <p class="text-lg text-gray-600 max-w-2xl mx-auto">Описание</p>
 </div>
 
 <!-- Левосторонний (внутренние страницы) -->
 <header class="mb-8">
-    <h1 class="text-3xl font-bold text-gray-900 mb-2">Заголовок</h1>
+    <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Заголовок</h1>
     <p class="text-gray-600">Описание</p>
 </header>
 ```
 
 ### Сетка карточек
 ```html
-<!-- 3-колоночная сетка (quiz_list, home) -->
+<!-- 3-колоночная сетка (списки уроков, задач спецкурса, тем игр) -->
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 
-<!-- 2-колоночная сетка (профиль) -->
-<div class="grid md:grid-cols-2 gap-6">
+<!-- Плитки профиля -->
+<div class="grid md:grid-cols-3 gap-6">
 ```
 
-### Sidebar + Content (quiz_detail)
+### Sidebar + Content (статья учебника)
 ```html
-<div class="flex gap-8">
-    <!-- Sidebar: скрыт на мобилке, sticky -->
-    <aside class="hidden lg:block w-64 flex-shrink-0">
-        <div class="sticky top-[80px] max-h-[calc(100vh-100px)] overflow-y-auto">
-            ...
-        </div>
-    </aside>
+<!-- Список уроков/статей слева: скрыт на мобилке, сворачивается кнопкой-«язычком» -->
+<aside class="article-sidebar-col hidden md:block" :class="sidebarOpen ? '' : 'w-collapsed'">
+    <div class="article-sidebar-inner">...</div>
+</aside>
 
-    <!-- Content: flex-1 -->
-    <div class="flex-1 min-w-0">
-        <div class="space-y-6">...</div>
-    </div>
-</div>
+<!-- Колонка текста -->
+<div class="article-column">...</div>
 ```
+
+Ширина, sticky-поведение и сворачивание этого сайдбара заданы не утилитами, а классами `.article-sidebar-*` в `static/css/textbook-article.css`.
 
 ### Navbar
 ```html
-<header class="bg-white shadow-sm sticky top-0 z-50">
+<header class="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-700
+               sticky top-0 z-50">
     <nav class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between h-16">
             <!-- logo + nav links (hidden md:flex) -->
-            <!-- auth buttons -->
+            <!-- переключатель темы + auth buttons -->
             <!-- mobile hamburger (md:hidden) -->
         </div>
     </nav>
-    <!-- mobile dropdown (Alpine.js x-show) -->
+    <!-- mobile dropdown (Alpine.js x-show, @click.outside) -->
 </header>
 ```
 
 ### Footer
 ```html
-<footer class="bg-white border-t mt-auto">
+<footer class="bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-slate-700 mt-auto">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <p class="text-center text-gray-500 text-sm">
             &copy; Автор. Год
@@ -514,14 +548,14 @@ Inline SVG (Heroicons Outline), `24x24` viewBox.
 
 ### Контейнер иконки
 ```html
-<!-- Круглый (профиль, quiz questions) -->
+<!-- Круглый (профиль, вопросы теста) -->
 <div class="w-12 h-12 bg-brand-100 rounded-full flex items-center justify-center">
     <svg class="w-6 h-6 text-brand-600">...</svg>
 </div>
 
-<!-- Квадратный со скруглением (section headers) -->
-<div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-    <svg class="w-5 h-5 text-blue-600">...</svg>
+<!-- Квадратный со скруглением (заголовки секций) -->
+<div class="w-10 h-10 bg-brand-100 rounded-lg flex items-center justify-center">
+    <svg class="w-5 h-5 text-brand-600">...</svg>
 </div>
 ```
 
@@ -543,15 +577,15 @@ AOS.init({
 |--------|-----|
 | `fade-up` | Карточки, секции, основной контент |
 | `fade-down` | Заголовок страницы |
-| `fade-right` | Навигация "Назад", sidebar |
+| `fade-right` | Навигация "Назад", заголовки разделов «Обо мне» |
 | `data-aos-delay` | Каскад карточек: `{{ forloop.counter0 }}50` или `{{ forloop.counter0 }}00` |
 
 ### Tailwind Transitions
 ```html
-transition-colors duration-200   /* Цвета (кнопки, ссылки) */
-transition-all duration-300      /* Тени + цвета (карточки) */
+transition-colors                 /* Цвета (кнопки, ссылки) – длительность по умолчанию, 150 мс */
+transition-all duration-200       /* Нажатия, оверлеи */
+transition-all duration-300       /* Тени + цвета (карточки) */
 transition-transform duration-500 /* Zoom изображений */
-transition-shadow duration-200   /* Focus ring */
 ```
 
 ### Alpine.js Transitions
@@ -570,15 +604,15 @@ x-transition   <!-- Alpine default -->
 
 ### Hover Effects
 ```html
-<!-- Карточка (home) — zoom image + shift link arrow -->
+<!-- Карточка с обложкой – zoom изображения, подсветка заголовка -->
 group-hover:scale-105          /* изображение */
-group-hover:text-blue-600      /* заголовок */
+group-hover:text-brand-600     /* заголовок */
 group-hover:translate-x-1      /* стрелка "Подробнее" */
 
-<!-- Кнопка "Назад" — shift arrow -->
+<!-- Кнопка "Назад" – shift arrow -->
 group-hover:-translate-x-1     /* стрелка */
 
-<!-- Карточка (list) — поднять тень -->
+<!-- Карточка (list) – поднять тень -->
 hover:shadow-md                /* с shadow-sm */
 ```
 
@@ -597,23 +631,19 @@ hover:shadow-md                /* с shadow-sm */
 }
 ```
 
-### Code Submission State Animations
+### Состояния проверки ответа
 ```css
-.code-question-card.checking {
-    border-color: #fbbf24;
-    box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.2);
+/* ege_detail.html, quiz_detail.html */
+.code-status {
+    padding: 0.5em 0.75em; border-radius: 8px; font-size: 0.875rem;
+    margin-top: 0.5em; display: flex; align-items: center; gap: 0.5em;
 }
-.code-question-card.success {
-    border-color: #22c55e;
-    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.2);
-}
-.code-question-card.failed {
-    border-color: #ef4444;
-    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
-}
+.code-status.pending, .code-status.running { background: #fef3c7; color: #92400e; }
+.code-status.success { background: #dcfce7; color: #166534; }
+.code-status.failed, .code-status.error { background: #fee2e2; color: #991b1b; }
 ```
 
----
+Блок показывается по Alpine-состоянию: `checkingAnswer` меняет подпись кнопки на «Проверяю...», `codeStatuses` держит статус асинхронной проверки (`pending` / `running` / `success` / `failed` / `error`) – он приходит по WebSocket из `static/js/quiz-async.js`. Неверный текстовый ответ дополнительно красит сам инпут: `border-red-400 bg-red-50 text-red-700`.
 
 ---
 
@@ -623,5 +653,5 @@ hover:shadow-md                /* с shadow-sm */
 |------------|--------|------------------|
 | < 768px | `md:hidden` | Mobile menu, однокол. сетка |
 | >= 768px | `md:` | 2-колоночная сетка, горизонтальные лейауты блоков |
-| >= 1024px | `lg:` | 3-колоночная сетка, sidebar quiz_detail |
+| >= 1024px | `lg:` | 3-колоночная сетка, сайдбар статьи учебника |
 | Контейнер | `sm:px-6 lg:px-8` | Padding контейнера |

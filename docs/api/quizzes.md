@@ -1,18 +1,20 @@
 # Quizzes API
 
-Основное приложение — **17 endpoints** для тестирования, проверки кода и системы помощи.
+Основное приложение – **10 endpoint'ов** для тестирования, проверки кода и
+подсказок. Всё смонтировано под `/quizzes/`; тренажёр ЕГЭ живёт отдельно, на
+`/ege/` (см. [EGE API](ege.md)).
 
 ---
 
 ## Тесты
 
-### GET/POST `/quizzes/<id>/` — Прохождение теста
+### GET/POST `/quizzes/<id>/` – Прохождение теста
 
 **View:** `quiz_detail_view`
-**Auth:** Требуется (проверка через `get_effective_quiz_settings`)
+**Auth:** `@login_required` + назначение (`get_effective_quiz_settings`)
 **Template:** `quizzes/quiz_detail.html` (GET) / `quizzes/quiz_result.html` (POST)
 
-Центральный endpoint теста — обрабатывает показ вопросов и приём ответов.
+Центральный endpoint теста – обрабатывает показ вопросов и приём ответов.
 
 ```mermaid
 sequenceDiagram
@@ -54,32 +56,42 @@ sequenceDiagram
 
 **Контроль доступа:**
 
-1. `get_effective_quiz_settings()` — находит `QuizAssignment` (по группе или индивидуально)
+1. `get_effective_quiz_settings()` – находит `QuizAssignment` (по группе или индивидуально)
 2. Проверяет `start_date` / `end_date` окно
-3. Считает использованные попытки vs `max_attempts`
-4. Публичные тесты (`is_public=True`) доступны без назначения
+3. `quiz_is_locked()` – дедлайн блока учебника закрывает и задачи блока, и
+   самопроверки его уроков: решать нельзя, смотреть свои ответы можно
+4. Считает использованные попытки vs `max_attempts`
+5. Публичные тесты (`is_public=True`) доступны без назначения
+
+Просроченный тест или закрытый блок отдаётся в режиме `read_only=True`:
+все вопросы с лучшими ответами ученика, отправка ответов отклоняется.
 
 **Alpine.js интеграция:**
 
-В шаблоне используется `tasks_data` JSON для навигации по задачам:
+В шаблон уходит `tasks_json` – плоский список задач для навигации:
 ```json
-{
-  "tasks": [
-    {
-      "id": 1,
-      "type": "choice",
-      "solved": false,
-      "choices": ["..."],
-      "last_code": "...",
-      "submission_status": "success"
-    }
-  ]
-}
+[
+  {
+    "id": 1,
+    "type": "choice",
+    "title": "Задача 1",
+    "points": 1,
+    "is_solved": false,
+    "saved_answer": "",
+    "hint_state": "taken",
+    "hint_html": "...",
+    "best_cpu_time_ms": 45.2,
+    "best_memory_kb": 8192
+  }
+]
 ```
+
+Поля `hint_state` / `hint_html` появляются только у открытой подсказки,
+`best_*` – только у решённых задач на код. Верных ответов в этом JSON нет.
 
 ---
 
-### GET `/quizzes/question-file/<id>/download/` — Скачать файл вопроса
+### GET `/quizzes/question-file/<id>/download/` – Скачать файл вопроса
 
 **View:** `question_file_download_view`
 **Auth:** Требуется
@@ -89,9 +101,49 @@ sequenceDiagram
 
 ---
 
+## Подсказки и мгновенная проверка
+
+### GET/POST `/quizzes/question/<id>/hint/` – Подсказка к задаче
+
+**View:** `question_hint_view`
+**Auth:** `@login_required` + тест назначен
+
+GET отдаёт только состояние – пока ученик не нажал «показать», текста подсказки
+в ответе нет: иначе её можно было бы вычитать прямо из сети, не делая выбора.
+POST с `action=take` / `action=decline` фиксирует выбор (`HintChoice`) – учителю
+в статистику.
+
+**Логика:**
+
+- доступность самой подсказки решает `textbook.services.hint_state` (рубильник
+  разбора, близкий дедлайн);
+- без назначения теста или при закрытой подсказке возвращается `{"state": null}`
+  – существование подсказки не выдаётся;
+- при `state == 'taken'` в ответе появляется поле `hint` с отрендеренным
+  Markdown.
+
+### POST `/quizzes/question/<id>/check/` – Вердикт по текстовому ответу
+
+**View:** `question_check_view`
+**Auth:** `@login_required` + тест назначен
+**Content-Type:** `application/json` · `{"answer": "42"}`
+
+Мгновенная обратная связь для текстовых задач (у задач на код она была и так).
+Ничего не сохраняет и правильный ответ не отдаёт: балл по-прежнему выставляет
+`finish_quiz_view`.
+
+**Ответ (200):** `{"is_correct": true}`
+
+| Код | Причина |
+|-----|---------|
+| 400 | Не текстовый вопрос, пустой ответ или невалидный JSON |
+| 403 | Тест не назначен |
+
+---
+
 ## Асинхронная проверка кода
 
-### POST `/quizzes/<id>/question/<id>/submit/` — Отправить код
+### POST `/quizzes/<id>/question/<id>/submit/` – Отправить код
 
 **View:** `submit_code_view`
 **Auth:** Требуется
@@ -140,14 +192,14 @@ sequenceDiagram
 
 | Код | Причина |
 |-----|---------|
-| 400 | Пустой код |
-| 403 | Нет назначения / время вышло |
-| 409 | Уже есть pending/running посылка |
-| 503 | Celery недоступен |
+| 400 | Пустой код, вопрос не на код, задача уже решена |
+| 403 | Нет назначения / тест не начался / время вышло / дедлайн блока |
+| 409 | Уже есть pending/running посылка (в ответе – её `submission_id`) |
+| 503 | Celery недоступен (посылка сохраняется со `status='error'`) |
 
 ---
 
-### GET `/quizzes/submission/<id>/status/` — Статус проверки
+### GET `/quizzes/submission/<id>/status/` – Статус проверки
 
 **View:** `submission_status_view`
 **Auth:** Требуется
@@ -157,17 +209,25 @@ Polling endpoint для проверки статуса `CodeSubmission`. Рез
 **Ответ:**
 ```json
 {
+  "submission_id": 42,
+  "question_id": 7,
   "status": "success",
   "is_correct": true,
+  "score": null,
+  "points": 1,
   "error_log": null,
   "cpu_time_ms": 45.2,
-  "memory_kb": 8192
+  "memory_kb": 8192,
+  "created_at": "2026-03-01T10:00:00+07:00",
+  "completed_at": "2026-03-01T10:00:04+07:00"
 }
 ```
 
+Посылка ищется по `user=request.user`: чужая по id не отдаётся.
+
 ---
 
-### POST `/quizzes/<id>/finish/` — Завершить тест
+### POST `/quizzes/<id>/finish/` – Завершить тест
 
 **View:** `finish_quiz_view`
 **Auth:** Требуется
@@ -195,21 +255,34 @@ Polling endpoint для проверки статуса `CodeSubmission`. Рез
   "score": 8,
   "total": 10,
   "failed_questions": [
-    {"id": 3, "title": "Задача 3", "correct_answer": "42"}
+    {"id": 3, "title": "Задача 3", "error_log": "expected 42, got 43"}
   ],
   "pending_checks": 0,
-  "redirect_url": "/quizzes/attempt/15/"
+  "redirect_url": "/textbook/article/..."
 }
 ```
 
+В `failed_questions` лежат `id`, `title` и `error_log` задачи – верный ответ
+здесь **не отдаётся**. `redirect_url` ведёт в учебник, если тест оттуда
+(`textbook_link_for_quiz`), иначе на `/quizzes/`.
+
+**Коды ошибок:**
+
+| Код | Причина |
+|-----|---------|
+| 403 | Дедлайн блока прошёл, тест не назначен или попытки исчерпаны |
+| 409 | Есть pending/running `CodeSubmission`, а `force=false` |
+
 !!! warning "Pending submissions"
-    Если `force=false` и есть pending/running `CodeSubmission`, вернёт **409** с `pending_questions`. Клиент может повторить с `force=true` для принудительного завершения.
+    Ответ **409** несёт `pending_questions` – список id задач, ещё висящих на
+    проверке. Клиент может повторить с `force=true`: посылки были отправлены
+    вовремя, и Celery досчитает их после завершения.
 
 ---
 
 ## Статистика (superuser only)
 
-### GET `/quizzes/<id>/stats/` — Статистика теста
+### GET `/quizzes/<id>/stats/` – Статистика теста
 
 **View:** `quiz_stats_view`
 **Auth:** Superuser
@@ -217,14 +290,14 @@ Polling endpoint для проверки статуса `CodeSubmission`. Рез
 
 Группирует учеников по `StudentGroup`, показывает best score, количество попыток, % правильных.
 
-### GET `/quizzes/<id>/stats/<user_id>/` — Попытки ученика
+### GET `/quizzes/<id>/stats/<user_id>/` – Попытки ученика
 
 **View:** `user_attempts_view`
 **Auth:** Superuser
 
 Все попытки конкретного ученика по данному тесту.
 
-### GET `/quizzes/attempt/<id>/` — Детали попытки
+### GET `/quizzes/attempt/<id>/` – Детали попытки
 
 **View:** `attempt_detail_view`
 **Auth:** Superuser

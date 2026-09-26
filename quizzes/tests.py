@@ -140,6 +140,15 @@ class QuestionSourceTests(SimpleTestCase):
         self.assertEqual(self._source('Задача 1'), '')
         self.assertEqual(self._source(''), '')
 
+    def test_author_moves_from_text_to_source(self):
+        from quizzes.management.commands.load_ege import split_author
+        title, text = split_author('Задание 23 — №31673', '(Л. Шастин) В текстовом файле', 23)
+        self.assertEqual(text, 'В текстовом файле')
+        self.assertEqual(self._source(title), 'Л. Шастин')
+        # Скобки не в начале – это часть условия, не автор.
+        self.assertEqual(split_author('Задание 23 — №1', 'Вес (W) ребра', 23),
+                         ('Задание 23 – №1', 'Вес (W) ребра'))
+
 
 class PartialScoreTests(SimpleTestCase):
     """Шкала 0/1/2 в заданиях 26 и 27."""
@@ -2655,6 +2664,11 @@ class TestCaseDedupeTests(TestCase):
             {'input_data': '5', 'output_data': '2508 104796'},
         ])
         self.assertEqual(len(kept), 3)
+
+    def test_escaped_newline_becomes_real_one(self):
+        # Банки 25 и 27: `\n` двумя символами делал задачу нерешаемой.
+        kept = self._load([{'input_data': '', 'output_data': '20065 11921\\n11 5'}])
+        self.assertEqual(kept[0].output_data, '20065 11921\n11 5')
 
 
 @override_settings(STORAGES={

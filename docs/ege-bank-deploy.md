@@ -8,7 +8,7 @@
 | Артефакт | Где | Объём | Чем везём |
 |---|---|---|---|
 | Код тренажёра | ветка с миграциями `quizzes 0035+` | – | `git push` / `git pull` |
-| Банки задач | `fixtures/bank-*.json`, 23 файла (без `bank-27.json`) | 750 задач | `scp`, файлы в `.gitignore` |
+| Банки задач | `fixtures/bank-*.json`, 25 файлов | 810 задач | `scp`, файлы в `.gitignore` |
 | Медиа банков | `media/ege/bank-*/` | 315 МБ (из них `bank-24/files` – 250 МБ) | `rsync` |
 | Пулы и настройки заданий | `fixtures/ege-pools.json` | 118 «в классе», 114 «в экзамене», 27 заданий | `scp` |
 
@@ -30,6 +30,23 @@
   и так; из дев-базы они удалены 2026-08-31 вместе с 25 отладочными
   `PracticeItem` и осиротевшим `media/ege/bank-17/files/17_1.txt`, чтобы дев
   и прод показывали по заданию 17 одно и то же число.
+
+## 2026-09-25: банки 23 и 27
+
+Загружены на деве, 810 задач. Пулов у них нет – все 60 задач в тренировке.
+Вместе с ними перезалит `bank-25.json`: в банках 25 и 27 парсер пишет перенос
+строки в эталоне двумя символами `\n`, и задача 25 была нерешаемой. Теперь
+`load_ege` раскрывает их сам, поэтому **на проде `bank-25.json` тоже прогнать
+заново** (шаг 5 это делает). Задание 25 варианта EGE_3 чинится отдельно – это
+вариант, не банк:
+
+```bash
+python manage.py shell -c "from quizzes.models import TestCase as T; [T.objects.filter(pk=t.pk).update(output_data=t.output_data.replace(chr(92)+'n', chr(10))) for t in T.objects.filter(output_data__contains=chr(92)+'n', question__quiz__quiz_type__in=('exam', 'bank'))]"
+```
+
+Фильтр по `quiz_type` не убирать: в практикумах уроков буквальный `\n` в
+эталоне может быть правильным ответом (задачи про экранирование), а команда
+правит базу прода без отката.
 
 ## Почему нужен `ege_pools`, а не только json
 
@@ -55,9 +72,9 @@ python manage.py ege_pools --dump fixtures/ege-pools.json
 # 2. Залить фикстуры и медиа. Медиа – строго до load_ege:
 #    load_ege создаёт QuestionFile/QuestionImage по путям из json,
 #    и без файлов на диске в банке окажутся битые ссылки.
-rsync -avz --exclude 'bank-27' --exclude 'bank-23' -e "ssh -p 2222" \
+rsync -avz -e "ssh -p 2222" \
       media/ege/bank-* admin@192.168.1.199:/home/admin/site/media/ege/
-scp -P 2222 $(ls fixtures/bank-*.json | grep -v bank-27) fixtures/ege-pools.json \
+scp -P 2222 fixtures/bank-*.json fixtures/ege-pools.json \
       admin@192.168.1.199:/home/admin/site/fixtures/
 
 # 3. На проде: код и схема
@@ -91,7 +108,7 @@ print(b.count(), b.filter(classroom_only=True).count(), b.filter(exam_only=True)
 "
 ```
 
-Должно совпасть с девом: `750 118 114`.
+Должно совпасть с девом: `810 118 114`.
 
 Повторный `ege_pools --load` ничего не меняет – это полная синхронизация
 состояния, а не доливка: задача, которой нет в списках файла, оба флага теряет.

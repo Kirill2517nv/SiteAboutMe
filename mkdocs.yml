@@ -62,6 +62,9 @@ nav:
     - "Lessons": api/lessons.md
     - "Quizzes": api/quizzes.md
     - "EGE": api/ege.md
+    - "Textbook": api/textbook.md
+    - "Spetskurs": api/spetskurs.md
+    - "Games": api/games.md
   - "Бизнес-логика":
     - "Quiz Flow": flows/quiz-flow.md
     - "Выполнение кода": flows/code-execution.md

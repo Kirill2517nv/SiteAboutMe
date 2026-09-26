@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Django 6.0.1 educational platform (Russian language) for managing lessons, quizzes, and student groups. Uses PostgreSQL, Tailwind CSS, and Alpine.js. Features async code execution for Python quizzes via Celery + Redis with real-time WebSocket feedback through Django Channels. Deployed with Gunicorn + Nginx + Daphne.
+Django 6.0.1 educational platform (Russian language): a textbook with lesson articles, an EGE trainer, quizzes, a C++ numerical-modelling course, classroom games and student groups. Uses PostgreSQL, Tailwind CSS, and Alpine.js. Features async code execution for Python quizzes via Celery + Redis with real-time WebSocket feedback through Django Channels. Deployed with Gunicorn + Nginx + Daphne.
 
 ## Common Commands
 
@@ -15,7 +15,7 @@ python manage.py makemigrations          # Create migrations after model changes
 python manage.py migrate                 # Apply migrations
 python manage.py createsuperuser         # Create admin user
 python manage.py collectstatic           # Collect static files for production
-npm run tw:build                         # ОБЯЗАТЕЛЬНО после новых Tailwind-классов в шаблонах
+npm run tw:build                         # После новых Tailwind-классов – иначе класса нет в CSS
 npm run tw:watch                         # Пересборка CSS на лету во время вёрстки
 python manage.py load_quiz <file.json>   # Import quiz from JSON fixture
 python manage.py load_ege <file.json>    # Import EGE variant or question bank (fixtures/ege_bank_template.json)
@@ -26,6 +26,10 @@ python manage.py retag_ege --from 2 --to 5 --dry-run   # Codifier changed: move/
 python manage.py mark_exam_pool --dry-run              # Fill the exam-only reserve (Question.exam_only)
 python manage.py ege_pools --dump fixtures/ege-pools.json   # Snapshot pools + EgeTask settings (dev → prod, see docs/ege-bank-deploy.md)
 python manage.py ege_pools --load fixtures/ege-pools.json --dry-run
+python manage.py seed_textbook_structure       # Textbook skeleton: 21 sections + article titles (idempotent); content – seed_textbook_block<N> (1–13)
+python manage.py check_articles --track ege    # Lint articles in the DB: formulas, links, block order (material/ege/spetskurs)
+python manage.py fix_dashes --dry-run          # Find em dashes in the DB (without the flag – replace them)
+python manage.py seed_spetskurs_<task>         # Spetskurs theory drafts; publish_spetskurs <task> [slugs] releases them
 gunicorn config.wsgi:application         # Production server (HTTP)
 daphne config.asgi:application           # ASGI server (WebSocket)
 celery -A config worker -l info          # Celery worker for async tasks
@@ -45,9 +49,11 @@ To test async code execution locally, run these in separate terminals:
 Apps, each with standard Django structure (models, views, urls, admin, forms):
 
 - **accounts** – User auth, `Profile` (extends User with group assignment, `is_ege` flag), `StudentGroup` for organizing students into classes. `ProfileView` shows one stat block, **Учебник** (per-`Section` grades, lessons read, practicum tasks, reading time, «что подтянуть» – via `textbook.services.profile_textbook_stats`); every EGE number lives on the trainer's «Мой прогресс» tab instead, so the two never disagree. Superusers open any student's profile at `accounts:student_profile` (`profile/<user_id>/`); students get 403 on foreign profiles. **`/alumni/` is superuser-only** and has no link in the site header: the only way in is the teacher bar inside the profile, which is drawn under `{% if students %}` – a context `ProfileView` fills for superusers alone, so the link needs no permission check of its own and cannot drift from the view's. `templatetags/profile_tags.py` provides the `duration_display` filter for timedelta formatting.
-- **pages** – Home/about pages built from `ContentBlock` models with rich styling (fonts, colors, image crop/positioning)
+- **pages** – Home page built from `ContentBlock` models with rich styling (fonts, colors, image crop/positioning); «Обо мне» (`/about/`) from `AuthorProfile` + `AuthorPhoto` / `AuthorVideo` / `AuthorEvent`; the changelog page is parsed from `CHANGELOG.md` (`parse_changelog`)
 - **lessons** – `Section` → `Lesson` → `LessonAttachment` / `LessonBlock` hierarchy. `LessonAttachment` stores multiple downloadable files per lesson. `Lesson` supports Slidev presentations (`presentation_url`, `presentation_title`, `presentation_pdf`) and video URLs. All file uploads use a unified path `media/lessons/{safe_title}/`. File downloads use Nginx X-Accel-Redirect in production. Dev server serves media with `index.html` fallback for Slidev SPA.
 - **quizzes** – `Quiz` with time-based access windows, `Question` (multiple choice, free text, Python code execution with `TestCase` validation, `title` field), `QuizAssignment` (to groups or individuals), `UserResult`/`UserAnswer` for tracking. Attempt limiting with override support. `CodeSubmission` for async code execution results.
+- **textbook** (`/textbook/`) – `Section` (a block of the course, with `practicum_quiz` and a `deadline`; `SectionExtension` moves the deadline for one student) → `Article` → `ArticleBlock` (text / code / image / video / formula / widget). One `Article` model serves three tracks: `material` (lessons), `ege` (theory per `EgeTask`, 1–27) and `spetskurs`. `ArticleQuiz` attaches self-check quizzes, `ArticleProgress` tracks reading. Widgets live in `static/js/textbook-widgets.js`, content is written by `seed_*` commands; lesson and theory writing rules: `docs/textbook-lesson-brief.md`, `docs/ege-theory-brief.md`, `docs/textbook-structure.md`
+- **games** (`/games/`) – «Своя игра»: students propose `Category` + `Question` (+ `QuestionMedia`), staff moderate them (`pending` / `approved` / `rejected`) and assemble a `GamePack`; a `GameSession` keeps the board and players as JSON. Board script: `static/js/svoya-igra-board.js`
 
 **EGE Trainer** (`quizzes` app, mounted at `/ege/`, urls in `urls_ege.py`). **Wording:** mode `study` is called «Тренировка» everywhere in the UI (the DB value stays `study`); «Учёба» is gone. The unlock counter counts *distinct* questions and the stats block counts *answers* – label them so the two numbers are never read as the same thing:
 - **Hub `/ege/`** – three tabs: map of all 27 EGE tasks, ready-made variants, personal progress. The progress tab (`_ege_progress.html`, fed by `ege_stats.overview`) is split into two sections on purpose, named with the same words as the hub's tabs: **Задания** (`predicted_score` forecast, weak spots, per-task table – everything from `PracticeItem`) and **Варианты** (`ege_stats.variant_summary` – `variant_forecast`, per-variant bars, pace per number). The two are never added together: one task solved in a session and a whole 235-minute variant measure different things. Each section opens with a forecast card, and both cards are the same partial (`_ege_forecast.html`) because they measure the same thing – the exam score – differing only in where it came from: assembled from single tasks on the left, taken off a whole paper on the right. The variant forecast is the **last** written paper, not an average: the first variant was written knowing half the topics, and averaging it in would drag the forecast down long after those topics were learned
@@ -121,7 +127,7 @@ eg x\)` as raw text while the same question on a variant page rendered fine. The
 - Timezone: Asia/Novosibirsk
 - **Tailwind CSS is precompiled**, not a CDN build: `static/css/tailwind.css` is generated from `static/css/tailwind.input.css` by `npm run tw:build` (config: `tailwind.config.js`, scans `templates/**/*.html` and `static/js/**/*.js`). A class that no template used before simply does not exist in the CSS until you rebuild – the browser silently ignores it and the layout looks unchanged. Always run `npm run tw:build` after adding new utility classes.
 - Media files: `media/` (`lessons/{safe_title}/` for lesson files/presentations, `question_files/` for quiz files, `content/` for pages)
-- Static assets: `static/js/` (quiz-async, ege-timer)
+- Static assets: `static/js/` – quiz-async, ege-timer, present-mode / article-present (projector), textbook-widgets / textbook-progress, svoya-igra-board, avatar-crop. Static is served by WhiteNoise (`CompressedManifestStaticFilesStorage`)
 - Templates: `templates/` directory with subdirectories per app
 - **Яндекс.Метрика** – `YANDEX_METRIKA_ID` из `.env` (только прод; пусто – счётчика нет), контекст-процессор `pages.context_processors.yandex_metrika`, разметка `templates/_yandex_metrika.html`. Параметр визита `auth` = `guest`/`user`, ни имени, ни id. **Метрика отправляет в Яндекс заголовок страницы**, а у страниц учителя в заголовке ФИО ученика, поэтому у суперпользователя счётчик не грузится вовсе, а страница, где чужое имя видит и ученик (`ege_solution_detail.html`), гасит блок `{% block metrika %}` в `base.html`. Новая такая страница – та же пустая перегрузка блока. `YandexMetrikaTests`
 - **JSON в шаблон – только через `quizzes.utils.js_json`, не `json.dumps`**:
@@ -220,6 +226,34 @@ sudo tail -f /var/log/nginx/error.log      # Nginx errors
 redis-cli ping                             # Should return PONG
 ```
 
+## Как работать
+
+**Новая задача – сначала интервью.** Новая фича, страница, виджет, разбор, отчёт –
+всё, где я описал замысел, а не готовое решение: до работы задай вопросы по
+одному через AskUserQuestion, с двумя-тремя вариантами и своим по умолчанию.
+Начинай с тех, где от ответа сильнее всего меняется результат: для кого и
+зачем, как это должно выглядеть, что лежит в конце, чего не трогать. Когда
+ответы перестали что-то менять (обычно три-шесть вопросов), собери бриф по
+шаблону скилла `claude-brief` (зачем → что сделать → «готово – это…» →
+ограничения с причинами → когда остановиться), покажи его и начинай после моего
+«да». Причина: половина условий всплывает, когда я вижу первый результат, а
+переделка длинного прогона стоит дороже пяти вопросов. Не спрашивай, если
+задача – продолжение текущей, баг с понятным воспроизведением или правка, где
+я уже назвал что и где; «без вопросов» тоже значит собирать из того, что есть.
+
+**Долгие задачи.** После утверждённого брифа работай сам. Если шаг не требует
+моего решения – продолжай, статус пиши в том же сообщении, что и следующее
+действие. Останавливайся и спрашивай, только если без меня дальше никак, или
+перед необратимым: удалением данных, миграцией с потерей полей, git push,
+любым действием на проде. Задача больше нескольких шагов – веди список в
+`TASKS.md` в корне (отмечай сделанное, дописывай найденное): он переживает
+сжатие контекста, и по нему видно, где прогон. Проверка – конкретная: тесты
+затронутого приложения, `npm run tw:build` при новых классах, `check_articles`
+для статей; в браузере смотрю я сам.
+
+**Итог прогона** – три заголовка: **Ждёт меня**, **Изменено**, **Найдено**.
+В анализе отмечай всё, что не смог подтвердить, и где искал.
+
 ## Воркер на DeepSeek
 
 Рутина отдаётся дешёвому воркеру: `bash scripts/deepseek-worker.sh "задание"`
@@ -230,33 +264,34 @@ redis-cli ping                             # Should return PONG
 Bash воркеру не выдан, поэтому `manage.py`, тесты и `npm run tw:build`
 запускает оркестратор.
 
+**Работу средней сложности отдавай воркеру по умолчанию, не спрашивая.**
+Средняя – это когда решение уже принято, а осталось набрать его по образцу:
+статья по скелету, фикстура, тест по соседнему случаю, одна и та же правка в
+десятке файлов. Твоя часть – скелет, числа и ответы в задании, потом
+`git diff`, тесты и `manage.py`. Сам делай мелочь (задание воркеру длиннее
+самой правки) и всё из списка «нельзя» выше. Причина: содержимое файлов не
+попадает в твой контекст, и длинный прогон дольше не упирается в его сжатие.
+Перед запуском сними `git status --short`: дерево почти всегда грязное от
+других сессий, а воркер правит без спроса, и только так после видно, что
+задел он, а что было до него. Чужое не откатывай – сообщи. В итоге прогона отметь, что
+делал воркер и что ты в его диффе поправил.
+
 ## Skills (Slash-команды)
 
-Проект включает систему агентов и slash-команд в `.claude/skills/`. Полная документация: `.claude/skills/README.md`
-
-### Доступные команды
+Скиллы проекта лежат в `.claude/skills/`, агенты – в `.claude/agents/`. Папка `.claude/` в `.gitignore`: они есть только на этой машине.
 
 | Категория | Команда | Описание |
 |-----------|---------|----------|
-| **Дизайн** | `/design-audit [URL]` | UI/UX аудит страницы через Playwright |
-| | `/design-component [name]` | Создать Tailwind компонент |
-| | `/design-guide` | Сгенерировать DESIGN.md |
+| **Бриф** | `/claude-brief` | Проверить запрос или CLAUDE.md по семи правилам, собрать бриф через интервью |
 | **Ревью** | `/review-code [target]` | Код-ревью (файл, коммит, PR) |
 | | `/review-security` | Полный аудит безопасности |
-| | `/create-issue [type] [title]` | Создать GitHub issue |
-| | `/create-release [version]` | Создать релиз с changelog |
-| **Контент** | `/create-quiz [topic]` | Создать Quiz через AI генерацию |
-| | `/generate-ideas [area]` | Генерация идей развития |
 | **DevOps** | `/diagnose` | Полная диагностика системы |
 | | `/check-logs [service] [period]` | Логи сервиса (1h/6h/1d/7d) |
 | | `/check-services` | Статус всех сервисов |
 
-### Агенты
-
-- 🎨 **designer** – UI/UX, Tailwind, Playwright скриншоты
-- 🔍 **reviewer** – безопасность, GitHub, код-ревью
-- 📚 **content** – Quiz генерация, идеи развития
-- 🔧 **devops** – диагностика (**READ-ONLY!**)
+Агент один – **devops**, диагностика сервера только на чтение: он смотрит
+логи и статус боевого сервера, где случайный рестарт или правка конфига
+роняют сайт для учеников.
 
 ### Quiz Import (`load_quiz`)
 
@@ -273,5 +308,6 @@ python manage.py load_quiz fixtures/my_quiz.json
 
 ### Примечание о парсинге
 
-**Парсинг учебных сайтов (kompege.ru, reshuege.ru) вынесен в отдельное GUI приложение.**
-См. `PARSING_APP.md` для деталей о новом workflow создания тестов через парсинг.
+Парсинг учебных сайтов (kompege.ru, reshuege.ru) вынесен в отдельное GUI-приложение
+вне этого репозитория. Сюда приходит только его результат – JSON банка по
+`docs/ege-bank-format.md`, который грузится `load_ege`.

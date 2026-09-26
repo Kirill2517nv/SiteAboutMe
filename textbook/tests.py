@@ -1275,6 +1275,7 @@ class WidgetMountTests(SimpleTestCase):
         from textbook.management.commands import seed_ege_theory_4 as ege4
         from textbook.management.commands import seed_ege_theory_12 as ege12
         from textbook.management.commands import seed_ege_theory_19 as ege19
+        from textbook.management.commands import seed_ege_theory_23 as ege23
         from textbook.management.commands import seed_ege_theory_24 as ege24
         from textbook.management.commands import seed_textbook_block8 as block8
 
@@ -1373,6 +1374,9 @@ class WidgetMountTests(SimpleTestCase):
             # та, что в конструкторе: он стоит в разметке выше ползунка
             # глубины, у которого подписи такие же.
             'ege-game-tree#custom': dict(ege19.WIDGET_CONFIG, __click=['1']),
+            # Разбор задания 23: graph-walk в режиме dag сам гоняет рекурсию
+            # с кэшем. Доигрываем до конца и сверяем ответ с кодом статьи.
+            'graph-walk#ege23': dict(ege23.WIDGET_CONFIG, __click=['В конец']),
             'truth-table': {
                 'vars': list(ege2.VARS),
                 'code': ege2.PY_EXPR,
@@ -1418,6 +1422,13 @@ class WidgetMountTests(SimpleTestCase):
         self.assertIn(f'{ege24._best_scan(ege24.TRACE_TEXT)}',
                       drawn['loop-trace#ege24'],
                       'трасса задания 24 кончается не на том best')
+
+        # Кратчайший путь примера задания 23: виджет считает его сам, и
+        # разойтись с ответом условия (7) он может, не упав.
+        self.assertIn(f'ответ: {ege23.EXAMPLE_ANSWER}', drawn['graph-walk#ege23'],
+                      'рекурсия виджета на примере задания 23 даёт не тот ответ')
+        self.assertIn('1 → 7 → 100', drawn['graph-walk#ege23'],
+                      'виджет задания 23 нашёл не тот кратчайший путь')
         self.assertIn('s[left:right+1]', drawn['loop-trace#ege24'],
                       'в трассе задания 24 пропала колонка с куском строки')
 

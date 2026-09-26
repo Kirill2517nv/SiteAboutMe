@@ -33,6 +33,27 @@ def fix_empty_sub_markers(text):
     return EMPTY_SUB_RE.sub(r'\1[sub:\2]', text or '')
 
 
+# Автор задачи в начале условия: «(Л. Шастин) В текстовом файле…».
+AUTHOR_PREFIX_RE = re.compile(r'^\s*\(([^()\n]{1,60})\)\s*')
+
+
+def split_author(title, text, ege_number):
+    """
+    Автор из скобок в начале условия переезжает в заголовок.
+
+    В условии он читается как первое слово задачи, а место ему – рядом с
+    источником, серым: `question_source` показывает хвост заголовка после
+    тире («Демоверсия 2027»), туда автор и встаёт вместо «№31673» –
+    номер kompege и так хранится в external_id. Длинное тире парсера
+    заменяется коротким.
+    """
+    title = (title or '').replace('—', '–')
+    m = AUTHOR_PREFIX_RE.match(text)
+    if not m:
+        return title, text
+    return f'Задание {ege_number} – {m.group(1).strip()}', text[m.end():]
+
+
 def generate_slug(quiz_data):
     """Генерирует slug из JSON: явный slug > ID из description > None."""
     if quiz_data.get('slug'):
@@ -76,11 +97,15 @@ def _create_test_cases(question, q_data):
     ничего нового, зато на каждой отправке поднимает второй контейнер и гоняет
     решение по файлу данных ещё раз. Кейс с другим эталоном остаётся: одинаковым
     считается только то, что таким сочла бы сама проверка.
+
+    В банках 25 и 27 парсер пишет перенос строки в эталоне двумя символами
+    `\\n`, а не переводом строки. Такой эталон не совпадает ни с одним выводом
+    программы – задача становится нерешаемой, поэтому `\\n` раскрывается здесь.
     """
     kept = []
     for tc in q_data.get('test_cases', []):
-        input_data = tc.get('input_data', '')
-        output_data = tc['output_data']
+        input_data = tc.get('input_data', '').replace('\\n', '\n')
+        output_data = tc['output_data'].replace('\\n', '\n')
         if any(normalize_output(k.input_data) == normalize_output(input_data)
                and outputs_match(output_data, k.output_data) for k in kept):
             continue
@@ -225,9 +250,12 @@ class Command(BaseCommand):
                 points = q_data.get('points', 1)
                 total_points += points
 
+                title, text = split_author(
+                    q_data.get('title', ''), fix_empty_sub_markers(q_data['text']), ege_number,
+                )
                 fields = dict(
-                    title=q_data.get('title', ''),
-                    text=fix_empty_sub_markers(q_data['text']),
+                    title=title,
+                    text=text,
                     question_type=q_type,
                     correct_text_answer=q_data.get('correct_text_answer'),
                     ege_number=ege_number,

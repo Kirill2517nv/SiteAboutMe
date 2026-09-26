@@ -67,6 +67,9 @@ location /static/ {
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
+!!! info "Тип MIME на стороне Django"
+    Параллельно тип регистрирует сам Django: `mimetypes.add_type('application/wasm', '.wasm')` в `config/settings.py`. Это закрывает отдачу `.wasm`, когда файлы идут через Django (WhiteNoise в dev-режиме), а не напрямую из Nginx.
+
 ### Команды
 
 ```bash
@@ -114,6 +117,8 @@ ASGI-сервер для WebSocket-соединений через Django Channe
 
 - `ws/quiz/<quiz_id>/` → `QuizConsumer` (результаты кода)
 
+Маршрут обёрнут в `AllowedHostsOriginValidator(AuthMiddlewareStack(URLRouter(...)))` (`config/asgi.py`): соединение принимается только с разрешённого хоста и доходит до консьюмера уже с текущим пользователем.
+
 ### Команды
 
 ```bash
@@ -159,6 +164,7 @@ Async worker для выполнения кода в Docker-контейнера
 | **Broker** | `redis://localhost:6379/0` |
 | **Конфиг** | `config/celery.py` |
 | **Задачи** | `quizzes/tasks.py` |
+| **Очереди** | `code_execution` – `check_code_task`, `default` – остальные (`app.conf.task_routes`) |
 
 ### Основная задача
 
@@ -208,7 +214,8 @@ celery -A config worker -l info
 
 | Задача | Интервал | Описание |
 |--------|----------|----------|
-| `cleanup_stale_submissions` | 3 мин | Помечает зависшие CodeSubmission (>10 мин) как error |
+| `cleanup_stale_submissions` | 30 мин | Помечает зависшие CodeSubmission (>10 мин) как error |
+| `recalc_ege_difficulty_task` | 24 ч | Пересчитывает `Question.solve_rate` по фактической доле верных первых попыток (вызывает management-команду `recalc_ege_difficulty`) |
 
 ### Команды
 
@@ -259,6 +266,12 @@ Sandbox для выполнения пользовательского кода.
 | **CPU** | 1 ядро (quota 100000) |
 | **Network** | Отключена |
 | **Max output** | 64 KB |
+| **Пользователь** | `nobody`, рабочий каталог `/tmp` |
+| **Привилегии** | `cap_drop: ALL`, `no-new-privileges` |
+| **Pids limit** | 64 процесса (потолок форк-бомбы) |
+| **Потолок файла** | 64 МБ (`RLIMIT_FSIZE` в раннере – против цикла записи) |
+
+Лимиты и флаги контейнера – константы `CONTAINER_*` в `quizzes/utils.py`; там же раннер, который исполняет `solution.py`, замеряет CPU-время и память через `resource.getrusage` и режет вывод.
 
 ### Команды
 
@@ -272,7 +285,7 @@ docker run --rm python:3.11-slim python --version
 ```
 
 !!! tip "Мониторинг контейнеров"
-    При нормальной работе контейнеры живут секунды. Если `docker ps` показывает долгоживущие контейнеры — возможна утечка. `cleanup_stale_submissions` помогает, но стоит проверить логи Celery.
+    При нормальной работе контейнеры живут секунды. Если `docker ps` показывает долгоживущие контейнеры – возможна утечка. `cleanup_stale_submissions` помогает, но стоит проверить логи Celery.
 
 ---
 

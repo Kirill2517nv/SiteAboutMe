@@ -10,15 +10,18 @@
 
 ```mermaid
 flowchart TD
-    START[Запрос доступа к Quiz] --> IND{Есть индивидуальное\nназначение?}
+    START[Запрос доступа к Quiz] --> SC{"quiz.is_self_check?<br/>и user авторизован"}
+    SC -->|Да| HID{Блок спрятан\n(quiz_is_hidden)?}
+    HID -->|Да, и это не superuser| DENY[Доступ запрещён\nredirect → back_url]
+    HID -->|Нет| USE_QUIZ[Использовать\nнастройки Quiz]
+
+    SC -->|Нет| IND{Есть индивидуальное\nназначение?}
     IND -->|Да| USE_IND[Использовать\nQuizAssignment user]
     IND -->|Нет| GRP{Есть групповое\nназначение?}
     GRP -->|Да| USE_GRP[Использовать\nQuizAssignment group]
-    GRP -->|Нет| PUB{Quiz is_public?}
-    PUB -->|Да| USE_QUIZ[Использовать\nнастройки Quiz]
-    PUB -->|Нет| SU{Пользователь\nsuperuser?}
+    GRP -->|Нет| SU{Пользователь\nsuperuser?}
     SU -->|Да| USE_QUIZ
-    SU -->|Нет| DENY[Доступ запрещён\nredirect → back_url]
+    SU -->|Нет| DENY
 
     USE_IND --> MERGE[Объединить настройки]
     USE_GRP --> MERGE
@@ -27,7 +30,11 @@ flowchart TD
     MERGE --> |"start_date: assignment ∥ quiz\nend_date: assignment ∥ quiz\nmax_attempts: assignment ∥ quiz"| ACCESS[Настройки доступа готовы]
 ```
 
-**Приоритет полей:** Если в `QuizAssignment` заполнены `start_date`, `end_date` или `max_attempts` — они переопределяют аналогичные поля `Quiz`. Иначе берутся из `Quiz`.
+**Приоритет полей:** Если в `QuizAssignment` заполнены `start_date`, `end_date` или `max_attempts` – они переопределяют аналогичные поля `Quiz`. Иначе берутся из `Quiz`.
+
+**Самопроверки учебника – отдельная ветка.** Тесту с `is_self_check` назначение на группу не нужно: доступ гейтит статья, а не деканат, поэтому настройки берутся прямо из `Quiz`. Единственный гейт – публикация блока: спрятанный блок не должен отдавать свои задачи по прямой ссылке `/quizzes/<id>/`, а суперпользователю видно и спрятанное.
+
+**`is_public` в этой функции не участвует.** Он отсекает чужие варианты в списках `/ege/`, а `submit_code_view` по нему лишь решает, спрашивать ли назначение вовсе.
 
 ---
 
@@ -49,6 +56,10 @@ flowchart TD
     ATTEMPTS -->|Нет (безлимит)| ACTIVE
 ```
 
+### Дедлайн блока учебника
+
+Тест, привязанный к блоку учебника, закрывается вместе с ним: `quiz_is_locked(quiz, user)` смотрит общий дедлайн `Section` и личное продление (`SectionExtension`). После дедлайна решать нельзя, а смотреть свои ответы – можно: страница уходит в режим только чтения, а `finish_quiz_view` и `submit_code_view` отвечают 403.
+
 ### Read-Only режим
 
 Когда тест завершён (`end_date` прошёл), ученик может просмотреть свои лучшие ответы:
@@ -61,7 +72,7 @@ flowchart TD
 
 ## Прохождение теста
 
-### GET — Загрузка вопросов
+### GET – Загрузка вопросов
 
 ```mermaid
 flowchart TD
@@ -77,7 +88,7 @@ flowchart TD
     SESSION --> RENDER[Отрендерить quiz_detail.html]
 ```
 
-### POST — Отправка ответов
+### POST – Отправка ответов
 
 ```mermaid
 flowchart TD
@@ -87,7 +98,7 @@ flowchart TD
 
     LOOP --> TYPE{question_type?}
     TYPE -->|choice| CHOICE[Проверить\nChoice.is_correct]
-    TYPE -->|text| TEXT[normalize_text_answer\n+ сравнить]
+    TYPE -->|text| TEXT[check_text_answer:\nнормализация + alternatives]
     TYPE -->|code| DOCKER[Запустить в Docker\nпротив TestCase]
 
     CHOICE --> ANSWER[Создать UserAnswer\nis_correct=True/False]
@@ -102,6 +113,15 @@ flowchart TD
     UPDATE --> RENDER[quiz_result.html\nс failed_answers]
 ```
 
+### Подсказка и мгновенная проверка
+
+Две AJAX-точки работают во время прохождения теста:
+
+- `POST /quizzes/question/<question_id>/check/` (`question_check_view`) – вердикт по одному текстовому ответу. Ничего не сохраняет и правильный ответ наружу не отдаёт: балл по-прежнему ставит `finish_quiz_view`. Это единственный способ узнать исход до конца теста; у задач на код ту же роль играет асинхронная проверка.
+- `GET/POST /quizzes/question/<question_id>/hint/` (`question_hint_view`) – подсказка. `GET` отдаёт **только состояние** (`offer` / `taken` / `declined` / `None`), без текста: иначе подсказку можно было бы вычитать из сети, не сделав выбора. `POST` с `action=take|decline` фиксирует выбор в `HintChoice` – это уходит учителю в отчёт, ученику нигде не показывается.
+
+Обе точки стоят за тем же гейтом, что и страница теста (`get_effective_quiz_settings`): без него перебор `question_id` отвечает по задачам чужой группы или спрятанного блока, а блочные условия открытия подсказки от назначения теста не зависят.
+
 ---
 
 ## Подсчёт баллов
@@ -111,14 +131,13 @@ flowchart TD
 Уже решённые вопросы не показываются повторно.
 
 ### Exam Quiz
-Балл = сумма `question.points` для правильных ответов.
-Каждый вопрос может иметь разный вес (1-2 балла в ЕГЭ).
+Балл = сумма баллов за отвеченные задачи: `question.points` за верный ответ, а за задания 26 и 27 – балл из `ege_scoring.grade()` (0/1/2), который может быть частичным. Каждый вопрос имеет свой вес (1-2 балла в ЕГЭ).
 
 ---
 
 ## Финализация через API
 
-`POST /quizzes/<id>/finish/` — альтернативный путь (из Alpine.js фронтенда):
+`POST /quizzes/<id>/finish/` – альтернативный путь (из Alpine.js фронтенда):
 
 ```mermaid
 flowchart TD
@@ -133,4 +152,7 @@ flowchart TD
 ```
 
 !!! tip "Паттерн force/pending"
-    Если ученик нажал «Завершить», но код ещё проверяется — фронтенд получит 409 и покажет предупреждение. Повторный запрос с `force=true` завершит тест, используя последний доступный результат каждой посылки.
+    Если ученик нажал «Завершить», но код ещё проверяется – фронтенд получит 409 и покажет предупреждение. Повторный запрос с `force=true` завершит тест, используя последний доступный результат каждой посылки.
+
+!!! note "Тест учебника"
+    У самопроверки после сдачи вызывается `update_article_mastery`: пройденный тест помечает статью статусом «освоено». `redirect_url` в ответе – адрес статьи с якорем `#self-check`, у практикума – главная учебника (`textbook.services.textbook_link_for_quiz`), а не список тестов.

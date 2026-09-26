@@ -3,15 +3,17 @@
 EGE-тренажёр смонтирован на `/ege/` (`quizzes/urls_ege.py`) и состоит из двух
 подсистем, которые не пересекаются данными:
 
-- **варианты** — собранная работа целиком, `Quiz(quiz_type='exam')`, прогресс в `ExamTaskProgress`;
-- **тренировка по темам** — короткие сессии из банка задач, `Quiz(quiz_type='bank')`,
+- **варианты** – собранная работа целиком, `Quiz(quiz_type='exam')`, прогресс в `ExamTaskProgress`;
+- **тренировка по темам** – короткие сессии из банка задач, `Quiz(quiz_type='bank')`,
   журнал в `PracticeSession` / `PracticeItem`.
 
 Разделение жёсткое: задача принадлежит одному квизу, поэтому вариант никогда не
 вычерпывает тренировочную выдачу, а тренировка не попадает в статистику варианта.
 
-Все endpoints требуют авторизацию, кроме `/ege/` — гостю хаб показывается с
-демонстрационным прогрессом (`ege_stats.demo_overview`).
+Авторизация нужна везде, кроме двух страниц: `/ege/` (гостю хаб показывается с
+демонстрационным прогрессом, `ege_stats.demo_overview`) и `/ege/task/<number>/`
+(карточка задания – теория открыта всем, личная статистика на ней появляется
+только у вошедшего).
 
 ---
 
@@ -54,7 +56,7 @@ sequenceDiagram
 
 ## Endpoints
 
-### GET `/ege/` — Список вариантов
+### GET `/ege/` – Список вариантов
 
 **View:** `ege_list_view`
 **Template:** `quizzes/ege_list.html`
@@ -63,7 +65,7 @@ sequenceDiagram
 
 ---
 
-### GET `/ege/<id>/` — Детали варианта
+### GET `/ege/<id>/` – Детали варианта
 
 **View:** `ege_detail_view`
 **Template:** `quizzes/ege_detail.html`
@@ -72,7 +74,7 @@ sequenceDiagram
 
 **Логика:**
 
-- **Exam mode:** если `UserResult` уже существует — redirect на результат (одна попытка)
+- **Exam mode:** если `UserResult` уже существует – redirect на результат (одна попытка)
 - **Practice mode:** вопросы доступны для повторного решения
 - Загружает `ExamTaskProgress` для каждого вопроса (solved, attempts, time)
 - Для code-вопросов: последний `CodeSubmission` + лучшие метрики
@@ -108,7 +110,7 @@ sequenceDiagram
 
 ---
 
-### POST `/ege/<id>/check/` — Проверить ответ
+### POST `/ege/<id>/check/` – Проверить ответ
 
 **View:** `ege_check_answer_view`
 **Content-Type:** `application/json`
@@ -136,11 +138,11 @@ sequenceDiagram
 | 404 | Вопрос не найден в этом тесте |
 
 !!! tip "Нормализация"
-    Ответ нормализуется через `normalize_text_answer()` — lowercase, strip, удаление ведущих нулей. Также проверяется `alternative_answers` JSON-поле.
+    Ответ нормализуется через `normalize_text_answer()` – lowercase, strip, удаление ведущих нулей. Также проверяется `alternative_answers` JSON-поле.
 
 ---
 
-### POST `/ege/<id>/finish/` — Завершить вариант
+### POST `/ege/<id>/finish/` – Завершить вариант
 
 **View:** `ege_finish_view`
 **Content-Type:** `application/json`
@@ -176,7 +178,7 @@ sequenceDiagram
 
 ---
 
-### GET `/ege/<id>/result/` — Результат варианта
+### GET `/ege/<id>/result/` – Результат варианта
 
 **View:** `ege_result_view`
 **Template:** `quizzes/ege_result.html`
@@ -185,7 +187,7 @@ sequenceDiagram
 
 ---
 
-### GET `/ege/<id>/results/` — Сводная таблица результатов
+### GET `/ege/<id>/results/` – Сводная таблица результатов
 
 **View:** `ege_results_view`
 **Template:** `quizzes/ege_results.html`
@@ -196,8 +198,8 @@ sequenceDiagram
 
 | Колонка | Описание |
 |---------|----------|
-| Участник | Имя ученика; для суперпользователя — ссылка на детальную статистику |
-| №1 … №N | Результат по каждой задаче (✓ / ✗ / —), клик → решение |
+| Участник | Имя ученика; для суперпользователя – ссылка на детальную статистику |
+| №1 … №N | Результат по каждой задаче (✓ / ✗ / –), клик → решение |
 | ✓ | Количество правильных ответов |
 | Баллы | Первичный балл (сумма `question.points`) |
 | Тест | Тестовый балл по шкале ЕГЭ 2024 (`EGE_SCORE_CONVERSION`) |
@@ -205,7 +207,7 @@ sequenceDiagram
 
 ---
 
-### GET `/ege/<id>/results/student/<user_id>/` — Статистика ученика
+### GET `/ege/<id>/results/student/<user_id>/` – Статистика ученика
 
 **View:** `ege_student_stats_view`
 **Template:** `quizzes/ege_student_stats.html`
@@ -217,7 +219,7 @@ sequenceDiagram
 
 ---
 
-### POST `/ege/<id>/save-time/` — Сохранить время
+### POST `/ege/<id>/save-time/` – Сохранить время
 
 **View:** `ege_save_time_view`
 **Content-Type:** `application/json`
@@ -231,7 +233,7 @@ sequenceDiagram
 
 ---
 
-### POST `/ege/<id>/task/<num>/upload-attachment/` — Загрузить решение
+### POST `/ege/<id>/task/<num>/upload-attachment/` – Загрузить решение
 
 **View:** `ege_upload_attachment_view`
 **Content-Type:** `multipart/form-data`
@@ -246,7 +248,7 @@ sequenceDiagram
 
 ---
 
-### GET `/ege/<id>/task/<num>/solution/<user_id>/` — Просмотр решения
+### GET `/ege/<id>/task/<num>/solution/<user_id>/` – Просмотр решения
 
 **View:** `ege_solution_detail_view`
 
@@ -254,7 +256,7 @@ sequenceDiagram
 
 ---
 
-### POST `/ege/solutions/<answer_id>/like/` — Лайк
+### POST `/ege/solutions/<answer_id>/like/` – Лайк
 
 **View:** `ege_toggle_like_view`
 **Content-Type:** `application/json`
@@ -271,8 +273,8 @@ Toggle лайка на решение. Повторный запрос убир�
 
 ## Тренировка по темам
 
-Сессия — короткая пачка задач, отобранная под одну цель. Отбором занимается
-`quizzes/ege_practice.py`, статистикой — `quizzes/ege_stats.py`, вьюхи лежат
+Сессия – короткая пачка задач, отобранная под одну цель. Отбором занимается
+`quizzes/ege_practice.py`, статистикой – `quizzes/ege_stats.py`, вьюхи лежат
 в `quizzes/views_practice.py`.
 
 ```mermaid
@@ -291,7 +293,7 @@ sequenceDiagram
     loop Решение
         B->>V: POST /ege/practice/<pk>/answer/
         V->>DB: PracticeItem.is_correct, attempts, score
-        V-->>B: study — вердикт; exam — только {saved: true}
+        V-->>B: study – вердикт; exam – только {saved: true}
         B->>V: POST /ege/practice/<pk>/time/
     end
 
@@ -299,36 +301,36 @@ sequenceDiagram
     V-->>B: redirect /ege/practice/<pk>/result/
 ```
 
-### GET `/ege/task/<number>/` — Карточка задания
+### GET `/ege/task/<number>/` – Карточка задания
 
 **View:** `views_practice.ege_task_view` · **Template:** `quizzes/ege_task.html`
 
 Теория по заданию, личная статистика и форма запуска сессии. Связка 19–21
 живёт одной страницей: `/ege/task/20/` и `/21/` редиректят на `/ege/task/19/`.
 
-### POST `/ege/task/<number>/classroom/` — Рубильник «Задачи для урока»
+### POST `/ege/task/<number>/classroom/` – Рубильник «Задачи для урока»
 
 **View:** `views_practice.classroom_toggle_view` · **Только суперпользователь**
 
 Переключает `EgeTask.classroom_enabled`. Пока выключен, ученик не видит кнопку,
 а прямой POST на старт отклоняется.
 
-### GET `/ege/task/<number>/solved/` — Решённые задачи
+### GET `/ege/task/<number>/solved/` – Решённые задачи
 
 **View:** `views_practice.ege_solved_view` · **Template:** `quizzes/ege_solved.html`
 
 Решённые задачи вместе с ответом или кодом ученика и лучшими метриками
-(`ege_practice.best_code_metrics` — минимум CPU и памяти по верным отправкам).
+(`ege_practice.best_code_metrics` – минимум CPU и памяти по верным отправкам).
 
-### GET/POST `/ege/task/<number>/bank/` — Банк задач
+### GET/POST `/ege/task/<number>/bank/` – Банк задач
 
 **View:** `views_practice.ege_bank_view` · **Только суперпользователь**
 
 Весь банк одного задания с условием, отрисованным как у ученика, и раскладкой
 по трём пулам: тренировка / в классе (`classroom_only`) / экзамен (`exam_only`).
-Сохранение — одним `bulk_update`; связка 19–21 переезжает целиком.
+Сохранение – одним `bulk_update`; связка 19–21 переезжает целиком.
 
-### POST `/ege/practice/start/` — Старт сессии
+### POST `/ege/practice/start/` – Старт сессии
 
 **View:** `views_practice.practice_start_view`
 
@@ -337,15 +339,21 @@ sequenceDiagram
 | `kind` | `topic` / `mistakes` / `mixed` / `classroom` |
 | `mode` | `study` / `exam` |
 | `ege_number` | 1–27, обязателен для `topic` и `classroom` |
-| `size` | 1–`STUDY_MAX_SIZE`; у связки — число троек |
+| `difficulty` | 1 / 2 / 3 – простая выборка по сложности |
+| `size` | 1–`STUDY_MAX_SIZE`; у связки – число троек |
 | `mix_1` / `mix_2` / `mix_3` | Ручной состав по сложности |
 
+Неизвестные `kind` и `mode` молча падают к `topic` и `study`; `size` обрезается
+до `STUDY_MAX_SIZE`, а для связки 19–21 умножается на длину группы – форма
+спрашивает тройки, отбору нужны задачи.
+
 Серверные проверки: экзамен закрыт, пока не решено `EgeTask.exam_unlock_threshold`
-разных задач в режиме `study`; одновременно идёт не больше одного экзамена;
-состав экзамена (`size`, `mix`) игнорируется. Пустой отбор — не ошибка, а редирект
+разных задач в режиме `study`; одновременно идёт не больше одного экзамена
+(второй POST вернёт в уже идущую сессию); `classroom` ученику отклоняется, пока
+выключен `EgeTask.classroom_enabled`. Пустой отбор – не ошибка, а редирект
 на карточку задания с флагом в сессии.
 
-### POST `/ege/practice/retry/<question_id>/` — Переписать решение
+### POST `/ege/practice/retry/<question_id>/` – Переписать решение
 
 **View:** `views_practice.practice_retry_view`
 
@@ -353,48 +361,50 @@ sequenceDiagram
 переводит задачу в нерешённые, замка на повторные отправки нет, в статистику
 и в счётчик открытия экзамена не идёт.
 
-### GET `/ege/practice/<pk>/` — Страница сессии
+### GET `/ege/practice/<pk>/` – Страница сессии
 
 **View:** `views_practice.practice_view` · **Template:** `quizzes/ege_practice.html`
 
 Одна задача на экране. **Правильные ответы в браузер не уходят** ни в одном
-режиме — их отдаёт только `/reveal/`. У экзамена страница получает
+режиме – их отдаёт только `/reveal/`. У экзамена страница получает
 `seconds_left`, посчитанный на сервере.
 
-### POST `/ege/practice/<pk>/answer/` — Ответ на задачу
+### POST `/ege/practice/<pk>/answer/` – Ответ на задачу
 
 **Content-Type:** `application/json` · `{"item_id": 12, "answer": "42", "seconds": 40}`
 
-- `mode='study'` — `{"is_correct", "score", "attempts", "locked"}`; верный ответ не отдаётся
-- `mode='exam'` — `{"saved": true, "item_id"}`, ни исхода, ни намёка на него
-- Решённая или открытая задача — 409; задача на коде — 400 (проверяется отправкой кода)
+- `mode='study'` – `{"is_correct", "score", "item_id", "attempts", "locked"}`;
+  верный ответ не отдаётся
+- `mode='exam'` – `{"saved": true, "item_id"}`, ни исхода, ни намёка на него
+- Решённая или открытая задача – 409; задача на коде – 400 (проверяется
+  отправкой кода); завершённая сессия – 403
 
-### POST `/ege/practice/<pk>/reveal/` — «Показать ответ»
+### POST `/ege/practice/<pk>/reveal/` – «Показать ответ»
 
 Только в `study`. Ставит `gave_up`, закрывает задачу как нерешённую и лишь
 после этого отдаёт `correct_answer`. Цена подсказки равна цене неверного ответа.
 
-### POST `/ege/practice/<pk>/time/` — Досылка времени
+### POST `/ege/practice/<pk>/time/` – Досылка времени
 
 Порция обрезается `MAX_SECONDS_PER_REPORT` (600 с): цифры идут в отчёт учителю.
 
-### POST `/ege/practice/<pk>/finish/` — Завершение
+### POST `/ege/practice/<pk>/finish/` – Завершение
 
-Поле `beacon=1` — уход с экзамена через `sendBeacon`: недосланные ответы
+Поле `beacon=1` – уход с экзамена через `sendBeacon`: недосланные ответы
 (`answers`, до 100 штук) сохраняются и сессия закрывается одним запросом,
-ответ 204. Обычный POST — редирект на разбор.
+ответ 204. Обычный POST – редирект на разбор.
 
-### GET `/ege/practice/<pk>/result/` — Разбор сессии
+### GET `/ege/practice/<pk>/result/` – Разбор сессии
 
 Открывается **только у завершённой сессии**: иначе страница разбора работала бы
-второй вкладкой с верными ответами посреди экзамена. Незакрытая сессия —
+второй вкладкой с верными ответами посреди экзамена. Незакрытая сессия –
 редирект обратно на `/ege/practice/<pk>/`.
 
 ---
 
 ## Учительские страницы
 
-### GET `/ege/class/` — Сравнительная таблица класса
+### GET `/ege/class/` – Сравнительная таблица класса
 
 **View:** `ege_class_view` · **Только суперпользователь**
 
@@ -403,18 +413,18 @@ sequenceDiagram
 активности по неделям. Один класс за раз (`?group=<id>`, `all`, `none`).
 `ege_stats.class_rows()` считает весь класс семью запросами.
 
-### GET `/ege/student/<user_id>/mistakes/` — Долг ученика
+### GET `/ege/student/<user_id>/mistakes/` – Долг ученика
 
 **View:** `ege_student_mistakes_view` · **Только суперпользователь**
 
 Тот же набор задач, что ученик получит по кнопке «Работа над ошибками», но в
 режиме чтения: условие, ответ ученика, лог ошибки и панель с верным ответом.
-Не сессия — чужую сессию открыть и «просто посмотреть» нельзя.
+Не сессия – чужую сессию открыть и «просто посмотреть» нельзя.
 
-### GET `/ege/?student=<id>` — Чужой прогресс
+### GET `/ege/?student=<id>` – Чужой прогресс
 
 Тот же хаб с цифрами ученика (`views._viewed_student`). Отдельного шаблона нет
-намеренно: вторая вёрстка тех же чисел — второе место для расхождений.
+намеренно: вторая вёрстка тех же чисел – второе место для расхождений.
 
 ---
 
@@ -441,9 +451,9 @@ sequenceDiagram
 
 ## Частичный балл (задания 26 и 27)
 
-`quizzes/ege_scoring.py` — единственное место, знающее правила ФИПИ. С КИМ-2027
-у обоих заданий одно правило: ответ — два числа, 1 балл за перестановку или
+`quizzes/ege_scoring.py` – единственное место, знающее правила ФИПИ. С КИМ-2027
+у обоих заданий одно правило: ответ – два числа, 1 балл за перестановку или
 одну верную ячейку. Сравниваются числа, а не раскладка вывода, поэтому
-`43656 36` и те же числа в две строки — один ответ. Балл попадает в
+`43656 36` и те же числа в две строки – один ответ. Балл попадает в
 `CodeSubmission.score`, `PracticeItem.score`, `UserAnswer.score`,
-`ExamTaskProgress.score`; везде остальное — `null`.
+`ExamTaskProgress.score`; везде остальное – `null`.

@@ -1,4 +1,4 @@
-# Архитектура — Обзор
+# Архитектура – Обзор
 
 ## Общая схема
 
@@ -20,10 +20,13 @@ graph TB
     end
 
     subgraph Apps["Приложения"]
-        ACC[accounts\nAuth, Profiles]
-        PAG[pages\nContent Blocks]
-        LES[lessons\nSections, Lessons]
-        QUI[quizzes\nQuiz, Code Exec,\nHelp, EGE]
+        PAG[pages\nКонтентные страницы]
+        LES[lessons\nРазделы, уроки]
+        ACC[accounts\nПрофили, классы]
+        QUI[quizzes\nТесты, тренажёр ЕГЭ]
+        TXT[textbook\nУчебник, теория, прогресс]
+        SPK[spetskurs\nЗадачи курса, WASM]
+        GAM[games\nСвоя игра]
     end
 
     subgraph Async["Async Pipeline"]
@@ -52,6 +55,8 @@ graph TB
     ASGI --> REDIS
 ```
 
+Все семь приложений перечислены в `INSTALLED_APPS` (`config/settings.py`): `pages`, `lessons`, `accounts`, `quizzes`, `spetskurs`, `games`, `textbook` – в этом порядке они и подключены. Маршруты верхнего уровня собирает `config/urls.py`; у каждого приложения свой `urls.py`, а у тренажёра ЕГЭ – отдельный `quizzes/urls_ege.py` на префиксе `/ege/`.
+
 ---
 
 ## Слои приложения
@@ -59,11 +64,12 @@ graph TB
 | Слой | Технология | Файлы |
 |------|-----------|-------|
 | **Presentation** | Django Templates + Alpine.js + Tailwind | `templates/`, `static/` |
-| **Routing** | Django URLs + Channels routing | `config/urls.py`, `*/urls.py`, `quizzes/routing.py` |
-| **Business Logic** | Django Views (FBV/CBV) | `*/views.py` |
+| **Routing** | Django URLs + Channels routing | `config/urls.py`, `*/urls.py`, `quizzes/urls_ege.py`, `quizzes/routing.py` |
+| **Business Logic** | Django Views (FBV/CBV) + сервисы | `*/views.py`, `quizzes/views_practice.py`, `textbook/services.py` |
+| **Domain Logic** | правила без HTTP, вызываются вью и командами | `quizzes/ege_practice.py`, `ege_stats.py`, `ege_scoring.py`, `ege_constants.py` |
 | **Data Access** | Django ORM + Models | `*/models.py` |
 | **Async Tasks** | Celery + Docker | `quizzes/tasks.py`, `quizzes/utils.py` |
-| **Real-time** | Django Channels (WebSocket) | `quizzes/consumers.py` |
+| **Real-time** | Django Channels (WebSocket) | `quizzes/consumers.py`, `quizzes/routing.py` |
 | **Storage** | PostgreSQL + Redis + Filesystem | `.env`, `media/` |
 
 ---
@@ -76,6 +82,8 @@ graph TB
 Браузер → Nginx → Gunicorn → Django View → ORM → PostgreSQL
                                          → Template → HTML → Браузер
 ```
+
+Этим путём идёт и тренажёр ЕГЭ: отбор задач считает `ege_practice`, вью пишут `PracticeSession`/`PracticeItem`, а аналитику для страниц собирает `ege_stats`.
 
 ### Асинхронный (Code Execution)
 
@@ -93,7 +101,9 @@ graph TB
 
 ### Content Block Pattern
 
-`ContentBlock` (pages) и `LessonBlock` (lessons) используют одинаковую структуру — самодостаточная модель с полным набором стилизации (шрифты, цвета, позиционирование, кроп изображений). Позволяет создавать страницы без написания HTML.
+`ContentBlock` (pages) и `LessonBlock` (lessons) используют одинаковую структуру – самодостаточная модель с полным набором стилизации (шрифты, цвета, позиционирование, кроп изображений). Позволяет создавать страницы без написания HTML.
+
+Рядом живёт `ArticleBlock` (textbook) – блок другого рода: типизированный (`text`, `code`, `image`, `video`, `formula`, `widget`) и без стилевых полей. Типографику статьи задаёт вёрстка, а не поля блока, поэтому одна и та же модель обслуживает уроки, теорию ЕГЭ и спецкурс, а собирается из seed-команд. Стилевые поля остались только у `LessonBlock`, где редактор собирает урок из блоков вручную.
 
 ### Assignment Cascade
 
@@ -107,4 +117,4 @@ WebSocket-каналы имеют HTTP-polling fallback:
 
 ### Docker Sandbox
 
-Пользовательский код выполняется в изолированном Docker-контейнере без сети, с лимитами CPU/RAM. Метрики производительности собираются через `resource.getrusage()`.
+Пользовательский код выполняется в изолированном Docker-контейнере без сети, с лимитами CPU/RAM. Контейнер работает от `nobody`, сброшены все capabilities (`cap_drop: ALL`) и запрещён подъём прав (`no-new-privileges`), `pids_limit` закрывает форк-бомбу. Метрики производительности собираются через `resource.getrusage()`.

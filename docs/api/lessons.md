@@ -6,7 +6,7 @@
 
 ## Endpoints
 
-### GET `/lessons/` — Список уроков
+### GET `/lessons/` – Список уроков
 
 **View:** `lesson_list_view`
 **Auth:** Не требуется
@@ -16,7 +16,7 @@
 
 ---
 
-### GET `/lessons/<id>/` — Детали урока
+### GET `/lessons/<id>/` – Детали урока
 
 **View:** `lesson_detail_view`
 **Auth:** Не требуется
@@ -30,24 +30,25 @@
 |------------|-----|----------|
 | `lesson` | Lesson | Объект урока |
 | `blocks` | QuerySet | Блоки контента, отсортированные по `order` |
-| `attachments` | QuerySet | Вложения `LessonAttachment`, отсортированные по `order` |
+| `attachments` | QuerySet | Вложения `LessonAttachment` (порядок задан `Meta.ordering = ['order']`) |
+| `page_type` | str | `'lesson'` |
 
 ---
 
-### GET `/lessons/<id>/file/<attachment_id>/` — Скачать вложение
+### GET `/lessons/<id>/file/<attachment_id>/` – Скачать вложение
 
 **View:** `lesson_file_download_view`
 **Auth:** Не требуется
 **Response:** `FileResponse` с `Content-Disposition: attachment`
 
-Скачивает файл `LessonAttachment`. Параметр `attachment_id` верифицируется по `lesson_id` — защита от IDOR. Имя файла кодируется по RFC 5987 для корректного отображения кириллицы.
+Скачивает файл `LessonAttachment`. Параметр `attachment_id` верифицируется по `lesson_id` – защита от IDOR. Имя файла кодируется по RFC 5987 для корректного отображения кириллицы.
 
 !!! info "Nginx X-Accel-Redirect"
     В production файлы отдаются через Nginx `X-Accel-Redirect` для оптимальной производительности. В development используется Django `FileResponse`.
 
 ---
 
-### GET `/lessons/<id>/presentation-pdf/` — Скачать PDF презентации
+### GET `/lessons/<id>/presentation-pdf/` – Скачать PDF презентации
 
 **View:** `presentation_pdf_download_view`
 **Auth:** Не требуется

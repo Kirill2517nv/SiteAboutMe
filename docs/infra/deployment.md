@@ -35,7 +35,7 @@ git pull
 
 ### 2а. Пересборка Tailwind CSS (при изменении шаблонов или конфига)
 
-Если в коммите менялись HTML-шаблоны или `tailwind.config.js`, CSS пересобирается локально перед деплоем и коммитится в репозиторий. На сервере дополнительных действий не требуется — `static/css/tailwind.css` уже актуален.
+Если в коммите менялись HTML-шаблоны или `tailwind.config.js`, CSS пересобирается локально перед деплоем и коммитится в репозиторий. На сервере дополнительных действий не требуется – `static/css/tailwind.css` уже актуален.
 
 Для локальной пересборки (на Windows-машине разработчика):
 
@@ -77,7 +77,7 @@ sudo systemctl restart site celery celerybeat daphne
 ```
 
 !!! tip "Nginx"
-    Nginx перезапускать обычно не нужно — конфигурация меняется редко. При изменении конфига: `sudo nginx -t && sudo systemctl restart nginx`.
+    Nginx перезапускать обычно не нужно – конфигурация меняется редко. При изменении конфига: `sudo nginx -t && sudo systemctl restart nginx`.
 
 ### 7. Верификация
 
@@ -111,6 +111,17 @@ sudo systemctl restart site celery celerybeat daphne
 
 ---
 
+## Выкладка данных и медиа
+
+Код и схема БД едут шагами выше. Данные и медиа выкладываются отдельно, и порядок внутри них важен – медиа строго до загрузчиков, пулы после банков. Он описан в двух отдельных документах, здесь не дублируется:
+
+- **[Банк ЕГЭ](../ege-bank-deploy.md)** – `media/ege/bank-*` через `rsync`, затем `load_ege`, `seed_ege_tasks` и `ege_pools`;
+- **[Симуляции спецкурса](../spetskurs-deploy.md)** – собранные `.wasm` и архив исходников через `rsync`, выпуск разборов через `publish_spetskurs`.
+
+Оба артефакта в git не хранятся: в `.gitignore` стоят `media/`, `fixtures/*`, собранные `static/spetskurs/wasm/*.{html,js,wasm}` и архив `static/spetskurs/*.zip`. Переносят их `rsync`/`scp` вручную.
+
+---
+
 ## Откат
 
 При проблемах после деплоя:
@@ -140,6 +151,8 @@ python manage.py load_quiz fixtures/my_quiz.json
 
 Шаблон формата: `fixtures/quiz_template.json`. Поддерживает все 3 типа вопросов: `choice`, `text`, `code`.
 
+Банки ЕГЭ грузятся отдельной командой – `python manage.py load_ege fixtures/bank-05.json`; её место в общем порядке выкладки описано в [выкладке банка ЕГЭ](../ege-bank-deploy.md).
+
 ---
 
 ## SSL-сертификат
@@ -159,10 +172,14 @@ sudo certbot renew --dry-run
 | Переменная | Описание |
 |------------|----------|
 | `SECRET_KEY` | Django secret key |
-| `DATABASE_URL` | PostgreSQL connection string |
-| `DEBUG` | False на production |
-| `ALLOWED_HOSTS` | kirill-lab.ru |
+| `DEBUG` | `False` на production (значение сравнивается со строкой `'True'`) |
+| `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT` | Подключение к PostgreSQL |
+| `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND` | Redis для Celery; по умолчанию `redis://localhost:6379/0` |
+| `REDIS_HOST`, `REDIS_PORT` | Redis для Channel Layer (Channels); по умолчанию `localhost:6379` |
+| `USE_X_ACCEL_REDIRECT` | `True` на production: media отдаёт Nginx по `X-Accel-Redirect` |
 | `YANDEX_METRIKA_ID` | Номер счётчика Яндекс.Метрики. Задаётся только на production: пусто – счётчик не выводится |
+
+`ALLOWED_HOSTS` из `.env` не читается – список хостов задан прямо в `config/settings.py`.
 
 !!! danger "Безопасность"
     `.env` файл **не** коммитится в Git. Содержит приватные ключи и credentials.

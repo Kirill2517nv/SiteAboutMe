@@ -49,13 +49,15 @@ graph TB
 | Компонент | Версия | Назначение |
 |-----------|--------|------------|
 | Django | 6.0.1 | Web-фреймворк |
-| PostgreSQL | — | Основная БД |
-| Redis | — | Брокер Celery + Channel Layer |
+| PostgreSQL | – | Основная БД |
+| Redis | – | Брокер Celery + Channel Layer |
 | Celery | 5.3.6 | Async-задачи (проверка кода) |
 | Django Channels | 4.0 | WebSocket |
+| channels-redis | 4.2.0 | Channel Layer поверх Redis |
 | Daphne | 4.1 | ASGI-сервер |
 | Gunicorn | 23.0.0 | WSGI-сервер |
-| Nginx | — | Reverse proxy |
+| WhiteNoise | 6.11.0 | Отдача статики через Django |
+| Nginx | – | Reverse proxy |
 | Docker | 7.1.0 (py) | Sandbox для кода |
 | Pillow | 12.1.0 | Обработка изображений |
 
@@ -92,6 +94,9 @@ graph TB
        → Прямая отдача из /home/admin/site/staticfiles/
 ```
 
+!!! info "WhiteNoise"
+    В `config/settings.py` включён `WhiteNoiseMiddleware` со `CompressedManifestStaticFilesStorage`. На проде статику отдаёт Nginx из `staticfiles/`, а WhiteNoise выручает там, где Nginx впереди нет (dev-сервер, Daphne напрямую), и отдаёт уже сжатые версии файлов. Отсюда два следствия: `collectstatic` обязателен на каждой выкладке, а манифест-хранилище требует, чтобы шаблоны ссылались на файл через `{% static %}` – ссылка на несуществующий файл падает с ошибкой, а не отдаёт 404.
+
 ### Media файлы
 
 ```
@@ -102,7 +107,7 @@ graph TB
 ```
 
 !!! info "X-Accel-Redirect"
-    Django проверяет права доступа, затем отправляет Nginx заголовок `X-Accel-Redirect` с внутренним путём к файлу. Nginx отдаёт файл напрямую, минуя Python — эффективнее `FileResponse`.
+    Django проверяет права доступа, затем отправляет Nginx заголовок `X-Accel-Redirect` с внутренним путём к файлу. Nginx отдаёт файл напрямую, минуя Python – эффективнее `FileResponse`.
 
 ---
 
@@ -114,18 +119,26 @@ graph TB
 ├── accounts/            # App: пользователи
 ├── pages/               # App: контент-страницы
 ├── lessons/             # App: уроки
-├── quizzes/             # App: тесты
+├── quizzes/             # App: тесты и тренажёр ЕГЭ
+├── textbook/            # App: учебник (материал, теория ЕГЭ, спецкурс)
+├── spetskurs/           # App: курс численного моделирования
+├── games/               # App: «Своя игра»
 ├── templates/           # HTML-шаблоны
 ├── static/              # Исходные статические файлы
+│   └── spetskurs/       # Собранные WASM-симуляции (в git не хранятся)
 ├── staticfiles/         # collectstatic output
-├── media/               # Загруженные файлы
+├── media/               # MEDIA_ROOT: загруженные файлы
+│   ├── lessons/         # media/lessons/{урок}/ – файлы уроков и картинки блоков
+│   ├── ege/             # Медиа банков и вариантов ЕГЭ
+│   ├── textbook/        # Картинки статей учебника
+│   ├── spetskurs/       # Иллюстрации разборов спецкурса
+│   ├── games/           # Медиа «Своей игры»
 │   ├── content/         # Изображения контент-блоков
-│   ├── lessons_files/   # Файлы уроков
-│   ├── lessons_content/ # Изображения блоков уроков
-│   └── question_files/  # Файлы вопросов
-├── fixtures/            # JSON для load_quiz
+│   ├── question_files/  # Файлы вопросов, question_images/ – картинки
+│   └── about/ avatars/ alumni/   # Профиль автора, аватары, фото классов
+├── fixtures/            # JSON для load_quiz и load_ege
 ├── venv/                # Python virtualenv
 ├── requirements.txt
 ├── manage.py
-└── .env                 # Секреты (SECRET_KEY, DB credentials)
+└── .env                 # Секреты (SECRET_KEY, доступ к БД)
 ```
