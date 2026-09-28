@@ -110,13 +110,26 @@ def personal_deadlines(user):
     все блоки сразу, а спрашивать продление в цикле – это +14 запросов на
     страницу ради строк, которых у большинства учеников нет вовсе.
     """
-    from .models import SectionExtension
+    from accounts.models import StudentGroup
+
+    from .models import Section, SectionExtension
 
     if not getattr(user, 'is_authenticated', False):
         return {}
+    # Класс без сроков учебника (группа ЕГЭ): у каждого блока отметка «срока
+    # нет». Именно здесь, а не в шаблонах: этот словарь – единственный путь,
+    # которым главная, профиль и приём решений узнают срок ученика.
+    # Учитель тоже без сроков: вычитывает и прорешивает блоки когда угодно.
+    if user.is_superuser or StudentGroup.objects.filter(
+            students__user=user, no_textbook_deadlines=True).exists():
+        return dict.fromkeys(Section.objects.values_list('id', flat=True), NO_DEADLINE)
     return dict(
         SectionExtension.objects.filter(user=user).values_list('section_id', 'deadline')
     )
+
+
+# Значение в словаре `personal_deadlines()`: у ученика по этому блоку срока нет.
+NO_DEADLINE = object()
 
 
 def section_deadline(section, personal=None):
@@ -125,8 +138,9 @@ def section_deadline(section, personal=None):
     `personal` – дата из `personal_deadlines()`. Продление только отодвигает:
     у блока без общего дедлайна продлевать нечего (иначе личная дата завела бы
     срок там, где его не было), а дата раньше общей игнорируется.
+    `NO_DEADLINE` – класс ученика живёт без сроков учебника.
     """
-    if not section.deadline:
+    if not section.deadline or personal is NO_DEADLINE:
         return None
     return max(section.deadline, personal) if personal else section.deadline
 
@@ -232,8 +246,12 @@ HINT_AFTER_FAILURES = 3
 HINT_DAYS_BEFORE_DEADLINE = 3
 
 
-def _section_unlock(quiz):
-    """Открыты ли подсказки всему блоку сразу: рубильник учителя или близкий дедлайн."""
+def _section_unlock(quiz, user):
+    """Открыты ли подсказки всему блоку сразу: рубильник учителя или близкий дедлайн.
+
+    Дедлайн – этого ученика (`section_deadline`): у класса без сроков учебника
+    близкого дедлайна не бывает, у продлённого он свой.
+    """
     from datetime import timedelta
 
     section = section_for_quiz(quiz)
@@ -241,16 +259,17 @@ def _section_unlock(quiz):
         return False
     if section.hints_open:
         return True
+    deadline = section_deadline(section, personal_deadlines(user).get(section.id))
     return bool(
-        section.deadline
-        and section.deadline - timezone.now() <= timedelta(days=HINT_DAYS_BEFORE_DEADLINE)
+        deadline
+        and deadline - timezone.now() <= timedelta(days=HINT_DAYS_BEFORE_DEADLINE)
     )
 
 
 def _hint_unlocked(user, question):
     from quizzes.models import CodeSubmission, UserAnswer
 
-    if _section_unlock(question.quiz):
+    if _section_unlock(question.quiz, user):
         return True
 
     if question.question_type == 'code':
@@ -305,7 +324,7 @@ def hint_states(user, quiz, questions):
         HintChoice.objects.filter(user=user, question_id__in=ids)
         .values_list('question_id', 'accepted')
     )
-    section_open = _section_unlock(quiz)
+    section_open = _section_unlock(quiz, user)
 
     # Считаем неудачи только там, где исход ещё не решён: выбор уже сделан или
     # блок открыт целиком — счётчик ничего не меняет.
@@ -377,15 +396,34 @@ def quiz_state(done, total, attempted=False):
 
 
 def attempted_quiz_ids(user, quiz_ids):
-    """Тесты из списка, по которым у ученика есть хотя бы одна сданная попытка."""
-    from quizzes.models import UserResult
+    """Тесты из списка, по которым у ученика есть хотя бы одна попытка.
+
+    Попытка – сданный тест или отправленный на проверку код: код гоняют и до
+    кнопки «Завершить», и такой ученик к задачам уже приступил.
+    """
+    from quizzes.models import CodeSubmission, UserResult
 
     if not quiz_ids:
         return set()
     return set(
         UserResult.objects.filter(user=user, quiz_id__in=quiz_ids)
         .values_list('quiz_id', flat=True).distinct()
+    ) | set(
+        CodeSubmission.objects.filter(user=user, quiz_id__in=quiz_ids)
+        .values_list('quiz_id', flat=True).distinct()
     )
+
+
+def section_grade(section, user, solved, attempted):
+    """Оценка за блок: пусто, пока ученик не сделал ни одной попытки практикума.
+
+    Раньше нетронутый блок получал «2» – в начале года двойки стояли по всем
+    двадцати блокам. Учителю оценка не нужна вовсе: он прорешивает блоки, а не
+    сдаёт их.
+    """
+    if user.is_superuser or not attempted:
+        return None
+    return section.grade_for(solved)
 
 
 def section_quiz_stats(user):
@@ -451,6 +489,7 @@ def section_quiz_stats(user):
     for section_id, quiz_id, n_questions in practicum_links:
         bucket = bucket_for(section_id)
         bucket['practicum'] = [min(correct_by_quiz.get(quiz_id, 0), n_questions), n_questions]
+        bucket['attempted'] = quiz_id in attempted
         bucket['url'] = reverse('quizzes:quiz_detail', kwargs={'quiz_id': quiz_id})
     return stats, article_states
 
@@ -587,7 +626,7 @@ def profile_textbook_stats(user):
         practicum_done, practicum_total = bucket['practicum']
         done, total = lessons_done.get(section.id, 0), lessons_total.get(section.id, 0)
         started = bool(done or practicum_done)
-        grade = section.grade_for(practicum_done)
+        grade = section_grade(section, user, practicum_done, bucket.get('attempted'))
         is_closed = section_is_closed(section, extensions.get(section.id))
 
         # Ближайшая невзятая ступень: ученику важнее «до 4 осталось 2 задачи»,
@@ -765,8 +804,8 @@ def visible_group_ids(request):
     if not request.user.is_authenticated:
         return []
     if request.user.is_superuser:
-        # Выпускные классы живут в архиве и в активную статистику не попадают.
-        all_ids = list(StudentGroup.objects.filter(graduation_year__isnull=True)
+        # Классы со снятой галочкой «В статистике» в статистику не попадают.
+        all_ids = list(StudentGroup.in_stats_groups()
                        .values_list('id', flat=True))
         chosen = {int(g) for g in request.GET.getlist('group') if g.isdigit()}
         return [g for g in all_ids if g in chosen] or all_ids
@@ -865,7 +904,7 @@ def course_map(user):
         else:
             is_done = bool(lessons) and lessons_done == len(lessons)
 
-        grade = section.grade_for(prac_done) if user.is_authenticated else None
+        grade = section_grade(section, user, prac_done, bucket.get('attempted'))
 
         # «Блок закрыт» для метки «вы здесь» – не то же, что «пройден».
         # Достаточно сдать практикум на тройку; полное решение не требуется.

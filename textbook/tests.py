@@ -283,6 +283,51 @@ class SectionExtensionTest(TestCase):
         self.assertTrue(quiz_is_locked(self.practicum, self.other),
                         'продление одному не открывает блок всему классу')
 
+    def test_class_without_textbook_deadlines(self):
+        """Галочка на классе снимает сроки его ученикам – и только им."""
+        from accounts.models import Profile, StudentGroup
+        from textbook.services import profile_textbook_stats
+
+        ege = StudentGroup.objects.create(name='ЕГЭ', no_textbook_deadlines=True)
+        Profile.objects.create(user=self.ill, group=ege)
+        self.extend(days=-10)  # старое продление не должно вернуть срок
+
+        self.assertFalse(quiz_is_locked(self.practicum, self.ill))
+        self.assertFalse(quiz_is_locked(self.self_check, self.ill))
+        row = next(s for s in profile_textbook_stats(self.ill)['sections']
+                   if s['section'].id == self.section.id)
+        self.assertIsNone(row['deadline'])
+        self.assertTrue(quiz_is_locked(self.practicum, self.other),
+                        'остальные классы живут по общему сроку')
+
+    def test_grade_appears_only_after_first_attempt(self):
+        """Нетронутый блок – без оценки, первая попытка – «2», учителю – никогда."""
+        from django.contrib.auth.models import User
+
+        from quizzes.models import UserResult
+        from textbook.services import profile_textbook_stats
+
+        self.section.grade_3_from = 1
+        self.section.save(update_fields=['grade_3_from'])
+
+        def grade(user):
+            return next(s['grade'] for s in profile_textbook_stats(user)['sections']
+                        if s['section'].id == self.section.id)
+
+        self.assertIsNone(grade(self.ill), 'не приступал – оценки нет, даже после дедлайна')
+        UserResult.objects.create(user=self.ill, quiz=self.practicum, score=0)
+        self.assertEqual(grade(self.ill), 2)
+
+        admin = User.objects.create_superuser('teacher2', password='pw')
+        UserResult.objects.create(user=admin, quiz=self.practicum, score=0)
+        self.assertIsNone(grade(admin))
+
+    def test_superuser_has_no_textbook_deadlines(self):
+        from django.contrib.auth.models import User
+
+        admin = User.objects.create_superuser('teacher', password='pw')
+        self.assertFalse(quiz_is_locked(self.practicum, admin))
+
     def test_extension_only_extends(self):
         """Личная дата раньше общей ничего не закрывает и не открывает."""
         from textbook.models import SectionExtension

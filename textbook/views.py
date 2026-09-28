@@ -11,7 +11,7 @@ from django.views.decorators.http import require_POST
 
 from accounts.models import StudentGroup
 from accounts.templatetags.profile_tags import surname_first
-from quizzes.models import Question, Quiz, UserAnswer, UserResult
+from quizzes.models import CodeSubmission, Question, Quiz, UserAnswer, UserResult
 
 from .models import Article, ArticleBlock, ArticleProgress, ArticleQuiz, ArticleRating, Section
 from .services import (
@@ -21,6 +21,7 @@ from .services import (
     personal_deadlines,
     quiz_state,
     section_deadline,
+    section_grade,
     section_is_closed,
     section_quiz_stats,
     visible_articles,
@@ -150,7 +151,7 @@ def textbook_home_view(request):
             'self_check': _bar(*stats['self_check']),
             # Оценка выставляется по числу решённых задач практикума; пороги задаёт
             # учитель в админке, без них оценки за блок нет.
-            'grade': section.grade_for(practicum['done']) if request.user.is_authenticated else None,
+            'grade': section_grade(section, request.user, practicum['done'], stats.get('attempted')),
             'grade_scale': section.grade_scale(practicum['done']),
             'is_closed': section_is_closed(section, extensions.get(section.id)),
             # Продлённый ученик видит свою дату, а не общую «прошёл».
@@ -166,7 +167,7 @@ def textbook_home_view(request):
         # Панель фильтра классов — только учителю; ученик видит свой класс без выбора.
         'student_groups': (
             [{'group': g, 'checked': g.id in group_ids}
-             for g in StudentGroup.objects.filter(graduation_year__isnull=True).order_by('name')]
+             for g in StudentGroup.in_stats_groups().order_by('name')]
             if request.user.is_superuser else []
         ),
         'total_lessons': total_lessons,
@@ -389,6 +390,13 @@ def section_stats_view(request, slug):
         return {r['user_result__user_id']: r for r in rows}
 
     practicum_stats = answer_stats([practicum_id]) if practicum_id else {}
+    # Кто приступал к практикуму – то же правило, что `attempted_quiz_ids`,
+    # только на весь класс двумя запросами: без попытки оценки нет.
+    practicum_attempted = set(
+        UserResult.objects.filter(quiz_id=practicum_id).values_list('user_id', flat=True).distinct()
+    ) | set(
+        CodeSubmission.objects.filter(quiz_id=practicum_id).values_list('user_id', flat=True).distinct()
+    ) if practicum_id else set()
     self_check_stats = answer_stats(self_check_ids) if self_check_ids else {}
 
     read_time = dict(
@@ -417,7 +425,7 @@ def section_stats_view(request, slug):
         practicum_done = min(practicum.get('correct', 0), practicum_total)
         return {
             'user': user,
-            'grade': section.grade_for(practicum_done),
+            'grade': section_grade(section, user, practicum_done, user.id in practicum_attempted),
             'practicum_done': practicum_done,
             'self_check_done': min(self_check.get('correct', 0), self_check_total),
             'articles_read': articles_read.get(user.id, 0),
@@ -436,7 +444,7 @@ def section_stats_view(request, slug):
                 sorted(users, key=lambda u: surname_first(u).lower().replace('ё', 'е'))]
 
     groups = []
-    for group in (StudentGroup.objects.filter(graduation_year__isnull=True)
+    for group in (StudentGroup.in_stats_groups()
                   .prefetch_related('students__user').order_by('name')):
         students = [p.user for p in group.students.all()]
         if students:

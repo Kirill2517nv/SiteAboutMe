@@ -164,7 +164,7 @@ def home_page_view(request):
         # Панель выбора классов – только учителю; ученик видит свой класс без выбора.
         'student_groups': (
             [{'group': g, 'checked': g.id in group_ids}
-             for g in StudentGroup.objects.filter(graduation_year__isnull=True).order_by('name')]
+             for g in StudentGroup.in_stats_groups().order_by('name')]
             if request.user.is_superuser else []
         ),
         'section_label': f"{sections} {_plural(sections, ('блок', 'блока', 'блоков'))}",

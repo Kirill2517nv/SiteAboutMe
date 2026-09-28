@@ -271,10 +271,50 @@ class AlumniTests(TestCase):
         self.assertEqual(student_name(self.alum), 'Петров Иван 🎓 2025')
         self.assertEqual(student_name(self.pupil), 'Сидоров')
 
-    def test_graduated_group_hidden_from_active_lists(self):
+    def test_stats_visibility_is_the_checkbox_not_graduation(self):
         from textbook.services import visible_group_ids
 
         request = RequestFactory().get('/')
         request.user = User.objects.create_superuser('t', password='pw')
+        StudentGroup.objects.filter(pk=self.active.pk).update(in_stats=False)
 
-        self.assertEqual(visible_group_ids(request), [self.active.id])
+        # Выпуск в статистике остаётся, пока учитель сам не снимет галочку.
+        self.assertEqual(visible_group_ids(request), [self.graduated.id])
+
+
+@NO_MANIFEST_STATIC
+class NameFormTests(TestCase):
+    """Фамилию и имя ученик вписывает сам – один раз, дальше правит только учитель."""
+
+    def setUp(self):
+        self.user = User.objects.create_user('kid', password='pw')
+        self.client.force_login(self.user)
+        self.url = reverse('accounts:profile')
+
+    def test_fills_empty_names_once(self):
+        self.assertContains(self.client.get(self.url), 'id="name-form"')
+        self.client.post(self.url, {'last_name': '  иванов ', 'first_name': 'пётр'})
+        self.user.refresh_from_db()
+        self.assertEqual((self.user.last_name, self.user.first_name), ('Иванов', 'Пётр'))
+
+        self.client.post(self.url, {'last_name': 'Бэтмен', 'first_name': 'Брюс'})
+        self.user.refresh_from_db()
+        self.assertEqual((self.user.last_name, self.user.first_name), ('Иванов', 'Пётр'),
+                         'заполненное имя запросом в обход страницы не переписать')
+        page = self.client.get(self.url)
+        self.assertNotContains(page, 'id="name-form"')
+        self.assertNotContains(page, 'Заполните фамилию и имя')
+
+    def test_only_empty_field_is_accepted(self):
+        """Фамилию вписал учитель – ученик дописывает имя, но фамилию не трогает."""
+        self.user.last_name = 'Петров'
+        self.user.save()
+        self.client.post(self.url, {'last_name': 'Шутник', 'first_name': 'Олег'})
+        self.user.refresh_from_db()
+        self.assertEqual((self.user.last_name, self.user.first_name), ('Петров', 'Олег'))
+
+    def test_blank_is_rejected_and_reminder_stays(self):
+        self.client.post(self.url, {'last_name': '   ', 'first_name': 'Олег'})
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.last_name, '')
+        self.assertContains(self.client.get('/'), 'Заполните фамилию и имя')

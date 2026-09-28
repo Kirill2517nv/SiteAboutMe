@@ -2770,6 +2770,17 @@ class ClassTableGroupFilterTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['current_group'], 'all')
 
+    def test_group_out_of_stats_is_hidden(self):
+        from accounts.models import Profile, StudentGroup
+        old = StudentGroup.objects.create(name='Старый', in_stats=False)
+        new = StudentGroup.objects.create(name='Новый')
+        for name, group in (('old-kid', old), ('new-kid', new)):
+            user = get_user_model().objects.create_user(name, f'{name}@example.com', 'pwd')
+            Profile.objects.create(user=user, group=group)
+        response = self.client.get('/ege/class/?group=all')
+        self.assertEqual([g.name for g in response.context['groups']], ['Новый'])
+        self.assertEqual([r['user'].username for r in response.context['rows']], ['new-kid'])
+
 
 class SandboxLimitsTests(SimpleTestCase):
     """Ограничения контейнера с кодом ученика.

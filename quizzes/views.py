@@ -247,9 +247,11 @@ def _class_filter(request):
 
     Общий для таблицы класса и таблицы задания: вкладки у них одни и те же.
     """
-    students = _student_list()
+    # Классы со снятой галочкой «В статистике» не видны нигде,
+    # в том числе во вкладке «все»; без класса – показываются.
+    students = _student_list().exclude(profile__group__in_stats=False)
     groups = list(
-        StudentGroup.objects
+        StudentGroup.in_stats_groups()
         .filter(students__user__is_superuser=False).distinct().order_by('name')
     )
     loose = students.filter(profile__group__isnull=True).exists()

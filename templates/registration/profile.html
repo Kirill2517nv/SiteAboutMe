@@ -134,6 +134,34 @@
         </div>
     </div>
 
+    <!-- ===== Фамилия и имя: ученик вписывает сам, один раз (accounts.views.NameForm) ===== -->
+    {% if name_form %}
+    <form method="post" id="name-form" class="mb-10 rounded-2xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-5">
+        {% csrf_token %}
+        <h2 class="font-bold text-gray-900 dark:text-white">Представьтесь</h2>
+        <p class="mt-1 mb-4 text-sm text-gray-600 dark:text-slate-400">
+            Настоящие фамилия и имя – по ним учитель находит вас в таблицах класса.
+            Заполнить можно только один раз: исправить потом сможет лишь учитель.
+        </p>
+        <div class="grid sm:grid-cols-2 gap-3">
+            {% for field in name_form %}
+            <label class="block">
+                <span class="text-sm font-medium text-gray-700 dark:text-slate-300">{% if field.name == 'last_name' %}Фамилия{% else %}Имя{% endif %}</span>
+                <input type="text" name="{{ field.name }}" maxlength="150" required value="{{ field.value|default:'' }}"
+                       autocomplete="{% if field.name == 'last_name' %}family-name{% else %}given-name{% endif %}"
+                       class="mt-1 w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none">
+                {% for error in field.errors %}<span class="block mt-1 text-xs text-red-600">{{ error }}</span>{% endfor %}
+            </label>
+            {% endfor %}
+        </div>
+        <button type="submit" class="mt-4 px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium transition-colors">
+            Сохранить
+        </button>
+    </form>
+    {% elif is_own and not profile_user.is_superuser %}
+    <p class="-mt-6 mb-10 text-xs text-gray-400 dark:text-slate-500">Ошиблись в фамилии или имени – скажите учителю, он исправит.</p>
+    {% endif %}
+
     <!-- ===== Карточка выпускника ===== -->
     {% if is_own and profile.is_alumni %}
     <form method="post" class="mb-10 rounded-2xl border border-brand-200 dark:border-brand-800 bg-brand-50/50 dark:bg-brand-900/20 p-5" data-aos="fade-up">

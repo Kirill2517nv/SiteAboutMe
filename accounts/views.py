@@ -23,6 +23,36 @@ class AlumniForm(forms.ModelForm):
         fields = ['alumni_place', 'alumni_about']
 
 
+class NameForm(forms.Form):
+    """
+    Фамилия и имя, которые ученик вписывает сам – один раз.
+
+    «Один раз» держится на самих данных: в форме остаются только пустые поля,
+    заполненное ученик не перепишет даже запросом в обход страницы. Отдельного
+    флага «уже заполнял» нет – он разошёлся бы с именем, которое учитель
+    поправил в админке. Исправляет учитель там же, где и раньше.
+    """
+    last_name = forms.CharField(max_length=150)
+    first_name = forms.CharField(max_length=150)
+
+    def __init__(self, *args, user, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user = user
+        for name in list(self.fields):
+            if getattr(user, name):
+                del self.fields[name]
+
+    def clean(self):
+        # «иванов» → «Иванов»; остальное не трогаем – «Салтыков-Щедрин» цел.
+        return {name: value[:1].upper() + value[1:]
+                for name, value in self.cleaned_data.items()}
+
+    def save(self):
+        for name, value in self.cleaned_data.items():
+            setattr(self.user, name, value)
+        self.user.save(update_fields=list(self.cleaned_data))
+
+
 class AvatarForm(forms.ModelForm):
     """
     Загрузка аватара. Именно ModelForm, а не присваивание `request.FILES`
@@ -61,7 +91,16 @@ class ProfileView(LoginRequiredMixin, generic.TemplateView):
             raise PermissionDenied
         profile, _ = Profile.objects.get_or_create(user=request.user)
 
-        # Формы на странице две, различаем по полю: у карточки нет файлов.
+        # Формы на странице три, различаем по полю: у карточки нет файлов.
+        if 'last_name' in request.POST or 'first_name' in request.POST:
+            name_form = NameForm(request.POST, user=request.user)
+            if not name_form.fields:
+                return redirect('accounts:profile')  # всё уже заполнено
+            if name_form.is_valid():
+                name_form.save()
+                return redirect('accounts:profile')
+            return self.render_to_response(self.get_context_data(name_form=name_form))
+
         if 'alumni_about' in request.POST:
             alumni_form = AlumniForm(request.POST, instance=profile)
             if alumni_form.is_valid():
@@ -105,6 +144,9 @@ class ProfileView(LoginRequiredMixin, generic.TemplateView):
             'suggestions': list(user.suggestions.select_related('article')[:8]),
             'suggestions_total': user.suggestions.count(),
         })
+        if is_own and 'name_form' not in context:
+            name_form = NameForm(user=user)
+            context['name_form'] = name_form if name_form.fields else None
 
         # Учителю — переключение между учениками прямо из профиля.
         if self.request.user.is_superuser:

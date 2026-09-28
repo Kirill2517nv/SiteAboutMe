@@ -8,7 +8,8 @@ class StudentGroup(models.Model):
     # и группировку на странице выпускников.
     graduation_year = models.PositiveSmallIntegerField(
         null=True, blank=True, verbose_name="Год выпуска",
-        help_text="Заполнено – класс уходит в архив выпускников и пропадает из активных списков",
+        help_text="Заполнено – класс появляется в архиве выпускников. "
+                  "Из статистики его убирает только галочка «В статистике»",
     )
     graduation_photo = models.ImageField(
         upload_to='alumni/', blank=True, verbose_name="Общее фото класса",
@@ -16,10 +17,25 @@ class StudentGroup(models.Model):
     graduation_note = models.TextField(
         blank=True, verbose_name="Слово учителя о классе",
     )
-    
+    no_textbook_deadlines = models.BooleanField(
+        default=False, verbose_name="Без дедлайнов учебника",
+        help_text="Блоки учебника у учеников этого класса не закрываются по сроку – "
+                  "например, у группы подготовки к ЕГЭ, где учебник – справочник.",
+    )
+    in_stats = models.BooleanField(
+        default=True, verbose_name="В статистике",
+        help_text="Снято – вкладки класса нет на страницах статистики учителя "
+                  "(учебник, ЕГЭ). Для классов, с которыми сейчас не работаете.",
+    )
+
     class Meta:
         verbose_name = "Учебный класс"
         verbose_name_plural = "Учебные классы"
+
+    @classmethod
+    def in_stats_groups(cls):
+        """Классы, которые учитель видит в статистике. Выпуск на это не влияет."""
+        return cls.objects.filter(in_stats=True)
 
     @property
     def is_archived(self):

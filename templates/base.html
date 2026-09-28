@@ -232,6 +232,16 @@
         </div>
     </header>
 
+    {# Ученик ещё не представился – форма в профиле (accounts.views.NameForm) #}
+    {% if user.is_authenticated and not user.is_superuser %}{% if not user.last_name or not user.first_name %}
+    <div class="bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 text-sm text-amber-800 dark:text-amber-200">
+            Заполните фамилию и имя, чтобы учитель видел вас в таблицах класса –
+            <a href="{% url 'accounts:profile' %}#name-form" class="font-semibold underline hover:no-underline">в профиле</a>
+        </div>
+    </div>
+    {% endif %}{% endif %}
+
     <!-- Django messages -->
     {% if messages %}
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">

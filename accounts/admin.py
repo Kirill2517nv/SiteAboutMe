@@ -18,8 +18,8 @@ class UserAdmin(BaseUserAdmin):
 class StudentGroupAdmin(admin.ModelAdmin):
     search_fields = ['name']
     # Год выпуска – единственный переключатель «активный класс / архив»
-    list_display = ('name', 'graduation_year')
-    list_editable = ('graduation_year',)
+    list_display = ('name', 'graduation_year', 'in_stats', 'no_textbook_deadlines')
+    list_editable = ('graduation_year', 'in_stats', 'no_textbook_deadlines')
 
 # Перерегистрируем User с новыми настройками
 admin.site.unregister(User)
