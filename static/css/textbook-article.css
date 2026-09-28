@@ -504,6 +504,47 @@ html.dark .code-block__head { background: #1e293b; }
 html.dark .code-block__lang, html.dark .code-block__copy { color: #94a3b8; }
 html.dark .code-block__copy:hover { color: #fff; background: #334155; }
 
+/* Светлая тема листингов (кнопка в шапке блока, класс на <html>, выбор в
+   localStorage). Нужна проектору: тёмный фон на стене сливается в пятно.
+   Палитра – по мотивам GitHub Light, но все цвета тёмные и насыщенные:
+   проектор выбеливает полутона, и серый/салатовый с задней парты пропадают.
+   .hljs переопределён явно – atom-one-dark ставит на <code> свой #abb2bf,
+   и без этого переменные и скобки оставались светло-серыми.
+   Правила скоупнуты .code-block – виджеты учебника красят код своей тёмной
+   подложкой и остаются как были. */
+html.code-light .code-block pre,
+html.code-light .code-block .hljs { background: #fff; color: #111827; }
+html.code-light .code-block .hljs-comment,
+html.code-light .code-block .hljs-quote { color: #4b5563; font-style: italic; }
+html.code-light .code-block .hljs-doctag,
+html.code-light .code-block .hljs-keyword,
+html.code-light .code-block .hljs-formula,
+html.code-light .code-block .hljs-literal { color: #b3122a; font-weight: 600; }
+html.code-light .code-block .hljs-section,
+html.code-light .code-block .hljs-name,
+html.code-light .code-block .hljs-selector-tag,
+html.code-light .code-block .hljs-deletion,
+html.code-light .code-block .hljs-subst { color: #b3122a; }
+html.code-light .code-block .hljs-string,
+html.code-light .code-block .hljs-regexp,
+html.code-light .code-block .hljs-addition,
+html.code-light .code-block .hljs-attribute { color: #0a6b2e; }
+html.code-light .code-block .hljs-number,
+html.code-light .code-block .hljs-symbol,
+html.code-light .code-block .hljs-bullet,
+html.code-light .code-block .hljs-link { color: #0550ae; }
+html.code-light .code-block .hljs-attr,
+html.code-light .code-block .hljs-variable,
+html.code-light .code-block .hljs-template-variable,
+html.code-light .code-block .hljs-type,
+html.code-light .code-block .hljs-params { color: #111827; }
+html.code-light .code-block .hljs-meta,
+html.code-light .code-block .hljs-title,
+html.code-light .code-block .hljs-title.function_ { color: #6b21a8; }
+html.code-light .code-block .hljs-built_in,
+html.code-light .code-block .hljs-title.class_ { color: #9a3412; }
+.code-block__theme { margin-left: 0; }
+
 /* ============================================================
    РЕЖИМ ПРОЕКТОРА — .present-root:fullscreen
    Масштаб задаётся корневым font-size (см. present-mode.js), поэтому расти

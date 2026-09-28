@@ -1633,3 +1633,248 @@ class SectionStatsTeacherTests(TestCase):
         only_errors = self.client.get(url, {'errors': '1'})
         self.assertContains(only_errors, 'Задача 2')
         self.assertNotContains(only_errors, 'Задача 1')
+
+
+class ArticleFeedbackTests(TestCase):
+    """Звёзды под статьёй и совещательные правки к блокам.
+
+    Главное, что сторожится: закрытый разбор не утекает через исходник блока
+    для редактора, «было» у правки блока берётся из базы, а не из запроса, и
+    гость не может ни оценить, ни предложить.
+    """
+
+    SOLUTION = 'Ответ: 42'
+
+    @classmethod
+    def setUpTestData(cls):
+        from textbook.models import Article, ArticleBlock
+
+        section = Section.objects.create(title='Блок', slug='fb1', order=1, is_published=True)
+        cls.article = Article.objects.create(
+            section=section, slug='fb-a1', title='Переменные', order=1, is_published=True)
+        cls.text = ArticleBlock.objects.create(
+            article=cls.article, block_type='text', title='Что это',
+            content='Переменная – это ячейка памяти.', order=1)
+        cls.image = ArticleBlock.objects.create(
+            article=cls.article, block_type='image', content='Схема', order=2)
+        cls.solution = ArticleBlock.objects.create(
+            article=cls.article, block_type='text', title='Разбор',
+            content=cls.SOLUTION, order=3, visibility='teacher')
+        cls.student = User.objects.create_user('pupil', password='pw')
+        cls.teacher = User.objects.create_superuser('teacher', password='pw')
+
+    def suggest_url(self, block):
+        return reverse('textbook:block_suggest', args=[block.pk])
+
+    def rate_url(self):
+        return reverse('textbook:article_rate', args=[self.article.slug])
+
+    # ---------- страница статьи ----------
+
+    def test_guest_sees_no_feedback_ui_and_cannot_post(self):
+        html = self.client.get(self.article.get_absolute_url()).content.decode()
+        self.assertNotIn('article-rating', html)
+        self.assertNotIn('data-suggest-url', html)
+        self.assertEqual(self.client.post(self.rate_url(), {'stars': 5}).status_code, 302)
+        self.assertEqual(self.client.post(self.suggest_url(self.text),
+                                          {'proposed': 'x'}).status_code, 302)
+
+    def test_student_page_has_pencil_but_not_on_locked_solution(self):
+        self.client.force_login(self.student)
+        html = self.client.get(self.article.get_absolute_url()).content.decode()
+        self.assertIn('js/article-feedback.', html)
+        self.assertIn(self.suggest_url(self.text), html)
+        self.assertNotIn(self.suggest_url(self.solution), html)
+
+    # ---------- звёзды ----------
+
+    def test_rating_is_one_per_user_and_validated(self):
+        from textbook.models import ArticleRating
+
+        self.client.force_login(self.student)
+        self.assertEqual(self.client.post(self.rate_url(), {'stars': 2, 'comment': 'сложно'})
+                         .status_code, 200)
+        self.client.post(self.rate_url(), {'stars': 4})
+        rating = ArticleRating.objects.get()
+        self.assertEqual((rating.stars, rating.comment), (4, ''))
+        self.assertEqual(self.client.post(self.rate_url(), {'stars': 6}).status_code, 400)
+        self.assertEqual(self.client.post(self.rate_url(), {'stars': 'x'}).status_code, 400)
+        self.assertContains(self.client.get(self.article.get_absolute_url()), 'data-stars="4"')
+
+    # ---------- правки ----------
+
+    def test_block_source_for_editor(self):
+        self.client.force_login(self.student)
+        data = self.client.get(self.suggest_url(self.text)).json()
+        self.assertEqual((data['editable'], data['original']), (True, self.text.content))
+        data = self.client.get(self.suggest_url(self.image)).json()
+        self.assertEqual((data['editable'], data['original']), (False, ''))
+
+    def test_locked_solution_does_not_leak_through_editor(self):
+        self.client.force_login(self.student)
+        response = self.client.get(self.suggest_url(self.solution))
+        self.assertEqual(response.status_code, 404)
+        self.assertNotIn(self.SOLUTION, response.content.decode())
+        self.assertEqual(self.client.post(self.suggest_url(self.solution),
+                                          {'proposed': 'x'}).status_code, 404)
+        self.client.force_login(self.teacher)
+        self.assertEqual(self.client.get(self.suggest_url(self.solution)).json()['original'],
+                         self.SOLUTION)
+
+    def test_block_original_is_taken_from_db_not_request(self):
+        from textbook.models import Suggestion
+
+        self.client.force_login(self.student)
+        response = self.client.post(self.suggest_url(self.text), {
+            'original': 'подделка', 'proposed': 'Переменная – это именованная ячейка памяти.'})
+        self.assertEqual(response.status_code, 200)
+        s = Suggestion.objects.get()
+        self.assertEqual((s.original, s.article_id, s.status),
+                         (self.text.content, self.article.pk, 'new'))
+
+    def test_preview_renders_like_the_page(self):
+        import re
+
+        self.client.force_login(self.student)
+        url = reverse('textbook:block_preview', args=[self.text.pk])
+        html = self.client.post(url, {
+            'proposed': 'Переменная – это **именованная** ячейка памяти.'}).json()['html']
+        self.assertIn('<p>', html)
+        self.assertRegex(html, r'<ins[^>]*><strong>именованная</strong></ins>')
+        self.assertNotIn('**', html)
+        # Закрытый разбор недоступен и через превью; картинке превью не нужно.
+        self.assertEqual(self.client.post(reverse('textbook:block_preview', args=[self.solution.pk]),
+                                          {'proposed': 'x'}).status_code, 404)
+        self.assertEqual(self.client.post(reverse('textbook:block_preview', args=[self.image.pk]),
+                                          {'proposed': 'x'}).status_code, 404)
+        self.assertFalse(re.search('[]', html))
+
+    def test_unchanged_text_and_empty_description_rejected(self):
+        self.client.force_login(self.student)
+        self.assertEqual(self.client.post(self.suggest_url(self.text), {
+            'proposed': self.text.content}).status_code, 400)
+        self.assertEqual(self.client.post(self.suggest_url(self.image), {
+            'proposed': '   '}).status_code, 400)
+
+    def test_open_limit(self):
+        from textbook.models import Suggestion
+
+        Suggestion.objects.bulk_create([
+            Suggestion(user=self.student, article=self.article, proposed='x')
+            for _ in range(Suggestion.OPEN_LIMIT)])
+        self.client.force_login(self.student)
+        self.assertEqual(self.client.post(self.suggest_url(self.image), {
+            'proposed': 'другая схема'}).status_code, 429)
+
+    def test_image_must_be_a_real_picture(self):
+        import io
+        import tempfile
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from PIL import Image
+
+        self.client.force_login(self.student)
+        fake = SimpleUploadedFile('x.png', b'not an image', content_type='image/png')
+        self.assertEqual(self.client.post(self.suggest_url(self.image), {
+            'proposed': 'лучше так', 'image': fake}).status_code, 400)
+
+        buf = io.BytesIO()
+        Image.new('RGB', (4, 4)).save(buf, 'PNG')
+        real = SimpleUploadedFile('x.png', buf.getvalue(), content_type='image/png')
+        with tempfile.TemporaryDirectory() as media, self.settings(MEDIA_ROOT=media):
+            self.assertEqual(self.client.post(self.suggest_url(self.image), {
+                'proposed': 'лучше так', 'image': real}).status_code, 200)
+
+    # ---------- страница учителя ----------
+
+    def test_feedback_page_is_teacher_only(self):
+        url = reverse('textbook:feedback')
+        self.client.force_login(self.student)
+        self.assertEqual(self.client.get(url).status_code, 302)
+        self.client.force_login(self.teacher)
+        self.assertEqual(self.client.get(url).status_code, 200)
+        self.assertEqual(self.client.get(url, {'tab': 'ratings'}).status_code, 200)
+
+    def test_teacher_sees_diff_answers_and_student_sees_reply(self):
+        from textbook.models import ArticleRating, Suggestion
+
+        s = Suggestion.objects.create(user=self.student, article=self.article, block=self.text,
+                                      original='ячейка', proposed='именованная ячейка')
+        ArticleRating.objects.create(user=self.student, article=self.article, stars=2,
+                                     comment='непонятно')
+        self.client.force_login(self.teacher)
+        page = self.client.get(reverse('textbook:feedback'))
+        self.assertRegex(page.content.decode(), r'<ins[^>]*>\s*именованная\s*</ins>')
+        self.assertEqual(page.context['NEW_SUGGESTIONS'], 1)
+        ratings = self.client.get(reverse('textbook:feedback'), {'tab': 'ratings'})
+        self.assertContains(ratings, 'непонятно')
+
+        self.client.post(reverse('textbook:suggestion_update', args=[s.pk]),
+                         {'status': 'accepted', 'reply': 'Поправил', 'filter': 'new'})
+        s.refresh_from_db()
+        self.assertEqual((s.status, s.reply), ('accepted', 'Поправил'))
+
+        self.client.force_login(self.student)
+        profile = self.client.get(reverse('accounts:profile'))
+        self.assertContains(profile, 'Поправил')
+        self.assertNotIn('NEW_SUGGESTIONS', profile.context)
+
+    def test_profile_shows_last_eight_and_link_to_all(self):
+        from textbook.models import Suggestion
+
+        Suggestion.objects.bulk_create([
+            Suggestion(user=self.student, article=self.article, proposed=f'правка {n:02}')
+            for n in range(10)])
+        self.client.force_login(self.student)
+        profile = self.client.get(reverse('accounts:profile'))
+        self.assertEqual(len(profile.context['suggestions']), 8)
+        self.assertContains(profile, 'Посмотреть все (10)')
+
+        all_page = self.client.get(reverse('textbook:suggestions'))
+        self.assertEqual(len(all_page.context['suggestions']), 10)
+        # Чужой список – только учителю; ученику ?user= ничего не даёт.
+        other = self.client.get(reverse('textbook:suggestions'), {'user': self.teacher.pk})
+        self.assertEqual(other.context['owner'], self.student)
+        self.client.force_login(self.teacher)
+        foreign = self.client.get(reverse('textbook:suggestions'), {'user': self.student.pk})
+        self.assertEqual(len(foreign.context['suggestions']), 10)
+
+    def test_home_announcement_only_for_logged_in(self):
+        """Анонс на главной: гость не может ни оценить, ни предложить – ему его не показываем."""
+        self.assertNotContains(self.client.get(reverse('home')), 'news:article-feedback')
+        self.client.force_login(self.student)
+        self.assertContains(self.client.get(reverse('home')), 'news:article-feedback')
+
+    def test_student_cannot_change_status(self):
+        from textbook.models import Suggestion
+
+        s = Suggestion.objects.create(user=self.student, article=self.article, proposed='x')
+        self.client.force_login(self.student)
+        self.client.post(reverse('textbook:suggestion_update', args=[s.pk]), {'status': 'accepted'})
+        s.refresh_from_db()
+        self.assertEqual(s.status, 'new')
+
+
+class WordDiffTest(SimpleTestCase):
+    def test_marks_words_and_escapes(self):
+        from textbook.templatetags.textbook_tags import word_diff
+
+        html = word_diff('это ячейка памяти', 'это именованная ячейка памяти')
+        self.assertRegex(html, r'<ins[^>]*>\s*именованная\s*</ins>')
+        self.assertNotIn('<del', html)
+        self.assertIn('&lt;script&gt;', word_diff('', '<script>'))
+
+    def test_preview_keeps_markdown_structure(self):
+        """Метка вставки не должна ломать разметку: список остаётся списком,
+        формула – целой, чужой HTML вычищается тем же bleach, что у статьи."""
+        from textbook.templatetags.textbook_tags import markdown_preview
+
+        html = markdown_preview('Список:\n- один', 'Список:\n- один\n- два пункта')
+        self.assertRegex(html, r'<li><ins[^>]*>два пункта</ins></li>')
+        self.assertRegex(markdown_preview('Формула $a+b$', 'Формула $a+b+c$'),
+                         r'<ins[^>]*>\$a\+b\+c\$</ins>')
+        self.assertRegex(markdown_preview('# Тема', '# Новая тема'), r'<h1><ins')
+        self.assertNotIn('<script', markdown_preview('x', '<script>alert(1)</script>'))
+        # Метка, вписанная в текст руками, не должна разорвать атрибут.
+        self.assertIn('title="&lt;b&gt;"',
+                      markdown_preview('a', '[x](http://e.ru "<b>")'))

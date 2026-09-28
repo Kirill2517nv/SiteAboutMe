@@ -1,0 +1,19 @@
+{% load textbook_tags %}
+{# Список предложений автора: блок в профиле (последние 8) и страница «все» – одна разметка на оба места #}
+<ul class="divide-y divide-gray-100 dark:divide-slate-700 text-sm">
+    {% for s in suggestions %}
+    <li class="px-6 py-3">
+        <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <a href="{{ s.article.get_absolute_url }}{% if s.block_id %}#block-{{ s.block_id }}{% endif %}" class="font-medium text-gray-900 dark:text-white hover:text-brand-600 dark:hover:text-cyan-400">{{ s.article.title }}</a>
+            {# Markdown отрисован и снят до текста: сырые «> **`int`**» в строке читаются как мусор #}
+            <span class="text-gray-500 dark:text-slate-400 truncate max-w-xs">{{ s.proposed|markdownify|striptags|truncatechars:80 }}</span>
+            <span class="ml-auto text-xs px-2 py-0.5 rounded-full whitespace-nowrap
+                         {% if s.status == 'new' %}bg-amber-100 text-amber-800{% elif s.status == 'accepted' %}bg-green-100 text-green-800{% else %}bg-gray-100 text-gray-600{% endif %}">{% if s.status == 'new' %}На рассмотрении{% else %}{{ s.get_status_display }}{% endif %}</span>
+        </div>
+        <div class="mt-0.5 text-xs text-gray-400 dark:text-slate-500">{{ s.created_at|date:"d.m.Y" }}</div>
+        {% if s.reply %}
+        <p class="mt-1 text-gray-700 dark:text-slate-300"><span class="font-medium">Учитель:</span> {{ s.reply }}</p>
+        {% endif %}
+    </li>
+    {% endfor %}
+</ul>

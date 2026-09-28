@@ -1,0 +1,180 @@
+{% extends 'base.html' %}
+{% load textbook_tags profile_tags %}
+
+{% block title %}Задание {{ linked_range|default:number }}: {{ student|surname_first }}{% endblock title %}
+
+{% block content %}
+{% comment %}
+Ответы одного ученика по заданию – всё, что он решал, а не только ошибки.
+
+Задача раскрывается нативным <details>: условие, затем каждая выдача задачи по
+времени (тренировка, экзамен, переписывание) с итоговым ответом и попыткой, а у
+задач на код – все отправки. Промежуточных текстовых ответов в базе нет: от
+выдачи остаются последний ответ и счётчик попыток, поэтому «с 3-й попытки»
+стоит рядом с ответом, которым она закончилась.
+{% endcomment %}
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+    <a href="{% url 'ege:ege_task_students' number %}"
+       class="inline-flex items-center gap-1 text-sm text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200 mb-4">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+        </svg>
+        Задание {{ linked_range|default:number }}: ученики
+    </a>
+
+    <div class="flex flex-wrap items-start justify-between gap-3 mb-6">
+        <div class="min-w-0">
+            <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">{{ student|surname_first }}</h1>
+            <p class="text-base text-gray-500 dark:text-slate-400">
+                Задание {{ linked_range|default:number }}{% if task %} · {{ task.title }}{% endif %}
+                · решал {{ total }} задач{{ total|plural:"у,и," }}, ошибок {{ mistakes }}
+            </p>
+        </div>
+        <a href="{% url 'ege:ege_list' %}?student={{ student.id }}#progress"
+           class="shrink-0 text-sm px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-300 hover:border-brand-400">
+            Весь прогресс
+        </a>
+    </div>
+
+    <div class="flex flex-wrap gap-2 mb-6">
+        <a href="?"
+           class="px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors {% if not errors_only %}bg-brand-600 border-brand-600 text-white{% else %}bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-300 hover:border-brand-400{% endif %}">
+            Все задачи · {{ total }}
+        </a>
+        <a href="?errors=1"
+           class="px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors {% if errors_only %}bg-brand-600 border-brand-600 text-white{% else %}bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-300 hover:border-brand-400{% endif %}">
+            Только ошибки · {{ mistakes }}
+        </a>
+    </div>
+
+    <div class="space-y-3">
+        {% for entry in entries %}
+        {% with question=entry.question %}
+        <details class="group bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 overflow-hidden">
+            <summary class="flex items-center justify-between gap-4 p-4 cursor-pointer list-none hover:bg-gray-50 dark:hover:bg-slate-700/40">
+                <div class="flex items-center gap-3 min-w-0">
+                    {% if entry.last is False %}
+                    <span class="shrink-0 w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 flex items-center justify-center text-sm font-bold">✗</span>
+                    {% elif entry.last %}
+                    <span class="shrink-0 w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-sm font-bold">✓</span>
+                    {% else %}
+                    <span class="shrink-0 w-8 h-8 rounded-full bg-gray-100 dark:bg-slate-700 text-gray-400 flex items-center justify-center text-sm font-bold">?</span>
+                    {% endif %}
+                    <div class="min-w-0">
+                        <div class="font-medium text-gray-900 dark:text-white truncate">
+                            {% if linked_range %}<span class="text-gray-400">№{{ question.ege_number }} · </span>{% endif %}{{ question.get_title }}
+                        </div>
+                        <div class="text-xs text-gray-400">
+                            {{ entry.items|length }} выдач{{ entry.items|length|plural:"а,и," }}
+                            {% if entry.submissions %}· {{ entry.submissions|length }} отправ{{ entry.submissions|length|plural:"ка,ки,ок" }} кода{% endif %}
+                            · последняя {{ entry.last_at|date:"d.m.Y" }}
+                        </div>
+                    </div>
+                </div>
+                {% comment %}Сумма по всем выдачам: сколько ученик потратил на задачу всего.{% endcomment %}
+                <span class="ml-auto shrink-0 text-right" title="Всего времени на задачу, по всем выдачам">
+                    <span class="block text-base font-semibold tabular-nums text-gray-900 dark:text-white">{{ entry.mm_ss|default:"–" }}</span>
+                    <span class="block text-xs text-gray-400">всего</span>
+                </span>
+                <svg class="w-5 h-5 shrink-0 text-gray-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                </svg>
+            </summary>
+
+            <div class="px-4 pb-4 border-t border-gray-100 dark:border-slate-700">
+                <div class="pt-4">
+                    {% include 'quizzes/_ege_question_body.html' %}
+                </div>
+
+                <div class="mt-5 text-xs font-medium text-gray-500 dark:text-slate-400 mb-1.5">Выдачи задачи</div>
+                <div class="rounded-lg border border-gray-100 dark:border-slate-700 divide-y divide-gray-100 dark:divide-slate-700">
+                    {% for item in entry.items %}
+                    <div class="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm">
+                        <span class="text-xs text-gray-400 tabular-nums w-24">{{ item.answered_at|date:"d.m.Y H:i" }}</span>
+                        <span class="text-xs px-2 py-0.5 rounded-md {% if item.session.kind == 'retry' %}bg-violet-50 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300{% elif item.session.mode == 'exam' %}bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300{% else %}bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300{% endif %}">
+                            {% if item.session.kind == 'retry' %}переписывание{% elif item.session.mode == 'exam' %}экзамен{% else %}тренировка{% endif %}
+                        </span>
+                        <span class="text-xs tabular-nums font-medium w-10 {% include 'quizzes/_ege_time_class.html' with color=item.time_color %}"
+                              title="Время на задачу в этой выдаче">{{ item.mm_ss|default:"–" }}</span>
+                        {% if item.gave_up %}
+                        <span class="text-xs font-medium text-red-600 dark:text-red-400">открыл ответ</span>
+                        {% elif item.score is not None %}
+                        <span class="text-xs font-medium text-amber-600 dark:text-amber-400">{{ item.score }} из {{ question.points }}</span>
+                        {% elif item.is_correct %}
+                        <span class="text-xs font-medium text-emerald-600 dark:text-emerald-400">верно{% if item.attempts > 1 %} с {{ item.attempts }}-й попытки{% endif %}</span>
+                        {% elif item.is_correct is False %}
+                        <span class="text-xs font-medium text-red-600 dark:text-red-400">неверно{% if item.attempts > 1 %} · {{ item.attempts }} попыт{{ item.attempts|plural:"ка,ки,ок" }}{% endif %}</span>
+                        {% else %}
+                        <span class="text-xs text-gray-400">без зачёта</span>
+                        {% endif %}
+                        {% if question.question_type != 'code' %}
+                        <span class="ml-auto font-mono {% if item.is_correct %}text-emerald-700 dark:text-emerald-300{% else %}text-red-700 dark:text-red-300{% endif %}">{{ item.text_answer|default:"(пусто)" }}</span>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+
+                {% if entry.submissions %}
+                {% comment %}
+                Отправки кода хранятся все, в отличие от текстовых ответов. Каждая
+                раскрывается отдельно: у задачи бывает десяток попыток, и все
+                исходники подряд превратили бы страницу в ленту.
+                {% endcomment %}
+                <div class="mt-5 text-xs font-medium text-gray-500 dark:text-slate-400 mb-1.5">Отправки кода</div>
+                <div class="space-y-2">
+                    {% for sub in entry.submissions %}
+                    <details class="rounded-lg border border-gray-100 dark:border-slate-700" {% if forloop.last %}open{% endif %}>
+                        <summary class="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm cursor-pointer">
+                            <span class="text-xs text-gray-400 tabular-nums w-24">{{ sub.created_at|date:"d.m.Y H:i" }}</span>
+                            {% if sub.score is not None %}
+                            <span class="text-xs font-medium text-amber-600 dark:text-amber-400">{{ sub.score }} из {{ question.points }}</span>
+                            {% elif sub.is_correct %}
+                            <span class="text-xs font-medium text-emerald-600 dark:text-emerald-400">верно</span>
+                            {% elif sub.is_correct is False %}
+                            <span class="text-xs font-medium text-red-600 dark:text-red-400">неверно</span>
+                            {% else %}
+                            <span class="text-xs text-gray-400">{{ sub.get_status_display }}</span>
+                            {% endif %}
+                            {% if sub.cpu_time_ms is not None %}
+                            <span class="text-xs text-gray-400 tabular-nums">{{ sub.cpu_time_ms|floatformat:0 }} мс{% if sub.memory_kb %} · {{ sub.memory_kb }} КБ{% endif %}</span>
+                            {% endif %}
+                        </summary>
+                        <div class="px-3 pb-3">
+                            <pre class="p-3 rounded-lg bg-slate-900 text-slate-100 text-xs overflow-x-auto"><code>{{ sub.code }}</code></pre>
+                            {% if sub.error_log %}
+                            <pre class="mt-2 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 text-xs overflow-x-auto whitespace-pre-wrap">{{ sub.error_log }}</pre>
+                            {% endif %}
+                        </div>
+                    </details>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                {% comment %}
+                Панель учителя – та же, что на странице сессии, банка и ошибок:
+                рендерится на сервере, в данные страницы не попадает.
+                {% endcomment %}
+                <details class="mt-5">
+                    <summary class="inline-flex items-center gap-2 text-xs font-medium text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30 hover:bg-amber-100 dark:hover:bg-amber-900/50 border border-amber-200 dark:border-amber-900/60 rounded-lg px-3 py-1.5 cursor-pointer list-none">
+                        Показать ответ
+                    </summary>
+                    <div class="mt-3 rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-900/20 p-4 text-sm">
+                        {% include 'quizzes/_ege_answer_body.html' %}
+                    </div>
+                </details>
+            </div>
+        </details>
+        {% endwith %}
+        {% empty %}
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-8 text-center">
+            <p class="text-gray-500 dark:text-slate-400">
+                {% if errors_only %}Ошибок по этому заданию нет.{% else %}Ученик ещё не решал это задание.{% endif %}
+            </p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock content %}
+
+{% block pre_alpine_js %}{% include 'quizzes/_mathjax.html' %}{% endblock pre_alpine_js %}

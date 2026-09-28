@@ -1,0 +1,175 @@
+{% extends 'base.html' %}
+{% load textbook_tags profile_tags %}
+
+{% block title %}Задание {{ linked_range|default:number }}: ученики{% endblock title %}
+
+{% block content %}
+{% comment %}
+Одно задание глазами учителя: строка – ученик, вкладка – класс.
+
+Числа считает ege_stats.task_student_rows теми же правилами, что ученическая
+карточка задания: «решено X из Y» – разные задачи банка, ошибки – исход
+последней попытки, экзамен – порог решённых в тренировке и итог последнего.
+Фамилия ведёт в разбор ответов, число ошибок – в тот же разбор, только ошибки.
+{% endcomment %}
+<div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+    <a href="{% url 'ege:ege_task' number %}"
+       class="inline-flex items-center gap-1 text-sm text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200 mb-4">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+        </svg>
+        Карточка задания
+    </a>
+
+    <div class="mb-6">
+        <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
+            Задание {{ linked_range|default:number }}: ученики
+        </h1>
+        <p class="text-base text-gray-500 dark:text-slate-400 mt-1">
+            {% if task %}{{ task.title }} · {% endif %}{% if linked_range %}в банке {{ bank_size }} связ{{ bank_size|plural:"ка,ки,ок" }} – по задаче каждого номера.{% else %}в банке {{ bank_size }} задач{{ bank_size|plural:"а,и," }}.{% endif %}
+            Фамилия – ссылка на ответы ученика, число ошибок – на проваленные задачи
+        </p>
+    </div>
+
+    {% include 'quizzes/_ege_group_tabs.html' %}
+
+    {% regroup rows by group as grouped_rows %}
+    {% for group_entry in grouped_rows %}
+    <section class="mb-10">
+        <div class="flex items-center gap-3 mb-3">
+            <h2 class="text-lg font-bold text-gray-900 dark:text-white">
+                {{ group_entry.grouper|default:"Без класса" }}
+            </h2>
+            <span class="text-sm text-gray-400 dark:text-slate-500">{{ group_entry.list|length }} ученик{{ group_entry.list|length|plural:",а,ов" }}</span>
+            <div class="flex-1 h-px bg-gray-200 dark:bg-slate-700"></div>
+        </div>
+
+        <div class="overflow-x-auto rounded-xl border border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-gray-100 dark:border-slate-700 text-left align-bottom">
+                        <th class="px-4 py-3 font-medium text-gray-500 dark:text-slate-400">Ученик</th>
+                        <th class="px-3 py-3 font-medium text-gray-500 dark:text-slate-400 text-center">
+                            Решено
+                            <div class="text-xs font-normal text-gray-400">из банка · с 1-й попытки</div>
+                        </th>
+                        <th class="px-3 py-3 font-medium text-gray-500 dark:text-slate-400 text-center">
+                            Ошибки
+                            <div class="text-xs font-normal text-gray-400">ждут разбора</div>
+                        </th>
+                        <th class="px-3 py-3 font-medium text-gray-500 dark:text-slate-400 text-center">
+                            Время
+                            <div class="text-xs font-normal text-gray-400">тренировка · на задачу</div>
+                        </th>
+                        <th class="px-3 py-3 font-medium text-gray-500 dark:text-slate-400 text-center">
+                            Время
+                            <div class="text-xs font-normal text-gray-400">экзамен · на задачу</div>
+                        </th>
+                        <th class="px-3 py-3 font-medium text-gray-500 dark:text-slate-400 text-center">
+                            Экзамен
+                            <div class="text-xs font-normal text-gray-400">доступ · последний</div>
+                        </th>
+                        <th class="px-3 py-3 font-medium text-gray-500 dark:text-slate-400 text-center">
+                            Последняя попытка
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in group_entry.list %}
+                    <tr class="border-b border-gray-50 dark:border-slate-700/50 last:border-0 hover:bg-gray-50 dark:hover:bg-slate-700/30">
+                        <td class="px-4 py-3">
+                            <a href="{% url 'ege:ege_task_student' number row.user.id %}"
+                               class="font-medium text-gray-900 dark:text-white hover:text-brand-600 dark:hover:text-cyan-400">
+                                {{ row.user|surname_first }}
+                            </a>
+                        </td>
+
+                        {% comment %}
+                        Решено, ошибки и время – по строке на номер (row.parts). У связки
+                        19–21 их три, как три карточки статистики на странице задания:
+                        одним числом не видно, что 19-е ученик решает, а 21-е нет. Строки
+                        одной высоты (h-6), чтобы номера стояли вровень во всех колонках.
+                        {% endcomment %}
+                        <td class="px-3 py-3 text-center tabular-nums">
+                            {% for part in row.parts %}
+                            <div class="h-6 flex items-center justify-center gap-1.5 whitespace-nowrap">
+                                {% if linked_range %}<span class="text-xs font-normal text-gray-400 w-5 text-right">{{ part.number }}</span>{% endif %}
+                                {% if part.solved %}
+                                <span class="font-semibold text-gray-900 dark:text-white">{{ part.solved }}</span>
+                                <span class="text-gray-400">/ {{ part.bank_size }}</span>
+                                <span class="text-xs text-gray-400" title="С первой попытки">· {{ part.first_try }} с 1-й</span>
+                                {% else %}
+                                <span class="text-gray-300 dark:text-slate-600">–</span>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        </td>
+
+                        <td class="px-3 py-3 text-center tabular-nums">
+                            {% for part in row.parts %}
+                            <div class="h-6 flex items-center justify-center gap-1.5">
+                                {% if linked_range %}<span class="text-xs font-normal text-gray-400 w-5 text-right">{{ part.number }}</span>{% endif %}
+                                {% if part.mistakes %}
+                                <a href="{% url 'ege:ege_task_student' number row.user.id %}?errors=1"
+                                   class="px-2 rounded-md font-semibold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40">
+                                    {{ part.mistakes }}
+                                </a>
+                                {% else %}
+                                <span class="text-gray-300 dark:text-slate-600">0</span>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        </td>
+
+                        {% comment %}
+                        Среднее по выдачам с засечённым временем – то же правило, что в
+                        «По каждому заданию» у ученика; цвет – против норматива своего номера.
+                        {% endcomment %}
+                        <td class="px-3 py-3 text-center tabular-nums font-medium">
+                            {% for part in row.parts %}
+                            <div class="h-6 flex items-center justify-center gap-1.5">
+                                {% if linked_range %}<span class="text-xs font-normal text-gray-400 w-5 text-right">{{ part.number }}</span>{% endif %}
+                                <span class="{% include 'quizzes/_ege_time_class.html' with color=part.study_time.color %}">{{ part.study_time.mm_ss|default:"–" }}</span>
+                            </div>
+                            {% endfor %}
+                        </td>
+                        <td class="px-3 py-3 text-center tabular-nums font-medium">
+                            {% for part in row.parts %}
+                            <div class="h-6 flex items-center justify-center gap-1.5">
+                                {% if linked_range %}<span class="text-xs font-normal text-gray-400 w-5 text-right">{{ part.number }}</span>{% endif %}
+                                <span class="{% include 'quizzes/_ege_time_class.html' with color=part.exam_time.color %}">{{ part.exam_time.mm_ss|default:"–" }}</span>
+                            </div>
+                            {% endfor %}
+                        </td>
+
+                        <td class="px-3 py-3 text-center tabular-nums">
+                            {% if row.exam %}
+                            <span class="font-semibold text-gray-900 dark:text-white">{{ row.exam.correct }} / {{ row.exam.total }}</span>
+                            <div class="text-xs text-gray-400">{{ row.exam.finished_at|date:"d.m" }}</div>
+                            {% elif row.exam_open %}
+                            <span class="text-xs text-emerald-600 dark:text-emerald-400">открыт, не писал</span>
+                            {% else %}
+                            <span class="text-xs text-gray-400">закрыт · {{ row.study_solved }} / {{ row.threshold }}</span>
+                            {% endif %}
+                        </td>
+
+                        <td class="px-3 py-3 text-center text-xs {% if not row.last_active %}text-gray-400{% elif row.days_ago <= 2 %}text-emerald-600 dark:text-emerald-400{% elif row.days_ago <= 7 %}text-gray-500 dark:text-slate-400{% else %}text-red-500 dark:text-red-400{% endif %}">
+                            {% if not row.last_active %}не решал
+                            {% elif row.days_ago == 0 %}сегодня
+                            {% elif row.days_ago == 1 %}вчера
+                            {% else %}{{ row.last_active|date:"d.m.Y" }}{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    {% empty %}
+    <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-8 text-center">
+        <p class="text-gray-500 dark:text-slate-400">В этом классе нет учеников.</p>
+    </div>
+    {% endfor %}
+</div>
+{% endblock content %}

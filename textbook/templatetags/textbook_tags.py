@@ -175,3 +175,78 @@ def time_short(seconds):
         return f'{minutes} мин'
     hours, minutes = divmod(minutes, 60)
     return f'{hours} ч {minutes:02d} мин'
+
+
+#: Классы пометок diff – общие с живым diff в редакторе (article-feedback.js).
+DIFF_DEL = 'bg-red-100 text-red-800 line-through dark:bg-red-950/60 dark:text-red-300'
+DIFF_INS = 'bg-green-100 text-green-800 dark:bg-green-950/60 dark:text-green-300'
+_DIFF_TOKEN = re.compile(r'\s+|\w+|[^\w\s]')
+
+
+@register.simple_tag
+def word_diff(before, after):
+    """Пословный diff «было/стало» для страницы правок: удалённое красным, новое зелёным.
+
+    Слова, а не символы: правка «ячейка → именованная ячейка» читается как
+    вставка одного слова, а посимвольный diff нарезал бы её на буквы.
+    """
+    import difflib
+
+    a, b = _DIFF_TOKEN.findall(before or ''), _DIFF_TOKEN.findall(after or '')
+    out = []
+    for op, i1, i2, j1, j2 in difflib.SequenceMatcher(None, a, b, autojunk=False).get_opcodes():
+        if op == 'equal':
+            out.append(escape(''.join(a[i1:i2])))
+            continue
+        if i2 > i1:
+            out.append(f'<del class="{DIFF_DEL}">{escape("".join(a[i1:i2]))}</del>')
+        if j2 > j1:
+            out.append(f'<ins class="{DIFF_INS} no-underline">{escape("".join(b[j1:j2]))}</ins>')
+    return mark_safe(''.join(out))
+
+
+# Метки вставки – символы из Private Use Area: Markdown и bleach пропускают их
+# как обычный текст, в статьях их не бывает, и после рендера они становятся <ins>.
+_INS_OPEN, _INS_CLOSE = '', ''
+# Формула и `код` – один токен: метка внутри $…$ сломала бы MathJax.
+_PREVIEW_TOKEN = re.compile(r'\$\$.*?\$\$|\$[^$\n]+\$|`[^`\n]+`|\s+|\w+|[^\w\s]', re.S)
+# Разметка начала строки (пункт списка, заголовок, цитата, ячейка таблицы) и
+# хвостовой «|» остаются снаружи метки, иначе «- пункт» – уже не список.
+_LINE_PARTS = re.compile(r'(\s*(?:(?:[-*+]|\d+\.)\s+|#{1,6}\s+|>\s*|\|\s*)?)(.*?)(\s*\|?\s*)$', re.S)
+
+
+def _mark_inserted(chunk):
+    """Обернуть вставленный кусок метками – по строке, чтобы <ins> не пересекал абзацы."""
+    if '$$' in chunk and '\n' in chunk:
+        return chunk   # многострочная формула – метка разорвала бы её
+    lines = []
+    for line in chunk.split('\n'):
+        lead, body, trail = _LINE_PARTS.match(line).groups()
+        if body and not body.startswith('```'):
+            line = f'{lead}{_INS_OPEN}{body}{_INS_CLOSE}{trail}'
+        lines.append(line)
+    return '\n'.join(lines)
+
+
+def markdown_preview(before, after):
+    """Предложенный текст так, как его нарисует статья, – новые слова подсвечены.
+
+    Рендер – тот же `markdownify`, что у статьи: превью в редакторе правки не
+    может разойтись со страницей. Удалённое не показывается – его видно в поле
+    над превью, а вставленный обратно в разметку зачёркнутый Markdown
+    (половина `**`, пункт списка) ломал бы структуру того, что осталось.
+    """
+    import difflib
+
+    # Метки из самого текста вычищаем: вписанная вручную метка внутри атрибута
+    # (`title="…"`) после замены на <ins class="…"> разорвала бы кавычки.
+    strip = str.maketrans('', '', _INS_OPEN + _INS_CLOSE)
+    before, after = (before or '').translate(strip), (after or '').translate(strip)
+    a, b = _PREVIEW_TOKEN.findall(before), _PREVIEW_TOKEN.findall(after)
+    parts = []
+    for op, _, _, j1, j2 in difflib.SequenceMatcher(None, a, b, autojunk=False).get_opcodes():
+        chunk = ''.join(b[j1:j2])
+        parts.append(_mark_inserted(chunk) if op != 'equal' and chunk.strip() else chunk)
+    html = str(markdownify(''.join(parts)))
+    return mark_safe(html.replace(_INS_OPEN, f'<ins class="{DIFF_INS} no-underline">')
+                         .replace(_INS_CLOSE, '</ins>'))

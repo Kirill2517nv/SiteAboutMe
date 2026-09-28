@@ -241,6 +241,34 @@ def _viewed_student(request):
     return get_object_or_404(User, id=int(student_id), is_superuser=False)
 
 
+def _class_filter(request):
+    """
+    Ученики одного класса по ?group=: (ученики, классы, есть ли без класса, текущая вкладка).
+
+    Общий для таблицы класса и таблицы задания: вкладки у них одни и те же.
+    """
+    students = _student_list()
+    groups = list(
+        StudentGroup.objects
+        .filter(students__user__is_superuser=False).distinct().order_by('name')
+    )
+    loose = students.filter(profile__group__isnull=True).exists()
+
+    # По умолчанию – первый класс списка: конкретный класс перед глазами полезнее
+    # общего свода, а «все» и «без класса» стоят рядом отдельными вкладками.
+    current = request.GET.get('group') or (str(groups[0].id) if groups else 'all')
+    # id класса приходит из адреса: нечисловой ?group= уронил бы фильтр по
+    # profile__group_id пятисоткой. Мусор трактуем как «все».
+    if not (current in ('all', 'none') or current.isdigit()):
+        current = 'all'
+    if current == 'none':
+        students = students.filter(profile__group__isnull=True)
+    elif current != 'all':
+        students = students.filter(profile__group_id=current)
+
+    return students, groups, loose, current
+
+
 @user_passes_test(lambda user: user.is_superuser)
 def ege_class_view(request):
     """
@@ -263,24 +291,7 @@ def ege_class_view(request):
     """
     from . import ege_stats
 
-    students = _student_list()
-    groups = list(
-        StudentGroup.objects
-        .filter(students__user__is_superuser=False).distinct().order_by('name')
-    )
-    loose = students.filter(profile__group__isnull=True).exists()
-
-    # По умолчанию – первый класс списка: конкретный класс перед глазами полезнее
-    # общего свода, а «все» и «без класса» стоят рядом отдельными вкладками.
-    current = request.GET.get('group') or (str(groups[0].id) if groups else 'all')
-    # id класса приходит из адреса: нечисловой ?group= уронил бы фильтр по
-    # profile__group_id пятисоткой. Мусор трактуем как «все».
-    if not (current in ('all', 'none') or current.isdigit()):
-        current = 'all'
-    if current == 'none':
-        students = students.filter(profile__group__isnull=True)
-    elif current != 'all':
-        students = students.filter(profile__group_id=current)
+    students, groups, loose, current = _class_filter(request)
 
     return render(request, 'quizzes/ege_class.html', {
         'rows': ege_stats.class_rows(students),

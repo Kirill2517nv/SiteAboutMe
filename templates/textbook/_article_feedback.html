@@ -1,0 +1,79 @@
+{% comment %}
+Отзыв читателя: звёзды под статьёй и диалог правки. Логика – static/js/article-feedback.js.
+Показ и скрытие – через style.display, а не класс hidden: у кнопок и панелей
+свои display-классы, и hidden рядом с ними не срабатывает.
+{% endcomment %}
+<section id="article-rating" class="mt-12 pt-8 border-t border-gray-200 dark:border-slate-800 md:pl-2 present-hide"
+         data-rate-url="{% url 'textbook:article_rate' article.slug %}"
+         data-stars="{{ my_rating.stars|default:0 }}">
+    <h2 class="text-xl font-bold text-gray-900 dark:text-white">Насколько понятно написано?</h2>
+    <p class="mt-1 text-sm text-gray-500 dark:text-slate-400">
+        Оценку видит только учитель. Нашли неудачное место – нажмите ✎ у блока
+        и предложите, как лучше.
+    </p>
+    <div class="flex items-center gap-1 mt-3">
+        {% for n in "12345" %}
+        <button type="button" data-star="{{ n }}" aria-label="{{ n }} из 5"
+                class="text-3xl leading-none text-gray-300 dark:text-slate-600 hover:scale-110 transition-transform">★</button>
+        {% endfor %}
+        <span data-rate-status class="ml-3 text-sm text-gray-500 dark:text-slate-400"></span>
+    </div>
+    <div data-rate-comment class="mt-3 max-w-xl" style="display:none">
+        <textarea rows="3" maxlength="2000" placeholder="Что было непонятно? Необязательно, но так учитель поймёт, что переписать."
+                  class="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 p-3 text-sm">{{ my_rating.comment }}</textarea>
+        <button type="button" data-rate-send
+                class="mt-2 px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 transition-colors">Отправить</button>
+    </div>
+</section>
+
+<dialog id="suggest-dialog"
+        class="w-full max-w-2xl rounded-2xl p-0 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 shadow-2xl backdrop:bg-black/60">
+    <form class="p-6 space-y-4">
+        <div>
+            <h3 class="text-xl font-bold">Предложить правку</h3>
+            <p class="text-sm text-gray-500 dark:text-slate-400"><span data-suggest-kind></span>. Учитель прочитает и ответит в вашем профиле.</p>
+        </div>
+
+        <label class="block">
+            <span class="text-sm font-medium" data-suggest-label>Как лучше</span>
+            <textarea name="proposed" rows="8" maxlength="20000" required
+                      class="mt-1 w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 p-3 font-mono text-sm"></textarea>
+        </label>
+
+        {# Текст и формула – превью как на странице (article-body даёт те же стили, что у статьи); код – diff исходника #}
+        <div data-suggest-preview-wrap style="display:none">
+            <span class="text-sm font-medium">Как будет на странице <span class="text-gray-400 font-normal">– новое подсвечено</span></span>
+            <div data-suggest-preview
+                 class="article-body mt-1 max-h-80 overflow-auto rounded-lg bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 p-4"></div>
+        </div>
+        {# Та же обёртка .code-block, что строит decorateCodeBlocks() на странице: цвета и шрифт – оттуда #}
+        <div data-suggest-diff-wrap style="display:none">
+            <span class="text-sm font-medium">Как будет на странице <span class="text-gray-400 font-normal">– новые строки зелёные, удалённые красные</span></span>
+            <div class="code-block mt-1">
+                <div class="code-block__head"><span class="code-block__lang" data-suggest-diff-lang></span></div>
+                <pre class="max-h-80"><code data-suggest-diff></code></pre>
+            </div>
+        </div>
+
+        <label class="block">
+            <span class="text-sm font-medium">Почему <span class="text-gray-400 font-normal">(необязательно)</span></span>
+            <textarea name="comment" rows="2" maxlength="2000"
+                      class="mt-1 w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 p-3 text-sm"></textarea>
+        </label>
+
+        <label class="block">
+            <span class="text-sm font-medium">Своя картинка <span class="text-gray-400 font-normal">(png, jpg, webp, до 5 МБ)</span></span>
+            <input type="file" name="image" accept=".png,.jpg,.jpeg,.webp"
+                   class="mt-1 block w-full text-sm text-gray-600 dark:text-slate-300">
+        </label>
+
+        <p data-suggest-error class="text-sm text-red-600 dark:text-red-400"></p>
+
+        <div class="flex justify-end gap-3">
+            <button type="button" data-suggest-cancel
+                    class="px-4 py-2 rounded-lg border border-gray-300 dark:border-slate-600 text-sm font-medium hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors">Отмена</button>
+            <button type="submit"
+                    class="px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 transition-colors">Отправить</button>
+        </div>
+    </form>
+</dialog>

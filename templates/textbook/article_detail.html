@@ -145,7 +145,14 @@
             <!-- Блоки контента -->
             <div class="space-y-8 pswp-gallery md:pl-2">
                 {% for block in blocks %}
-                <article data-slide>
+                <article data-slide id="block-{{ block.pk }}"{% if block.suggestable %} class="relative group" data-suggest-url="{% url 'textbook:block_suggest' block.pk %}"{% endif %}>
+                    {% if block.suggestable %}
+                    {# Правка блока – диалог из _article_feedback.html, логика в article-feedback.js #}
+                    <button type="button" data-suggest-block title="Предложить правку этого блока"
+                            class="present-hide absolute -right-2 -top-3 z-10 w-8 h-8 inline-flex items-center justify-center rounded-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-400 hover:text-brand-600 dark:hover:text-cyan-400 shadow-sm transition md:opacity-0 md:group-hover:opacity-100 focus:opacity-100">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536M9 13l6.232-6.232a2.5 2.5 0 113.536 3.536L12.536 16.5H9V13z"/><path stroke-linecap="round" stroke-linejoin="round" d="M4 20h16"/></svg>
+                    </button>
+                    {% endif %}
                     {% if block.is_solution %}
                     {# Разбор задания: янтарь = «видно учителю». Решение стёрто во view – services.visible_blocks #}
                     {# Панель свёрнута по умолчанию: разбор занимает экран и не должен попадаться на глаза раньше, чем задание решено #}
@@ -354,6 +361,8 @@
             </section>
             {% endif %}
 
+            {% if user.is_authenticated %}{% include 'textbook/_article_feedback.html' %}{% endif %}
+
             <!-- Предыдущая / следующая статья -->
             {% if prev_article or next_article %}
             <div class="flex items-center justify-between gap-3 mt-12 pt-6 border-t border-gray-200 dark:border-slate-800 md:pl-2 present-hide">
@@ -393,6 +402,15 @@
     };
     // Единое оформление для всех блоков кода: и для block_type='code',
     // и для ``` -фенсов внутри markdown-текста (оба дают <pre><code>).
+    // Тема листингов одна на всю страницу: переключили в одном блоке –
+    // посветлели все. Хранится у зрителя, как масштаб проектора.
+    const CODE_THEME_KEY = 'codeTheme';
+    const codeThemeLabel = () =>
+        document.documentElement.classList.contains('code-light') ? 'Тёмный фон' : 'Светлый фон';
+    try {
+        if (localStorage.getItem(CODE_THEME_KEY) === 'light') document.documentElement.classList.add('code-light');
+    } catch {}
+
     function decorateCodeBlocks() {
         document.querySelectorAll('pre > code').forEach(code => {
             const pre = code.parentElement;
@@ -403,8 +421,15 @@
             wrap.className = 'code-block';
             wrap.innerHTML = '<div class="code-block__head">'
                 + '<span class="code-block__lang"></span>'
-                + '<button type="button" class="code-block__copy">Копировать</button></div>';
+                + '<button type="button" class="code-block__copy">Копировать</button>'
+                + '<button type="button" class="code-block__copy code-block__theme"></button></div>';
             wrap.querySelector('.code-block__lang').textContent = lang;
+            wrap.querySelector('.code-block__theme').textContent = codeThemeLabel();
+            wrap.querySelector('.code-block__theme').addEventListener('click', () => {
+                const light = document.documentElement.classList.toggle('code-light');
+                try { localStorage.setItem(CODE_THEME_KEY, light ? 'light' : 'dark'); } catch {}
+                document.querySelectorAll('.code-block__theme').forEach(b => { b.textContent = codeThemeLabel(); });
+            });
             pre.replaceWith(wrap);
             wrap.appendChild(pre);
 
@@ -466,4 +491,5 @@
 </script>
 {% endif %}
 <script src="{% static 'js/textbook-progress.js' %}"></script>
+{% if user.is_authenticated %}<script src="{% static 'js/article-feedback.js' %}"></script>{% endif %}
 {% endblock %}

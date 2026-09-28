@@ -58,33 +58,7 @@ setAttribute('style', …) и стёрла бы display:none, который с�
         </p>
     </div>
 
-    {% comment %}
-    Выбор класса. Показывается один класс за раз: классов со временем становится
-    много, и страница из пяти таблиц по два десятка строк перестаёт отвечать на
-    свой единственный вопрос. «Все» остаётся для редкого сравнения поперёк
-    классов, «без класса» – для тех, кого ещё никуда не записали.
-    {% endcomment %}
-    <div class="flex flex-wrap items-center gap-2 mb-6">
-        {% for group in groups %}
-        <a href="?group={{ group.id }}"
-           class="px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors
-            {% if current_group == group.id|stringformat:'s' %}bg-brand-600 border-brand-600 text-white{% else %}bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-300 hover:border-brand-400{% endif %}">
-            {{ group.name }}
-        </a>
-        {% endfor %}
-        {% if has_loose %}
-        <a href="?group=none"
-           class="px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors
-            {% if current_group == 'none' %}bg-brand-600 border-brand-600 text-white{% else %}bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-gray-500 dark:text-slate-400 hover:border-brand-400{% endif %}">
-            Без класса
-        </a>
-        {% endif %}
-        <a href="?group=all"
-           class="px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors
-            {% if current_group == 'all' %}bg-brand-600 border-brand-600 text-white{% else %}bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-gray-500 dark:text-slate-400 hover:border-brand-400{% endif %}">
-            Все
-        </a>
-    </div>
+    {% include 'quizzes/_ege_group_tabs.html' %}
 
     {% regroup rows by group as grouped_rows %}
     {% for group_entry in grouped_rows %}

@@ -13,7 +13,7 @@ from accounts.models import StudentGroup
 from accounts.templatetags.profile_tags import surname_first
 from quizzes.models import Question, Quiz, UserAnswer, UserResult
 
-from .models import Article, ArticleBlock, ArticleProgress, ArticleQuiz, Section
+from .models import Article, ArticleBlock, ArticleProgress, ArticleQuiz, ArticleRating, Section
 from .services import (
     attempted_quiz_ids,
     correct_answers_count,
@@ -193,6 +193,10 @@ def article_detail_view(request, slug):
     # файла на диске (сид прогнали раньше, чем приехал media), и обращение
     # к .width уронило бы страницу целиком вместо одной битой иллюстрации.
     for block in blocks:
+        # ✎ и правка по выделению: закрытый разбор ученик видит заглушкой,
+        # править в нём нечего. То же правило – в views_feedback._suggestable_block.
+        block.suggestable = request.user.is_authenticated and (
+            block.visibility != 'teacher' or request.user.is_superuser)
         block.pswp_size = None
         if block.block_type == 'image' and block.image:
             try:
@@ -314,6 +318,9 @@ def article_detail_view(request, slug):
     # правило то же, что в `visible_group_ids`.
     frontier_here = frontier_positions(visible_group_ids(request)).get(article.id, [])
 
+    my_rating = (ArticleRating.objects.filter(user=request.user, article=article).first()
+                 if request.user.is_authenticated else None)
+
     context = {
         'article': article,
         'blocks': blocks,
@@ -324,6 +331,7 @@ def article_detail_view(request, slug):
         # и скрипт разойтись не могут. Лишнего запроса нет: blocks уже в памяти.
         'has_widgets': any(b.block_type == 'widget' for b in blocks),
         'self_checks': self_checks,
+        'my_rating': my_rating,
         'progress': progress,
         'frontier': frontier_here,
         'sidebar_items': sidebar_items,

@@ -5,9 +5,11 @@ from .models import (
     ArticleBlock,
     ArticleProgress,
     ArticleQuiz,
+    ArticleRating,
     EgeTask,
     Section,
     SectionExtension,
+    Suggestion,
 )
 
 
@@ -106,3 +108,21 @@ class ArticleProgressAdmin(admin.ModelAdmin):
     list_filter = ('status',)
     search_fields = ('user__username', 'article__title')
     readonly_fields = ('first_opened_at', 'updated_at')
+
+
+@admin.register(ArticleRating)
+class ArticleRatingAdmin(admin.ModelAdmin):
+    list_display = ('article', 'user', 'stars', 'updated_at')
+    list_filter = ('stars', 'article__track')
+    search_fields = ('user__username', 'article__title', 'comment')
+
+
+@admin.register(Suggestion)
+class SuggestionAdmin(admin.ModelAdmin):
+    """Запасной вход. Читать правки удобнее на /textbook/feedback/ – там diff и формулы."""
+
+    list_display = ('article', 'user', 'status', 'created_at')
+    list_filter = ('status', 'article__track')
+    list_editable = ('status',)
+    search_fields = ('user__username', 'article__title', 'proposed', 'comment')
+    readonly_fields = ('user', 'article', 'block', 'created_at')

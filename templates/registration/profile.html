@@ -290,6 +290,20 @@
         </div>
     </section>
 
+    <!-- ===== Предложенные правки к статьям ===== -->
+    {% if suggestions %}
+    <div class="mb-8 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden" data-aos="fade-up" data-aos-delay="250">
+        <div class="px-6 py-4 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between gap-3">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Предложения к статьям</h2>
+            {% if suggestions_total > suggestions|length %}
+            <a href="{% url 'textbook:suggestions' %}{% if not is_own %}?user={{ profile_user.id }}{% endif %}"
+               class="text-sm font-medium text-brand-600 dark:text-cyan-400 hover:underline">Посмотреть все ({{ suggestions_total }})</a>
+            {% endif %}
+        </div>
+        {% include 'textbook/_suggestion_list.html' %}
+    </div>
+    {% endif %}
+
     <!-- ===== Последняя активность ===== -->
     <div class="grid md:grid-cols-3 gap-6 mb-8">
         {% if recent_results %}

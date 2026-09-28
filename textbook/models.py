@@ -377,3 +377,96 @@ class ArticleProgress(models.Model):
 
     def __str__(self):
         return f"{self.user} – {self.article} ({self.get_status_display()})"
+
+
+class ArticleRating(models.Model):
+    """Насколько понятно изложена статья – звёзды читателя в её конце.
+
+    Одна оценка на человека: её можно поменять, но не накрутить. Комментарий
+    форма просит только при 1–3 звёздах – низкая оценка без причины говорит,
+    что статья просела, но не где.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='article_ratings', verbose_name="Пользователь"
+    )
+    article = models.ForeignKey(
+        Article, on_delete=models.CASCADE,
+        related_name='ratings', verbose_name="Статья"
+    )
+    stars = models.PositiveSmallIntegerField(verbose_name="Звёзды (1–5)")
+    comment = models.TextField(blank=True, max_length=2000, verbose_name="Что было непонятно")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлено")
+
+    class Meta:
+        verbose_name = "Оценка статьи"
+        verbose_name_plural = "Оценки статей"
+        constraints = [
+            models.UniqueConstraint(fields=['user', 'article'], name='unique_user_article_rating'),
+            models.CheckConstraint(condition=models.Q(stars__gte=1, stars__lte=5),
+                                   name='article_rating_stars_1_5'),
+        ]
+
+    def __str__(self):
+        return f"{self.user} – {self.article}: {self.stars}★"
+
+
+class Suggestion(models.Model):
+    """Совещательная правка к блоку статьи: что, где и как переписать.
+
+    В статью правка не попадает никогда: контент пишут seed-команды, и правка,
+    внесённая только в базу, стёрлась бы следующим прогоном. Учитель читает её
+    на /textbook/feedback/ и вносит в seed сам.
+
+    `original` – снимок исходника блока на момент отправки, а не ссылка на
+    блок: после правки статьи diff «было/стало» иначе сравнивал бы предложение
+    уже с новым текстом.
+
+    Правки по выделению фрагмента были и убраны: плавающая кнопка спорила с
+    меню выделения браузера, а цитата приходила видимым текстом без Markdown.
+    """
+
+    STATUS_CHOICES = [
+        ('new',      'Новое'),
+        ('accepted', 'Принято'),
+        ('rejected', 'Отклонено'),
+    ]
+    #: Сколько нерассмотренных правок может висеть у одного человека.
+    OPEN_LIMIT = 20
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='suggestions', verbose_name="Автор"
+    )
+    article = models.ForeignKey(
+        Article, on_delete=models.CASCADE,
+        related_name='suggestions', verbose_name="Статья"
+    )
+    # Блок могут удалить или пересобрать сидом – правка при этом остаётся:
+    # статья и снимок оригинала говорят, о чём она.
+    block = models.ForeignKey(
+        ArticleBlock, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='suggestions', verbose_name="Блок"
+    )
+    original = models.TextField(blank=True, max_length=20000, verbose_name="Было")
+    proposed = models.TextField(max_length=20000, verbose_name="Стало / как лучше")
+    comment = models.TextField(blank=True, max_length=2000, verbose_name="Почему")
+    image = models.ImageField(
+        upload_to='textbook/suggestions/%Y/%m/', blank=True, null=True,
+        verbose_name="Картинка"
+    )
+    status = models.CharField(
+        max_length=10, choices=STATUS_CHOICES, default='new', verbose_name="Статус"
+    )
+    reply = models.TextField(blank=True, max_length=2000, verbose_name="Ответ учителя")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Отправлено")
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Предложение правки"
+        verbose_name_plural = "Предложения правок"
+        indexes = [models.Index(fields=['status', '-created_at'])]
+
+    def __str__(self):
+        return f"{self.user} → {self.article} ({self.get_status_display()})"

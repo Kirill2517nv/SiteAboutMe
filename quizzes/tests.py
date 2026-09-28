@@ -2814,3 +2814,151 @@ class QuestionFileDownloadTests(TestCase):
         )
         response = self.client.get(f'/quizzes/question-file/{ghost.id}/download/')
         self.assertEqual(response.status_code, 404)
+
+
+class TaskStudentsTests(TestCase):
+    """
+    Таблица задания и разбор ответов ученика глазами учителя.
+
+    Счётчики таблицы считаются пачкой на класс (task_student_rows), карточка
+    ученика – по одному (task_stats, exam_access), разбор – своим циклом по
+    PracticeItem. Три подсчёта одного и того же обязаны совпасть.
+    """
+
+    def setUp(self):
+        self.teacher = get_user_model().objects.create_superuser('teacher', password='pwd')
+        self.student = get_user_model().objects.create_user(
+            'pupil', password='pwd', last_name='Иванов')
+        self.quiz = Quiz.objects.create(title='Банк 17', quiz_type='bank',
+                                        slug='bank-17', is_public=True)
+        self.questions = [
+            Question.objects.create(quiz=self.quiz, text=f'в{i}', question_type='text',
+                                    correct_text_answer='1', ege_number=17)
+            for i in range(3)
+        ]
+        EgeTask.objects.create(number=17, title='Задание 17')
+
+    def _answer(self, question, correct, mode='study', kind='topic', attempts=1, answer='5'):
+        session = PracticeSession.objects.create(
+            user=self.student, kind=kind, mode=mode, ege_number=17,
+            finished_at=timezone.now(),
+        )
+        return PracticeItem.objects.create(
+            session=session, question=question, order=0, is_correct=correct,
+            attempts=attempts, text_answer=answer, answered_at=timezone.now(),
+        )
+
+    def _row(self):
+        return ege_stats.task_student_rows([self.student], [17])[0]
+
+    def test_closed_for_a_student(self):
+        self.client.login(username='pupil', password='pwd')
+        self.assertEqual(self.client.get('/ege/task/17/students/').status_code, 403)
+        self.assertEqual(
+            self.client.get(f'/ege/task/17/students/{self.student.id}/').status_code, 403)
+
+    def test_row_matches_the_student_card(self):
+        self._answer(self.questions[0], True, attempts=3)
+        self._answer(self.questions[1], True)
+        self._answer(self.questions[2], False)
+        row = self._row()
+        part = row['parts'][0]
+        card = {s['number']: s for s in ege_stats.task_stats(self.student)}[17]
+        self.assertEqual((part['solved'], part['first_try'], part['bank_size']),
+                         (card['solved'], card['first_try'], card['bank_size']))
+        self.assertEqual(row['mistakes'], ege_practice.mistake_count(self.student))
+        self.assertEqual((row['exam_open'], row['study_solved'], row['threshold']),
+                         ege_practice.exam_access(self.student, 17))
+
+    def test_last_exam_matches_the_card(self):
+        self._answer(self.questions[0], True, mode='exam')
+        exam = self._row()['exam']
+        last = ege_stats.mode_rows(self.student)[17]['exam']['last']
+        self.assertEqual((exam['correct'], exam['total']), (last['correct'], last['total']))
+
+    def test_errors_page_matches_the_counter(self):
+        self._answer(self.questions[0], False)
+        self._answer(self.questions[1], False)
+        self._answer(self.questions[1], True)
+        self._answer(self.questions[2], True)
+        self.client.login(username='teacher', password='pwd')
+        url = f'/ege/task/17/students/{self.student.id}/'
+        response = self.client.get(url + '?errors=1')
+        self.assertEqual(len(response.context['entries']), self._row()['mistakes'])
+        self.assertEqual(len(self.client.get(url).context['entries']), 3)
+
+    def test_failed_retry_does_not_reopen_a_solved_task(self):
+        # Неудачное переписывание решённую задачу решённой и оставляет.
+        self._answer(self.questions[0], True)
+        self._answer(self.questions[0], False, kind='retry')
+        self.client.login(username='teacher', password='pwd')
+        response = self.client.get(f'/ege/task/17/students/{self.student.id}/?errors=1')
+        self.assertEqual(response.context['entries'], [])
+        self.assertEqual(self._row()['mistakes'], 0)
+
+    def test_answers_and_all_code_submissions_are_shown(self):
+        self._answer(self.questions[0], False, answer='42')
+        code_q = Question.objects.create(quiz=self.quiz, text='код', question_type='code',
+                                         ege_number=17)
+        for code in ('print(1)', 'print(2)'):
+            CodeSubmission.objects.create(user=self.student, question=code_q, quiz=self.quiz,
+                                          code=code, status='failed', is_correct=False)
+        self._answer(code_q, False, answer='')
+        self.client.login(username='teacher', password='pwd')
+        response = self.client.get(f'/ege/task/17/students/{self.student.id}/')
+        self.assertContains(response, '42')
+        self.assertContains(response, 'print(1)')
+        self.assertContains(response, 'print(2)')
+
+    def test_classroom_work_is_hidden(self):
+        self._answer(self.questions[0], False, kind='classroom')
+        self.client.login(username='teacher', password='pwd')
+        response = self.client.get(f'/ege/task/17/students/{self.student.id}/')
+        self.assertEqual(response.context['total'], 0)
+
+    def _timed(self, seconds, mode='study', correct=True):
+        item = self._answer(self.questions[0], correct, mode=mode)
+        PracticeItem.objects.filter(pk=item.pk).update(seconds=seconds)
+
+    def test_average_time_matches_mode_rows(self):
+        # Ноль – время не засечено, в среднее не идёт, как у ученика.
+        for seconds, mode in ((60, 'study'), (180, 'study'), (0, 'study'), (300, 'exam')):
+            self._timed(seconds, mode)
+        part = self._row()['parts'][0]
+        modes = ege_stats.mode_rows(self.student)[17]
+        self.assertEqual(part['study_time']['mm_ss'], modes['study']['avg_mm_ss'])
+        self.assertEqual(part['exam_time']['mm_ss'], modes['exam']['avg_mm_ss'])
+        self.assertEqual(part['study_time']['mm_ss'], '2:00')
+
+    def test_detail_shows_total_time_per_task(self):
+        self._timed(90, correct=False)
+        self._timed(45, correct=False)
+        self.client.login(username='teacher', password='pwd')
+        response = self.client.get(f'/ege/task/17/students/{self.student.id}/')
+        self.assertEqual(response.context['entries'][0]['mm_ss'], '2:15')
+        self.assertContains(response, '1:30')
+
+    def test_linked_task_is_split_by_number(self):
+        # Связка: по строке на номер, как карточки на странице задания, и цвет
+        # времени – по нормативу своего номера (19 – 5 мин, 21 – 10 мин).
+        numbers = (19, 20, 21)
+        for n in numbers:
+            EgeTask.objects.create(number=n, title=f'Задание {n}')
+        trio = [Question.objects.create(quiz=self.quiz, text=f'{n}', question_type='code',
+                                        ege_number=n, group_id='g1', group_order=i)
+                for i, n in enumerate(numbers)]
+        self._answer(trio[0], True)
+        item = self._answer(trio[2], False)
+        PracticeItem.objects.filter(pk=item.pk).update(seconds=9 * 60)
+        parts = ege_stats.task_student_rows([self.student], list(numbers))[0]['parts']
+        card = {s['number']: s for s in ege_stats.task_stats(self.student)}
+        self.assertEqual([p['number'] for p in parts], [19, 20, 21])
+        self.assertEqual([p['solved'] for p in parts], [card[n]['solved'] for n in numbers])
+        self.assertEqual([p['mistakes'] for p in parts], [0, 0, 1])
+        self.assertEqual(parts[2]['study_time']['color'], 'green')
+
+    def test_table_lists_the_student(self):
+        self.client.login(username='teacher', password='pwd')
+        response = self.client.get('/ege/task/17/students/?group=all')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, f'/ege/task/17/students/{self.student.id}/')

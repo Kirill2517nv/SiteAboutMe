@@ -9,18 +9,22 @@ from collections import Counter, defaultdict
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import User
 from django.core.exceptions import PermissionDenied
+from django.db.models import prefetch_related_objects
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from accounts.templatetags.profile_tags import surname_first
 from textbook.models import Article, EgeTask
 
 from . import ege_practice, ege_stats
 from .ege_scoring import grade as ege_grade
 from .ege_constants import (
     EGE_QUIZ_TYPES, EGE_RECOMMENDED_TIME, EGE_TASK_POINTS, EXAM_MINUTES,
+    EXCLUDED_KINDS, PRACTICE_QUIZ_TYPES,
     LINKED_GROUP_TITLE, STUDY_MAX_SIZE, ege_time_color,
 )
 from .models import CodeSubmission, PracticeItem, PracticeSession, Question
@@ -175,6 +179,133 @@ def _question_pool(question):
     if question.exam_only:
         return 'exam'
     return 'study'
+
+
+def _teacher_task_numbers(request, number):
+    """Проверка доступа учителя и номера, которые обслуживает страница (связка – целиком)."""
+    if not request.user.is_superuser:
+        raise PermissionDenied('Страница открыта учителю')
+    if number not in range(1, 28):
+        raise Http404('Нет такого задания ЕГЭ')
+    linked = ege_stats.linked_numbers()
+    return sorted(linked) if number in linked else [number]
+
+
+@login_required
+def ege_task_students_view(request, number):
+    """
+    Одно задание глазами учителя: кто сколько решил, где застрял, что с экзаменом.
+
+    Таблица класса (/ege/class/) отвечает «с кем работать», эта – «как класс
+    справляется с этой темой». Фамилия ведёт в разбор ответов ученика по заданию,
+    число ошибок – туда же, но только на проваленные задачи.
+    """
+    from .views import _class_filter
+
+    numbers = _teacher_task_numbers(request, number)
+    if number != numbers[0]:
+        return redirect('ege:ege_task_students', number=numbers[0])
+
+    students, groups, loose, current = _class_filter(request)
+    rows = ege_stats.task_student_rows(students, numbers)
+    # Сортировка по той же строке, что стоит в ячейке («Фамилия Имя», иначе
+    # логин), – как в отчёте учебника: order_by('last_name') ставил учеников
+    # без фамилии в начало, хотя в таблице у них логин.
+    rows.sort(key=lambda row: (str(row['group'] or 'яяя'),
+                               surname_first(row['user']).lower().replace('ё', 'е')))
+
+    return render(request, 'quizzes/ege_task_students.html', {
+        'number': number,
+        'task': _task_or_404(number),
+        'numbers': numbers,
+        'linked_range': f'{min(numbers)}–{max(numbers)}' if len(numbers) > 1 else '',
+        'rows': rows,
+        'groups': groups,
+        'has_loose': loose,
+        'current_group': current,
+        # Тот же счёт банка, что в task_stats и в ячейках таблицы.
+        'bank_size': Question.objects.filter(
+            quiz__quiz_type__in=PRACTICE_QUIZ_TYPES, ege_number=numbers[0]).count(),
+    })
+
+
+@login_required
+def ege_task_student_view(request, number, user_id):
+    """
+    Все ответы одного ученика по заданию: каждая задача, которую он трогал.
+
+    По задаче – условие, затем каждая её выдача по времени (тренировка, экзамен,
+    переписывание) с итоговым ответом и попыткой, на которой он пришёл, а для
+    кода – все отправки с логом. Промежуточные текстовые ответы в базе не
+    хранятся: от выдачи остаётся последний ответ и счётчик попыток.
+
+    ?errors=1 – только задачи из долга, по тому же правилу, что счётчик в
+    таблице: исход последней попытки. Задачи урока (classroom) не показываются –
+    их решают у доски, и в статистике их тоже нет.
+    """
+    numbers = _teacher_task_numbers(request, number)
+    student = get_object_or_404(User, id=user_id, is_superuser=False)
+    errors_only = request.GET.get('errors') == '1'
+
+    items = list(
+        PracticeItem.objects
+        .filter(session__user=student, answered_at__isnull=False,
+                question__ege_number__in=numbers,
+                question__quiz__quiz_type__in=EGE_QUIZ_TYPES)
+        .exclude(session__kind='classroom')
+        .exclude(carried=True)
+        .select_related('question', 'session', 'submission')
+        .order_by('answered_at')
+    )
+
+    by_question = {}
+    for item in items:
+        entry = by_question.setdefault(item.question_id, {
+            'question': item.question, 'items': [], 'submissions': [], 'last': None,
+        })
+        entry['items'].append(item)
+        entry['last_at'] = item.answered_at
+        entry['seconds'] = entry.get('seconds', 0) + item.seconds
+        item.mm_ss = ege_stats._mm_ss(item.seconds)
+        item.time_color = ege_time_color(item.seconds, item.question.ege_number)
+        # Долг считается без переписываний: неудачный эксперимент с решённой
+        # задачей её решённой и оставляет (EXCLUDED_KINDS).
+        if item.session.kind not in EXCLUDED_KINDS:
+            entry['last'] = item.is_correct
+
+    for sub in (
+        CodeSubmission.objects
+        .filter(user=student, question_id__in=by_question.keys())
+        .order_by('created_at')
+    ):
+        by_question[sub.question_id]['submissions'].append(sub)
+
+    total = len(by_question)
+    mistakes = sum(1 for entry in by_question.values() if entry['last'] is False)
+    entries = [
+        entry for entry in by_question.values()
+        if not errors_only or entry['last'] is False
+    ]
+    # Итог по задаче – сумма всех выдач: сколько ученик на неё потратил всего.
+    for entry in by_question.values():
+        entry['mm_ss'] = ege_stats._mm_ss(entry['seconds'])
+
+    # Сверху – то, с чем ученик работал последним.
+    entries.sort(key=lambda entry: entry['last_at'], reverse=True)
+
+    questions = [entry['question'] for entry in entries]
+    prefetch_related_objects(questions, 'images', 'test_cases')
+
+    return render(request, 'quizzes/ege_task_student.html', {
+        'number': numbers[0],
+        'task': _task_or_404(numbers[0]),
+        'linked_range': f'{min(numbers)}–{max(numbers)}' if len(numbers) > 1 else '',
+        'student': student,
+        'entries': entries,
+        'total': total,
+        'mistakes': mistakes,
+        'errors_only': errors_only,
+    })
 
 
 @login_required

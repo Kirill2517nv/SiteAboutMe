@@ -82,6 +82,7 @@ TEMPLATES = [
                 'django.contrib.messages.context_processors.messages',
                 'pages.context_processors.app_version',
                 'pages.context_processors.yandex_metrika',
+                'textbook.context_processors.feedback_badge',
             ],
         },
     },

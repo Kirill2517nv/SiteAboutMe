@@ -99,6 +99,11 @@ class ProfileView(LoginRequiredMixin, generic.TemplateView):
                 .annotate(max_score=Count('quiz__questions', distinct=True))
                 .order_by('-date_completed')[:5]
             ),
+            # Правки к статьям и ответ учителя на них (textbook.Suggestion). В
+            # профиле – последние 8, чтобы активный автор не растягивал страницу;
+            # все – на textbook:suggestions.
+            'suggestions': list(user.suggestions.select_related('article')[:8]),
+            'suggestions_total': user.suggestions.count(),
         })
 
         # Учителю — переключение между учениками прямо из профиля.

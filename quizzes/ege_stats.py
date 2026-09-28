@@ -1401,3 +1401,140 @@ def class_rows(users):
                                -row['score']['primary'],
                                row['user'].last_name, row['user'].username))
     return rows
+
+
+def task_student_rows(users, numbers):
+    """
+    Строка на ученика для таблицы одного задания (views_practice.ege_task_students_view).
+
+    numbers – номера, которые обслуживает страница: один номер или связка 19–21
+    целиком, как на карточке задания. Считается пачкой на весь класс – два
+    запроса на журнал тренировок и два на экзамены, а не task_stats() в цикле.
+
+    Решено, ошибки и время лежат в row['parts'] – по элементу на номер. У связки
+    их три, как три карточки статистики на странице задания: сваленные в одно
+    число, они прятали бы главное – что 19-е ученик решает, а 21-е нет, – а
+    среднее время мерилось бы нормативом одного номера (5 минут у 19-го против
+    10 у 21-го). Экзамен у связки один, поэтому он общий на строку.
+
+    Правила повторяют ученические счётчики буквально, потому что учитель
+    сверяет таблицу с карточкой ученика:
+      решено / с первой попытки – _solved_by_number (задачи банка, не попытки)
+      ошибки                    – mistake_count: исход последней попытки
+      время                     – mode_rows: среднее по выдачам с засечённым временем
+      экзамен открыт            – study_solved_count против порога номера
+      последний экзамен         – _last_exam_by_number
+    """
+    from .ege_practice import exam_unlock_threshold
+
+    users = list(users)
+    ids = [u.id for u in users]
+    lead = min(numbers)
+    if not ids:
+        return []
+
+    bank_sizes = dict(
+        Question.objects
+        .filter(quiz__quiz_type__in=PRACTICE_QUIZ_TYPES, ege_number__in=numbers)
+        .values_list('ege_number').annotate(n=Count('id'))
+    )
+    threshold = exam_unlock_threshold(lead)
+
+    def _part():
+        return {'best': {}, 'last': {}, 'time': {'study': [0, 0], 'exam': [0, 0]}}
+
+    stats = {uid: {'parts': {n: _part() for n in numbers}, 'study': set(), 'active': None}
+             for uid in ids}
+    for uid, qid, quiz_type, mode, number, correct, attempts, answered, seconds in (
+        PracticeItem.objects
+        .filter(session__user_id__in=ids, answered_at__isnull=False,
+                question__ege_number__in=numbers,
+                question__quiz__quiz_type__in=EGE_QUIZ_TYPES)
+        .exclude(session__kind__in=EXCLUDED_KINDS)
+        .exclude(carried=True)
+        .order_by('answered_at')
+        .values_list('session__user_id', 'question_id', 'question__quiz__quiz_type',
+                     'session__mode', 'question__ege_number', 'is_correct',
+                     'attempts', 'answered_at', 'seconds')
+    ):
+        row = stats[uid]
+        part = row['parts'][number]
+        row['active'] = answered
+        if seconds and mode in part['time']:
+            part['time'][mode][0] += seconds
+            part['time'][mode][1] += 1
+        # Экзамен связки открывают только задачи 19-го – ровно как exam_access.
+        if mode == 'study' and correct and number == lead:
+            row['study'].add(qid)
+        if quiz_type not in PRACTICE_QUIZ_TYPES:
+            continue
+        part['last'][qid] = correct
+        if correct:
+            part['best'][qid] = min(attempts, part['best'].get(qid, attempts))
+
+    # Последний завершённый экзамен – те же два запроса, что в _last_exam_by_number,
+    # только на весь класс сразу.
+    latest = {}
+    for session in (
+        PracticeSession.objects
+        .filter(user_id__in=ids, mode='exam', finished_at__isnull=False,
+                ege_number__in=numbers)
+        .order_by('user_id', '-finished_at')
+        .values('id', 'user_id', 'finished_at')
+    ):
+        latest.setdefault(session['user_id'], session)
+    totals = {
+        row['session_id']: row
+        for row in PracticeItem.objects
+        .filter(session_id__in=[s['id'] for s in latest.values()])
+        .values('session_id')
+        .annotate(total=Count('id'), correct=Sum(PRACTICE_CREDIT))
+    }
+
+    today = timezone.localdate()
+    rows = []
+    for user in users:
+        row = stats[user.id]
+        parts = []
+        for number in numbers:
+            part = row['parts'][number]
+            bank_size = bank_sizes.get(number, 0)
+            solved = min(len(part['best']), bank_size)
+            times = {}
+            for mode, (total, n) in part['time'].items():
+                avg = int(total / n) if n else 0
+                times[mode] = {'mm_ss': _mm_ss(avg), 'color': ege_time_color(avg, number)}
+            parts.append({
+                'number': number,
+                'solved': solved,
+                'first_try': min(sum(1 for a in part['best'].values() if a <= 1), solved),
+                'bank_size': bank_size,
+                'mistakes': sum(1 for correct in part['last'].values() if correct is False),
+                'study_time': times['study'],
+                'exam_time': times['exam'],
+            })
+        exam = None
+        if user.id in latest:
+            session = latest[user.id]
+            agg = totals.get(session['id'], {'total': 0, 'correct': 0})
+            correct = _tidy(agg['correct'])
+            exam = {
+                'total': agg['total'], 'correct': correct,
+                'accuracy': round(correct / agg['total'] * 100) if agg['total'] else None,
+                'finished_at': session['finished_at'],
+            }
+        study_solved = len(row['study'])
+        last = row['active']
+        rows.append({
+            'user': user,
+            'group': getattr(getattr(user, 'profile', None), 'group', None),
+            'parts': parts,
+            'mistakes': sum(part['mistakes'] for part in parts),
+            'study_solved': study_solved,
+            'threshold': threshold,
+            'exam_open': threshold <= 0 or study_solved >= threshold,
+            'exam': exam,
+            'last_active': last,
+            'days_ago': (today - timezone.localtime(last).date()).days if last else None,
+        })
+    return rows
