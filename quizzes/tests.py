@@ -683,6 +683,17 @@ class EgeStatsTests(TestCase):
         self.assertEqual(card['first_try'], 1)
         self.assertEqual(card['progress'], 50)
 
+    def test_classroom_pool_stays_off_the_bank_size(self):
+        # Классный набор в статистику не идёт – значит, и в «из Y» тоже:
+        # иначе прорешанный банк никогда не показал бы «решено Y из Y».
+        self._item(True)
+        Question.objects.create(
+            quiz=self.bank, text='для урока', question_type='text',
+            correct_text_answer='1', ege_number=26, points=2, classroom_only=True,
+        )
+        card = [t for t in ege_stats.task_stats(self.user) if t['number'] == 26][0]
+        self.assertEqual((card['solved'], card['bank_size'], card['progress']), (1, 1, 100))
+
     def test_same_task_solved_twice_counts_once(self):
         item = self._item(True)
         PracticeItem.objects.create(

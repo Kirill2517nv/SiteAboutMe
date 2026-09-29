@@ -225,7 +225,8 @@ def ege_task_students_view(request, number):
         'current_group': current,
         # Тот же счёт банка, что в task_stats и в ячейках таблицы.
         'bank_size': Question.objects.filter(
-            quiz__quiz_type__in=PRACTICE_QUIZ_TYPES, ege_number=numbers[0]).count(),
+            quiz__quiz_type__in=PRACTICE_QUIZ_TYPES, ege_number=numbers[0],
+            classroom_only=False).count(),
     })
 
 

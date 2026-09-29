@@ -319,10 +319,14 @@ def task_stats(user):
     # тот же источник, что и тренировка (PRACTICE_QUIZ_TYPES), а не всю базу ЕГЭ.
     # Пока здесь стояло EGE_QUIZ_TYPES, карточка показывала задачи из вариантов,
     # которые тренировка не выдаёт, и «что подтянуть» советовало задания
-    # с пустой подборкой.
+    # с пустой подборкой. Классный набор из знаменателя выкинут по той же
+    # причине: в статистику он не идёт, и «решено 20 из 25» при пяти задачах
+    # урока не превращалось бы в 25 из 25 никогда. Резерв экзамена остаётся –
+    # решённое на экзамене в числителе есть.
     bank_counts = dict(
         Question.objects
         .filter(quiz__quiz_type__in=PRACTICE_QUIZ_TYPES, ege_number__isnull=False)
+        .exclude(classroom_only=True)
         .values_list('ege_number')
         .annotate(n=Count('id'))
     )
@@ -334,6 +338,7 @@ def task_stats(user):
         Question.objects
         .filter(quiz__quiz_type__in=PRACTICE_QUIZ_TYPES, ege_number__in=linked)
         .exclude(group_id='')
+        .exclude(classroom_only=True)
         .values_list('ege_number')
         .annotate(n=Count('group_id', distinct=True))
     ) if linked else {}
@@ -1436,6 +1441,7 @@ def task_student_rows(users, numbers):
     bank_sizes = dict(
         Question.objects
         .filter(quiz__quiz_type__in=PRACTICE_QUIZ_TYPES, ege_number__in=numbers)
+        .exclude(classroom_only=True)
         .values_list('ege_number').annotate(n=Count('id'))
     )
     threshold = exam_unlock_threshold(lead)

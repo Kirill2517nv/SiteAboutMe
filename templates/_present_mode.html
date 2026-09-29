@@ -55,6 +55,48 @@
     .present-root.present-chrome-left:fullscreen .present-exit {
         position: fixed; top: 12px; right: 12px; left: auto;
     }
+    /* Маркер (static/js/marker.js). Слой – SVG во всё содержимое корня,
+       прокручивается вместе с текстом; корню для этого нужен position:
+       relative (в полном экране браузер сам делает его fixed – тоже годится).
+       Пока маркер выключен, клики проходят сквозь слой к коду и полям ответа.
+       Хром проектора и панель маркера лежат выше слоя, иначе с включённым
+       маркером не переключить задачу. Размеры панели в px, как у хрома: она
+       не должна расти вместе с масштабом текста. */
+    .present-root { position: relative; }
+    .marker-layer { position: absolute; top: 0; left: 0; z-index: 30; pointer-events: none; overflow: visible; }
+    .marker-layer path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+    .marker-layer.marker-active { pointer-events: auto; touch-action: none; cursor: crosshair; }
+    /* Кнопка маркера одна на все страницы и режимы – круглая у правого края,
+       на месте панели, которую она открывает. Была ещё кнопка в шапке, но на
+       длинной статье она уезжала за верх экрана, а в полном экране шапки нет
+       вовсе. На телефоне её нет: палец там прокручивает, а не рисует. */
+    .marker-fab {
+        position: fixed; right: 12px; top: 50%; transform: translateY(-50%); z-index: 32;
+        width: 40px; height: 40px; align-items: center; justify-content: center; border-radius: 50%;
+        background: #fff; border: 1px solid #e5e7eb; color: #4b5563; box-shadow: 0 4px 16px rgb(0 0 0 / .12);
+    }
+    html.dark .marker-fab { background: #1e293b; border-color: #475569; color: #cbd5e1; }
+    .present-root:fullscreen .present-chrome { position: relative; z-index: 31; }
+    .present-root.present-chrome-left:fullscreen .present-chrome { z-index: 31; }
+    .marker-panel {
+        position: fixed; right: 12px; top: 50%; transform: translateY(-50%); z-index: 32;
+        display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px;
+        border-radius: 12px; background: #fff; border: 1px solid #e5e7eb;
+        box-shadow: 0 4px 16px rgb(0 0 0 / .12);
+    }
+    html.dark .marker-panel { background: #1e293b; border-color: #475569; }
+    .marker-panel hr { width: 100%; border: 0; border-top: 1px solid #e5e7eb; margin: 2px 0; }
+    html.dark .marker-panel hr { border-color: #475569; }
+    .marker-panel button {
+        width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+        border-radius: 6px; font-size: 14px; line-height: 1; color: #4b5563;
+    }
+    html.dark .marker-panel button { color: #cbd5e1; }
+    .marker-panel button:hover { background: rgb(0 0 0 / .06); }
+    html.dark .marker-panel button:hover { background: rgb(255 255 255 / .08); }
+    .marker-panel .marker-sel { outline: 2px solid #3b82f6; outline-offset: 1px; }
+    .marker-panel .marker-swatch { width: 22px; height: 22px; border-radius: 50%; border: 1px solid rgb(0 0 0 / .2); }
+    .marker-panel .marker-dot { border-radius: 50%; background: currentColor; }
 </style>
 
 {% comment %}
@@ -102,4 +144,42 @@ nav_list – массив задач. Например, для трениров�
     </button>
 </div>
 
+{% comment %}
+Маркер. Ключ рисунка – полный экран или нет плюс номер задачи/слайда
+(nav_index): уходишь на соседнюю задачу – её рисунок свой, вернулся – твои
+пометки на месте. x-effect стоит здесь, внутри компонента страницы, потому что
+только отсюда виден её nav_index.
+{% endcomment %}
+<svg class="marker-layer" :class="markerOn && 'marker-active'"
+     x-effect="markerKey((presenting ? 'p' : 'n') + ':' + {{ nav_index|default:'0' }})"></svg>
+<button type="button" x-show="!markerOn" class="marker-fab hidden md:flex" title="Маркер (M)" @click="markerToggle()">
+    <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m15 5 4 4M4 20l1-5L16 4l4 4L9 19z"/></svg>
+</button>
+<div x-show="markerOn" x-cloak class="marker-panel" role="toolbar" aria-label="Маркер">
+    <template x-for="c in markerColors" :key="c">
+        <button type="button" class="marker-swatch" :style="{ background: c }" :title="c"
+                :class="!markerErase && markerColor === c && 'marker-sel'" @click="markerPick(c)"></button>
+    </template>
+    <hr>
+    <template x-for="(s, i) in markerSizes" :key="s">
+        <button type="button" :title="'Толщина ' + (i + 1)"
+                :class="markerSize === s && 'marker-sel'" @click="markerSize = s"
+                :style="{ color: markerErase ? '#9ca3af' : markerColor }">
+            <span class="marker-dot" :style="{ width: Math.min(s, 20) + 'px', height: Math.min(s, 20) + 'px' }"></span>
+        </button>
+    </template>
+    <hr>
+    <button type="button" title="Ластик" :class="markerErase && 'marker-sel'" @click="markerErase = !markerErase">
+        <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 21h10M4.5 14.5l7-7 6 6-5.5 5.5H9z"/></svg>
+    </button>
+    <button type="button" title="Отменить (Ctrl+Z)" @click="markerUndo()">
+        <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 14 4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3"/></svg>
+    </button>
+    <button type="button" title="Стереть всё" @click="markerClear()">
+        <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>
+    </button>
+    <button type="button" title="Выключить маркер (M)" @click="markerToggle()">✕</button>
+</div>
+
+<script src="{% static 'js/marker.js' %}"></script>
 <script src="{% static 'js/present-mode.js' %}"></script>

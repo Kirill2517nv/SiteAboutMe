@@ -577,9 +577,19 @@ function practiceApp() {
             this._updateClock();
         },
 
+        // Время задачи кончается в момент верного ответа (или «Показать ответ»),
+        // а не когда ученик нажал «Завершить» или ушёл к соседней: минуты,
+        // пока он любуется зелёной галочкой, – это не время решения.
+        // В повторе задача не закрывается – там каждый заход считается заново.
+        _frozen(it) {
+            if (!it || this.isRetry) return false;
+            return this.verdict[it.item_id] === true || !!this.locked[it.item_id];
+        },
+
         _updateClock() {
             const base = this.item()?.seconds || 0;
-            const live = this._taskStart ? Math.floor((Date.now() - this._taskStart) / 1000) : 0;
+            const live = this._taskStart && !this._frozen(this.item())
+                ? Math.floor((Date.now() - this._taskStart) / 1000) : 0;
             const total = base + live;
             this.clock = Math.floor(total / 60) + ':' + String(total % 60).padStart(2, '0');
 
@@ -604,7 +614,7 @@ function practiceApp() {
             this._taskStart = Date.now();
             // Порог «меньше пяти секунд не шлём» съедал целые сессии: задача,
             // решённая за три секунды, уходила в статистику с нулём.
-            if (spent <= 0) return;
+            if (spent <= 0 || this._frozen(it)) return;
             it.seconds += spent;
             fetch(`/ege/practice/${this.sessionId}/time/`, {
                 method: 'POST',
@@ -688,6 +698,7 @@ function practiceApp() {
         // спрашиваем подтверждение: случайный клик не должен стоить задачи.
         async giveUp(itemId) {
             if (!confirm('Показать верный ответ? Задача будет засчитана как нерешённая.')) return;
+            this._flushTime();   // после ответа задача закрыта – досылаем до него
             this.busy[itemId] = true;
             try {
                 const resp = await fetch(`/ege/practice/${this.sessionId}/reveal/`, {

@@ -749,6 +749,21 @@ class ArticlePresentModeTests(TestCase):
         self.assertIn('js/present-mode.js', self.html)
         self.assertIn('js/article-present.js', self.html)
 
+    def test_marker_rides_with_the_projector(self):
+        """marker.js грузится раньше present-mode.js: presentMode() подмешивает
+        markerMode() при создании компонента. Ключ рисунка несёт номер слайда –
+        иначе пометки одного блока лежали бы поверх следующего."""
+        self.assertLess(self.html.index('js/marker.js'), self.html.index('js/present-mode.js'))
+        self.assertIn('class="marker-layer"', self.html)
+        self.assertIn("(presenting ? 'p' : 'n') + ':' + slide", self.html)
+
+    def test_every_block_can_start_the_show(self):
+        """У каждого блока своя кнопка «показать отсюда» – до последнего слайда
+        не листают от первого. Кнопка маркера – одна, сбоку: в шапке она
+        уезжала за верх экрана."""
+        self.assertEqual(self.html.count('presentFrom($el'), self.article.blocks.count())
+        self.assertEqual(self.html.count('markerToggle()'), 2)  # сбоку + ✕ в панели
+
     def test_every_block_is_a_slide(self):
         self.assertEqual(self.html.count('<article data-slide'), self.article.blocks.count())
 
@@ -1885,10 +1900,10 @@ class ArticleFeedbackTests(TestCase):
         self.assertEqual(len(foreign.context['suggestions']), 10)
 
     def test_home_announcement_only_for_logged_in(self):
-        """Анонс на главной: гость не может ни оценить, ни предложить – ему его не показываем."""
-        self.assertNotContains(self.client.get(reverse('home')), 'news:article-feedback')
+        """Анонс на главной – только вошедшим: гостю хватает врезки «Что это за сайт»."""
+        self.assertNotContains(self.client.get(reverse('home')), 'news:marker')
         self.client.force_login(self.student)
-        self.assertContains(self.client.get(reverse('home')), 'news:article-feedback')
+        self.assertContains(self.client.get(reverse('home')), 'news:marker')
 
     def test_student_cannot_change_status(self):
         from textbook.models import Suggestion

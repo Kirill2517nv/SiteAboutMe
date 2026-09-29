@@ -518,9 +518,11 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
     64%  { transform: translateY(0) rotate(-5deg); }
   }
 
-  /* ==================== АНОНС: ОТЗЫВЫ К СТАТЬЯМ ====================
+  /* ==================== АНОНС: МАРКЕР ====================
      Тот же язык, что у гостевой врезки: подложка .intro__stage, полоски
-     вместо текста, курсор и «тап». Две сцены – ровно два действия ученика. */
+     вместо текста, курсор и «тап». Две сцены – ровно два действия ученика:
+     открыть маркер и рисовать. Курсор и тап – те же keyframes icursor/itap,
+     что у карточки: нажатие приходится на 28% из 7s. */
   .inote__page {
     background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
     padding: 12px 13px 13px; box-shadow: 0 8px 20px -10px rgba(15, 23, 42, .4);
@@ -533,105 +535,64 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
   html.dark .inote__line { background: #334155; }
   .inote__line:last-child { margin-bottom: 0; }
 
-  /* ---------- 4. Звёзды в конце статьи ---------- */
-  .irate { width: 170px; }
-  .irate__stars {
-    position: relative; display: flex; justify-content: center; gap: 4px;
-    margin-top: 10px; font-size: 20px; line-height: 1; color: #d1d5db;
-  }
-  html.dark .irate__stars { color: #475569; }
-  /* Ширина звезды зафиксирована: у «★» она своя в каждом шрифте, а курсор
-     шагает ровно по 22px (18 + gap 4) – иначе он промахивался бы мимо. */
-  .irate__stars span { width: 18px; text-align: center; }
-  /* Курсор ведёт по звёздам, и они загораются под ним – как hover в самой
-     форме. Задержка звезды = шаг курсора (6% от 6s), keyframes одни на всех. */
-  .irate__stars span:nth-child(-n+4) { animation: istar 6s ease-out infinite; }
-  .irate__stars span:nth-child(2) { animation-delay: .36s; }
-  .irate__stars span:nth-child(3) { animation-delay: .72s; }
-  .irate__stars span:nth-child(4) { animation-delay: 1.08s; }
-  @keyframes istar {
-    0%, 20%  { color: inherit; transform: scale(1); }
-    23%      { color: #f59e0b; transform: scale(1.3); }
-    27%, 86% { color: #f59e0b; transform: scale(1); }
-    94%, 100%{ color: inherit; transform: scale(1); }
-  }
-  .irate__cursor {
-    position: absolute; left: 36px; top: 10px; width: 16px; height: 16px;
-    color: #0f172a; filter: drop-shadow(0 1px 2px rgba(15, 23, 42, .35));
-    animation: irate-cursor 6s ease-in-out infinite;
-  }
-  html.dark .irate__cursor { color: #f8fafc; }
-  @keyframes irate-cursor {
-    0%        { transform: translate(90px, 26px); opacity: 0; }
-    10%       { opacity: 1; }
-    20%       { transform: translate(0, 0) scale(1); opacity: 1; }
-    38%       { transform: translate(66px, 0) scale(1); }
-    42%       { transform: translate(66px, 0) scale(.82); }
-    46%, 78%  { transform: translate(66px, 0) scale(1); opacity: 1; }
-    92%, 100% { transform: translate(90px, 26px); opacity: 0; }
-  }
-
-  /* ---------- 5. Правка блока: ✎ → старое зачёркнуто, новое вписано ---------- */
-  .iedit { position: relative; width: 170px; }
-  .iedit__pen {
-    position: absolute; right: -9px; top: -11px;
+  /* ---------- 4. Круглая кнопка у края → палитра ---------- */
+  .imark { position: relative; width: 170px; }
+  .imark__fab {
+    position: absolute; right: -14px; top: 50%; margin-top: -14px;
     width: 28px; height: 28px; border-radius: 999px;
     display: flex; align-items: center; justify-content: center;
-    background: #fff; color: #2563eb; border: 1px solid #e5e7eb;
+    background: #fff; color: #4b5563; border: 1px solid #e5e7eb;
     box-shadow: 0 6px 14px -6px rgba(15, 23, 42, .55);
-    animation: ipen 7s ease-in-out infinite;
+    animation: ifab 7s ease-in-out infinite;
   }
-  html.dark .iedit__pen { background: #1e293b; border-color: #334155; color: #60a5fa; }
-  @keyframes ipen {
-    0%, 16%, 30%, 100% { transform: scale(1); }
-    22%                { transform: scale(.85); }
+  html.dark .imark__fab { background: #1e293b; border-color: #475569; color: #cbd5e1; }
+  @keyframes ifab {
+    0%, 26%   { transform: scale(1); opacity: 1; }
+    28%       { transform: scale(.85); opacity: 1; }
+    33%, 88%  { transform: scale(.6); opacity: 0; }
+    96%, 100% { transform: scale(1); opacity: 1; }
   }
-  /* Тот же «тап», что у карточки, только над кнопкой ✎ в углу страницы. */
-  .iedit__tap { left: auto; right: -9px; top: -11px; margin: 0; animation-duration: 7s; }
-  .iedit__line--old { animation: iold 7s ease-out infinite; }
-  @keyframes iold {
-    0%, 28%  { background: #e5e7eb; }
-    34%, 90% { background: #fecaca; }
-    100%     { background: #e5e7eb; }
+  /* Палитра встаёт на место кнопки, как настоящая .marker-panel. */
+  .imark__panel {
+    position: absolute; right: -16px; top: 50%; margin-top: -33px;
+    display: flex; flex-direction: column; gap: 4px; padding: 5px;
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
+    box-shadow: 0 8px 20px -10px rgba(15, 23, 42, .5);
+    transform-origin: right center;
+    animation: ipanel 7s ease-out infinite;
   }
-  html.dark .iedit__line--old { animation-name: iold-dark; }
-  @keyframes iold-dark {
-    0%, 28%  { background: #334155; }
-    34%, 90% { background: #7f1d1d; }
-    100%     { background: #334155; }
+  html.dark .imark__panel { background: #1e293b; border-color: #475569; }
+  .imark__panel i { display: block; width: 10px; height: 10px; border-radius: 999px; }
+  .imark__panel i:first-child { outline: 1.5px solid #3b82f6; outline-offset: 1px; }
+  @keyframes ipanel {
+    0%, 30%   { transform: scale(.5); opacity: 0; }
+    37%       { transform: scale(1.08); opacity: 1; }
+    42%, 86%  { transform: scale(1); opacity: 1; }
+    94%, 100% { transform: scale(.5); opacity: 0; }
   }
-  .iedit__line--old i {
-    position: absolute; left: 0; top: 2px; height: 1.5px; width: 0;
-    background: #dc2626; animation: istrike 7s ease-out infinite;
+  .imark__tap { left: auto; top: 50%; right: -14px; margin: -14px 0 0; }
+  .imark__cursor { left: auto; right: -12px; }
+
+  /* ---------- 5. Штрихи рисуются поверх текста ---------- */
+  .idraw { position: relative; width: 170px; }
+  .idraw__ink { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+  /* pathLength="1" у контуров – поэтому длина штриха всегда 1, и одни
+     keyframes «прорисовывают» любую кривую. */
+  .idraw__ink path {
+    fill: none; stroke-linecap: round; stroke-linejoin: round;
+    stroke-dasharray: 1; stroke-dashoffset: 1;
+    animation: iink 7s ease-in-out infinite;
   }
-  @keyframes istrike {
-    0%, 32%  { width: 0; }
-    42%, 90% { width: 100%; }
-    100%     { width: 0; }
+  .idraw__ink path:nth-child(2) { animation-name: iink2; }
+  @keyframes iink {
+    0%, 8%    { stroke-dashoffset: 1; opacity: 1; }
+    34%, 86%  { stroke-dashoffset: 0; opacity: 1; }
+    94%, 100% { stroke-dashoffset: 0; opacity: 0; }
   }
-  /* Новая строка растёт из нуля и по высоте, и по ширине: место под неё
-     открывается уже после того, как старая зачёркнута. */
-  .iedit__line--new { background: #86efac; animation: inew 7s ease-out infinite; }
-  html.dark .iedit__line--new { background: #15803d; }
-  @keyframes inew {
-    0%, 42%  { height: 0; margin-bottom: 0; width: 0; }
-    48%      { height: 5px; margin-bottom: 7px; width: 0; }
-    60%, 90% { height: 5px; margin-bottom: 7px; width: var(--w); }
-    100%     { height: 0; margin-bottom: 0; width: 0; }
-  }
-  .iedit__badge {
-    position: absolute; left: 50%; bottom: -12px; margin-left: -46px;
-    width: 92px; text-align: center; padding: 3px 0; border-radius: 999px;
-    background: #fef3c7; color: #b45309;
-    font-size: 10px; font-weight: 700; line-height: 1.4;
-    animation: ibadge 7s ease-out infinite;
-  }
-  html.dark .iedit__badge { background: #422006; color: #fbbf24; }
-  @keyframes ibadge {
-    0%, 62%   { transform: scale(.6); opacity: 0; }
-    70%       { transform: scale(1.1); opacity: 1; }
-    76%, 90%  { transform: scale(1); opacity: 1; }
-    100%      { transform: scale(1); opacity: 0; }
+  @keyframes iink2 {
+    0%, 40%   { stroke-dashoffset: 1; opacity: 1; }
+    58%, 86%  { stroke-dashoffset: 0; opacity: 1; }
+    94%, 100% { stroke-dashoffset: 0; opacity: 0; }
   }
 
   /* Зацикленная анимация в фоне – первое, что мешает при вестибулярных
@@ -639,17 +600,13 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
   @media (prefers-reduced-motion: reduce) {
     .iflip__inner, .iflip__cursor, .iflip__tap, .iread__page, .iread__line,
     .iread__badge, .icode__type, .icode__caret, .icode__res, .icode__lock,
-    .irate__stars span, .irate__cursor, .iedit__pen, .iedit__line--old,
-    .iedit__line--old i, .iedit__line--new, .iedit__badge {
+    .imark__fab, .imark__panel, .idraw__ink path {
       animation: none;
     }
     .iread__line { width: var(--w); }
-    .iflip__cursor, .iread__badge, .icode__res, .irate__cursor, .iedit__badge { opacity: 1; }
-    .iflip__tap { opacity: 0; }
-    .irate__stars span:nth-child(-n+4) { color: #f59e0b; }
-    .irate__cursor { transform: translate(66px, 0); }
-    .iedit__line--old { background: #fecaca; }
-    .iedit__line--old i { width: 100%; }
+    .iflip__cursor, .iread__badge, .icode__res, .imark__panel { opacity: 1; }
+    .iflip__tap, .imark__fab { opacity: 0; }
+    .idraw__ink path { stroke-dashoffset: 0; }
   }
 
   /* На узком экране змейка не читается – маршрут разворачивается в столбик */
@@ -727,25 +684,25 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
 
   {% if user.is_authenticated %}
   {% comment %}
-  Анонс отзывов к статьям. Только вошедшим: гость не может ни оценить, ни
-  предложить. Закрывается кнопкой «Понятно», флаг – в localStorage (без
-  модели и миграции): с другого устройства анонс покажется ещё раз, и это не
-  беда. Следующий анонс – новый ключ, иначе его не увидят те, кто закрыл этот.
+  Анонс маркера. Только вошедшим: гостю хватает врезки «Что это за сайт».
+  Закрывается кнопкой «Понятно», флаг – в localStorage (без модели и
+  миграции): с другого устройства анонс покажется ещё раз, и это не беда.
+  Следующий анонс – новый ключ, иначе его не увидят те, кто закрыл этот.
   {% endcomment %}
-  <section x-data="{ shown: (() => { try { return localStorage.getItem('news:article-feedback') !== 'seen' } catch (e) { return true } })() }"
+  <section x-data="{ shown: (() => { try { return localStorage.getItem('news:marker') !== 'seen' } catch (e) { return true } })() }"
            x-show="shown" x-cloak
            class="mb-8 rounded-2xl border border-brand-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-5 py-6 sm:px-7 shadow-sm">
     <div class="flex flex-wrap items-start justify-between gap-4 mb-5">
       <div class="max-w-3xl">
         <span class="inline-block mb-2 px-2 py-0.5 rounded-full bg-brand-100 dark:bg-slate-700 text-brand-700 dark:text-cyan-400 text-xs font-semibold">Новое</span>
-        <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-1.5">Помогите сделать учебник понятнее</h2>
+        <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-1.5">Рисуйте прямо на уроке</h2>
         <p class="text-sm leading-relaxed text-gray-600 dark:text-slate-300">
-          Учебник пишется для вас, и только вы знаете, где он непонятен. Теперь об этом
-          можно сказать прямо на странице статьи.
+          В статьях учебника, тренировке ЕГЭ, вариантах и практикуме появился маркер:
+          обведите главное, подчеркните непонятное, дорисуйте схему – прямо поверх текста.
         </p>
       </div>
       <button type="button"
-              @click="shown = false; try { localStorage.setItem('news:article-feedback', 'seen') } catch (e) {}"
+              @click="shown = false; try { localStorage.setItem('news:marker', 'seen') } catch (e) {}"
               class="shrink-0 px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold transition-colors">
         Понятно
       </button>
@@ -755,52 +712,57 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
       <div>
         <div class="intro__stage" aria-hidden="true">
           <div class="idemo">
-            <div class="irate">
+            <div class="imark">
               <div class="inote__page">
                 <div class="iread__title"></div>
                 <div class="inote__line" style="--w: 100%"></div>
-                <div class="inote__line" style="--w: 72%"></div>
+                <div class="inote__line" style="--w: 84%"></div>
+                <div class="inote__line" style="--w: 64%"></div>
               </div>
-              <div class="irate__stars">
-                <span>★</span><span>★</span><span>★</span><span>★</span><span>★</span>
-                <svg class="irate__cursor" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M5.5 2.6v16.1l3.9-3.8 2.3 5.5 3-1.3-2.3-5.4 5.4-0.3z"/>
-                </svg>
-              </div>
+              <span class="imark__fab">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4"><path stroke-linecap="round" stroke-linejoin="round" d="m15 5 4 4M4 20l1-5L16 4l4 4L9 19z"/></svg>
+              </span>
+              <span class="imark__panel">
+                <i style="background: #ef4444"></i><i style="background: #eab308"></i><i style="background: #22c55e"></i><i style="background: #3b82f6"></i>
+              </span>
+              <span class="iflip__tap imark__tap"></span>
+              <svg class="iflip__cursor imark__cursor" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M5.5 2.6v16.1l3.9-3.8 2.3 5.5 3-1.3-2.3-5.4 5.4-0.3z"/>
+              </svg>
             </div>
           </div>
         </div>
-        <div class="text-sm font-semibold text-gray-900 dark:text-white mb-1">Оцените, насколько понятно</div>
+        <div class="text-sm font-semibold text-gray-900 dark:text-white mb-1">Кнопка с карандашом справа</div>
         <p class="text-sm leading-relaxed text-gray-500 dark:text-slate-400">
-          В конце каждой статьи – пять звёзд. Если было трудно, напишите, что именно
-          осталось непонятным. Оценку видит только учитель.
+          Круглая кнопка у правого края экрана (или клавиша <kbd class="px-1 rounded border border-gray-300 dark:border-slate-600 font-mono text-xs">M</kbd>)
+          открывает палитру: восемь цветов, пять толщин и ластик. На телефоне маркера нет –
+          там палец листает страницу.
         </p>
       </div>
 
       <div>
         <div class="intro__stage" aria-hidden="true">
           <div class="idemo">
-            <div class="iedit">
+            <div class="idraw">
               <div class="inote__page">
                 <div class="iread__title"></div>
                 <div class="inote__line" style="--w: 100%"></div>
-                <div class="inote__line iedit__line--old" style="--w: 86%"><i></i></div>
-                <div class="inote__line iedit__line--new" style="--w: 94%"></div>
-                <div class="inote__line" style="--w: 60%"></div>
+                <div class="inote__line" style="--w: 70%"></div>
+                <div class="inote__line" style="--w: 92%"></div>
+                <div class="inote__line" style="--w: 58%"></div>
               </div>
-              <span class="iedit__pen">
-                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4"><path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536M9 13l6.232-6.232a2.5 2.5 0 113.536 3.536L12.536 16.5H9V13z"/></svg>
-              </span>
-              <span class="iflip__tap iedit__tap"></span>
-              <span class="iedit__badge">отправлено</span>
+              <svg class="idraw__ink" viewBox="0 0 170 87">
+                <path pathLength="1" stroke="#ef4444" stroke-width="2.5" d="M70 37C134 33 134 57 66 56C-14 55-14 36 80 38"/>
+                <path pathLength="1" stroke="#3b82f6" stroke-width="2.5" d="M13 78q8-4 16 0t16 0t16 0t16 0t16 0"/>
+              </svg>
             </div>
           </div>
         </div>
-        <div class="text-sm font-semibold text-gray-900 dark:text-white mb-1">Предложите, как написать лучше</div>
+        <div class="text-sm font-semibold text-gray-900 dark:text-white mb-1">Рисуйте поверх текста</div>
         <p class="text-sm leading-relaxed text-gray-500 dark:text-slate-400">
-          Нажмите ✎ у любого блока статьи и поправьте текст прямо на месте – под полем
-          сразу видно, как он будет выглядеть. Можно приложить свою картинку. Ответ
-          учителя придёт в ваш профиль.
+          Рисунок едет вместе со страницей, когда вы её листаете. Ошиблись – «Отменить»
+          или <kbd class="px-1 rounded border border-gray-300 dark:border-slate-600 font-mono text-xs">Ctrl+Z</kbd>.
+          Рисунок видите только вы, и он не сохраняется: после перезагрузки страница снова чистая.
         </p>
       </div>
     </div>

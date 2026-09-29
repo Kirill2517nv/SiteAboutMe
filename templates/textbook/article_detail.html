@@ -145,7 +145,12 @@
             <!-- Блоки контента -->
             <div class="space-y-8 pswp-gallery md:pl-2">
                 {% for block in blocks %}
-                <article data-slide id="block-{{ block.pk }}"{% if block.suggestable %} class="relative group" data-suggest-url="{% url 'textbook:block_suggest' block.pk %}"{% endif %}>
+                <article data-slide id="block-{{ block.pk }}" class="relative group"{% if block.suggestable %} data-suggest-url="{% url 'textbook:block_suggest' block.pk %}"{% endif %}>
+                    {# Показ с проектора сразу с этого блока: без неё до последнего слайда листали от первого #}
+                    <button type="button" @click="presentFrom($el.closest('[data-slide]'))" title="Показать на экране с этого блока"
+                            class="present-hide absolute {% if block.suggestable %}right-8{% else %}-right-2{% endif %} -top-3 z-10 w-8 h-8 hidden md:inline-flex items-center justify-center rounded-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-400 hover:text-brand-600 dark:hover:text-cyan-400 shadow-sm transition md:opacity-0 md:group-hover:opacity-100 focus:opacity-100">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4"/></svg>
+                    </button>
                     {% if block.suggestable %}
                     {# Правка блока – диалог из _article_feedback.html, логика в article-feedback.js #}
                     <button type="button" data-suggest-block title="Предложить правку этого блока"

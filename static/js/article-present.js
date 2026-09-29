@@ -18,6 +18,7 @@ function articlePresent() {
     // равным самому себе (та же грабля описана в present-mode.js про
     // fullscreenElement). В состояние кладём только простые значения.
     let slideEls = [];
+    let startSlide = 0;   // с какого блока начать показ (кнопка на блоке)
 
     return {
         ...base,
@@ -29,9 +30,21 @@ function articlePresent() {
             slideEls = [...document.querySelectorAll('[data-slide]')];
             this.slideList = slideEls.map((_, i) => i);
             // Вход и выход из полного экрана – единственное, что включает и
-            // выключает режим слайдов. Начинаем всегда с первого блока.
-            this.$watch('presenting', () => this.goSlide(0));
+            // выключает режим слайдов.
+            // Начинаем с первого блока или с того, на котором нажали «показать
+            // отсюда»; при выходе все блоки снова видны – номер там не важен.
+            this.$watch('presenting', () => {
+                this.goSlide(this.presenting ? startSlide : 0);
+                startSlide = 0;
+            });
             document.addEventListener('keydown', (e) => this._onKey(e));
+        },
+
+        // Кнопка на блоке: показ сразу с него, а не листание от первого.
+        presentFrom(el) {
+            startSlide = Math.max(0, slideEls.indexOf(el));
+            if (!this.presenting) this.togglePresent();
+            else this.goSlide(startSlide);
         },
 
         goSlide(i) {

@@ -44,8 +44,9 @@ Font Awesome в проекте не подключён: иконки – инл�
 |------|-------|------------|
 | `quiz-async.js` | 280 | `QuizCodeChecker` – WebSocket-клиент проверки кода + polling-фолбэк |
 | `ege-timer.js` | 180 | `EgeTimer` + `TaskTimeTracker` + `EgeAnswerStore` |
-| `present-mode.js` | 108 | `presentMode()` – режим проектора (вариант, практикум, тренировка) |
-| `article-present.js` | 73 | `articlePresent()` – проектор + листание блоков статьи |
+| `present-mode.js` | 113 | `presentMode()` – режим проектора (вариант, практикум, тренировка) |
+| `article-present.js` | 86 | `articlePresent()` – проектор + листание блоков статьи, показ с любого блока |
+| `marker.js` | 175 | `markerMode()` – маркер поверх страницы, подмешан в `presentMode()` |
 | `textbook-widgets.js` | ~14700 | Реестр 33 интерактивных виджетов учебника |
 | `textbook-progress.js` | 105 | Отметка «прочитано» и учёт времени чтения статьи |
 | `svoya-igra-board.js` | 150 | `gameBoard()` – доска «Своей игры» |

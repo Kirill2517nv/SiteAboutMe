@@ -17,6 +17,8 @@
  */
 function presentMode() {
     return {
+        // Маркер (marker.js) живёт там же, где проектор: у доски он и нужен.
+        ...markerMode(),
         presenting: false,   // страница отдана проектору
         zoom: 1.6,           // масштаб: доля от кегля, выбранного в браузере
 
@@ -34,6 +36,7 @@ function presentMode() {
             // не меняется, поэтому храним в браузере, а не в настройках страницы.
             // Ключ общий на все страницы: проектор-то один.
             this.zoom = parseFloat(localStorage.getItem('egePresentZoom')) || 1.6;
+            this.markerInit();
             // Выйти можно и по Esc мимо нашей кнопки – состояние берём у браузера.
             document.addEventListener('fullscreenchange', () => {
                 this.presenting = document.fullscreenElement === this._root();
@@ -58,6 +61,8 @@ function presentMode() {
             this.zoom = Math.min(3, Math.max(0.6, Math.round(z * 100) / 100));
             localStorage.setItem('egePresentZoom', this.zoom);
             this._applyZoom();
+            // Текст перетёк под новый кегль – обводки указывали бы мимо.
+            this.markerClear();
         },
 
         // Проценты, а не пиксели: 160% – это в полтора раза больше того кегля,
