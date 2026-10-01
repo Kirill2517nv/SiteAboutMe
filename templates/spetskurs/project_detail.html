@@ -1,0 +1,116 @@
+{% extends 'base.html' %}
+{% load textbook_tags %}
+
+{% block title %}{{ topic.title }} – Темы проектов{% endblock %}
+
+{% block content %}
+{% comment %}
+Markdown из seed рисуется markdownify, а у сайта нет typography-плагина –
+поэтому абзацы и списки оформлены arbitrary-вариантами на обёртке, одной
+строкой на все секции страницы.
+{% endcomment %}
+{% with md='leading-relaxed [&_p]:mb-3 [&_p:last-child]:mb-0 [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:space-y-1.5 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:space-y-1.5 [&_strong]:font-semibold [&_strong]:text-gray-900 dark:[&_strong]:text-white [&_a]:text-brand-600 dark:[&_a]:text-cyan-400 [&_a]:underline' %}
+<div class="min-h-screen bg-gray-50 dark:bg-slate-900 text-gray-900 dark:text-slate-100">
+    {% include 'spetskurs/_subnav.html' %}
+
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+
+        <nav class="flex items-center gap-2 text-sm text-gray-500 dark:text-slate-500 mb-8">
+            <a href="{% url 'spetskurs:project_list' %}" class="hover:text-gray-700 dark:hover:text-slate-300 transition-colors">Темы проектов</a>
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+            </svg>
+            <span class="text-gray-700 dark:text-slate-300">{{ topic.title }}</span>
+        </nav>
+
+        <header class="mb-10">
+            <div class="flex flex-wrap items-center gap-2 mb-3">
+                <span class="text-xs px-2 py-0.5 rounded-full bg-brand-50 dark:bg-cyan-900/40 border border-brand-200 dark:border-cyan-700/50 text-brand-700 dark:text-cyan-400 font-medium">
+                    Тема {{ topic.number }}
+                </span>
+                <span class="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-400">
+                    {{ topic.get_group_display }}
+                </span>
+                <span class="text-xs px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700/50 text-amber-600 dark:text-amber-400"
+                      title="Сложность">
+                    {{ topic.get_difficulty_display }}
+                </span>
+            </div>
+            <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">{{ topic.title }}</h1>
+            <p class="text-base mt-3 text-gray-600 dark:text-slate-400 leading-relaxed">{{ topic.teaser }}</p>
+        </header>
+
+        {% if images %}
+        <div class="grid gap-5 mb-10 {% if images|length > 1 %}sm:grid-cols-2{% endif %}">
+            {% for img in images %}
+            <figure class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 overflow-hidden">
+                <a href="{{ img.image.url }}" target="_blank" rel="noopener" class="block bg-gray-100 dark:bg-slate-950">
+                    <img src="{{ img.image.url }}" alt="{{ img.caption }}" loading="lazy"
+                         class="w-full max-h-[70vh] object-contain">
+                </a>
+                <figcaption class="p-3 text-sm text-gray-600 dark:text-slate-400">
+                    {{ img.caption }}
+                    {% comment %}Подпись автора и лицензии – условие лицензий CC BY, не украшение{% endcomment %}
+                    <span class="block mt-1 text-xs text-gray-400 dark:text-slate-500">
+                        {% if img.author %}{{ img.author }} · {% endif %}{{ img.license }} ·
+                        <a href="{{ img.source_url }}" target="_blank" rel="noopener" class="underline hover:text-brand-600 dark:hover:text-cyan-400">Wikimedia Commons</a>
+                    </span>
+                </figcaption>
+            </figure>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <div class="space-y-8 text-base text-gray-700 dark:text-slate-300">
+            <section>
+                <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-3">Что за явление</h2>
+                <div class="{{ md }}">{{ topic.phenomenon|markdownify }}</div>
+            </section>
+            <section>
+                <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-3">Где встречается</h2>
+                <div class="{{ md }}">{{ topic.where|markdownify }}</div>
+            </section>
+            <section>
+                <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-3">Что вы исследуете</h2>
+                <div class="{{ md }}">{{ topic.research|markdownify }}</div>
+            </section>
+            <section class="rounded-xl bg-brand-50 dark:bg-cyan-900/20 border border-brand-200 dark:border-cyan-700/40 p-5">
+                <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-3">Что получится в конце</h2>
+                <div class="{{ md }}">{{ topic.result|markdownify }}</div>
+            </section>
+            <section>
+                <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-1">Этапы работы</h2>
+                <p class="text-sm text-gray-500 dark:text-slate-500 mb-4">
+                    По порядку. Пока не пройдена проверка на случае с известным ответом,
+                    к исследованию не переходим.
+                </p>
+                <div class="{{ md }}">{{ topic.steps|markdownify }}</div>
+            </section>
+
+            {% comment %}
+            Заметки учителя: под if, а не под CSS-классом – ученик открывает эту же
+            страницу, и спрятанный стилями текст лежал бы у него в исходнике.
+            {% endcomment %}
+            {% if user.is_superuser and topic.teacher_notes %}
+            <section class="rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700/50 p-5">
+                <div class="flex items-baseline justify-between gap-3 mb-3">
+                    <h2 class="text-xl font-bold text-gray-900 dark:text-white">Учителю</h2>
+                    <span class="text-xs text-amber-700 dark:text-amber-400">видно только вам</span>
+                </div>
+                <div class="{{ md }}">{{ topic.teacher_notes|markdownify }}</div>
+            </section>
+            {% endif %}
+        </div>
+
+        <div class="mt-12">
+            <a href="{% url 'spetskurs:project_list' %}"
+               class="inline-flex items-center gap-2 text-sm text-brand-600 dark:text-cyan-400 hover:underline">
+                ← Все темы
+            </a>
+        </div>
+    </div>
+</div>
+{% endwith %}
+{% endblock %}
+
+{% block pre_alpine_js %}{% include 'quizzes/_mathjax.html' %}{% endblock pre_alpine_js %}

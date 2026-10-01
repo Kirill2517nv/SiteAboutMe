@@ -8,7 +8,7 @@ import time
 import os
 
 # Лимиты для Docker-контейнера
-CONTAINER_TIMEOUT = 150       # секунд на выполнение
+CONTAINER_TIMEOUT = 120       # секунд на выполнение
 CONTAINER_MEM_LIMIT = "128m" # RAM контейнера
 CONTAINER_CPU_QUOTA = 100000  # 100% одного ядра (из 100000)
 OUTPUT_MAX_BYTES = 65536     # 64 KB макс. вывода

@@ -75,6 +75,28 @@
         return body;
     }
 
+    // Кнопка «Светлый/Тёмный фон» для листингов трассировщиков. Та же тема, что
+    // у code-блоков статьи (article_detail.html): класс code-light на <html> и
+    // ключ codeTheme в localStorage. Класс code-block__theme – чтобы надписи
+    // всех кнопок страницы, и статейных, и виджетных, менялись разом.
+    function codeThemeButton(className) {
+        // Без documentElement – заглушка DOM в WidgetMountTests.
+        const root = document.documentElement;
+        const label = function () {
+            return root && root.classList.contains('code-light') ? 'Тёмный фон' : 'Светлый фон';
+        };
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = className + ' code-block__theme';
+        btn.textContent = label();
+        btn.addEventListener('click', function () {
+            const light = root.classList.toggle('code-light');
+            try { localStorage.setItem('codeTheme', light ? 'light' : 'dark'); } catch (e) { /* приватное окно */ }
+            document.querySelectorAll('.code-block__theme').forEach(function (b) { b.textContent = label(); });
+        });
+        return btn;
+    }
+
     // ─────────────────────────────────────────────────────────────
     // Виджет: bits-viewer — битовая раскладка целого числа.
     // Конфиг: { "value": 42, "bits": 8 }. Биты кликабельны — под ними
@@ -5942,14 +5964,9 @@
         let pos = -1;
 
         // ---- листинг кода ----
-        // Панель тёмная в обеих темах — как обычные code-блоки статьи: страница
-        // подключает тему highlight.js atom-one-dark, и подсветка токенов
-        // (.hljs-keyword и т.п.) приходит оттуда же. Фон и базовый цвет задаём
-        // инлайном, чтобы листинг оставался читаемым, даже если CDN с темой
-        // не доступен.
-        const HLJS_BG = '#282c34';
-        const HLJS_FG = '#abb2bf';
-        const HLJS_GUTTER = '#5c6370';
+        // Панель тёмная по умолчанию – как обычные code-блоки статьи, и так же
+        // светлеет кнопкой «Светлый фон»: фон, цвет, номера строк и токены
+        // .hljs-* красит класс .trace-code в textbook-article.css.
 
         const lang = config.language || 'python';
 
@@ -5971,15 +5988,12 @@
         // Листинг занимает три четверти ширины: строка кода с комментарием
         // длиннее любого «i = 0», а колонке переменных шире имени с числом
         // быть незачем.
-        codePane.className = 'rounded-lg py-2 overflow-x-auto md:col-span-3';
-        codePane.style.background = HLJS_BG;
-        codePane.style.color = HLJS_FG;
+        codePane.className = 'trace-code rounded-lg py-2 overflow-x-auto md:col-span-3';
         const codeRows = code.map(function (line, i) {
             const row = document.createElement('div');
             row.className = 'flex items-start gap-3 pl-2 pr-4 py-0.5 font-mono text-sm whitespace-pre border-l-2 border-transparent';
             const num = document.createElement('span');
-            num.className = 'w-5 shrink-0 text-right select-none';
-            num.style.color = HLJS_GUTTER;
+            num.className = 'trace-code__num w-5 shrink-0 text-right select-none';
             num.textContent = String(i + 1);
             const text = document.createElement('span');
             text.innerHTML = highlightLine(line);
@@ -6053,7 +6067,7 @@
 
         // ---- вывод программы ----
         const outputPane = document.createElement('div');
-        outputPane.className = 'mt-4 rounded-lg px-4 py-3 font-mono text-sm whitespace-pre-wrap break-words bg-slate-900 text-slate-100 overflow-y-auto';
+        outputPane.className = 'trace-out mt-4 rounded-lg px-4 py-3 font-mono text-sm whitespace-pre-wrap break-words bg-slate-900 text-slate-100 overflow-y-auto';
         // Высота окна вывода тоже постоянна — сразу под весь будущий вывод,
         // иначе первый же print растягивал панель и сдвигал кнопки. Строка
         // text-sm — 1.25rem, padding py-3 — 1.5rem; потолок 10rem, дальше
@@ -6104,6 +6118,7 @@
         controls.appendChild(endBtn);
         controls.appendChild(resetBtn);
         controls.appendChild(counter);
+        controls.appendChild(codeThemeButton(btnSecondary));
 
         body.appendChild(columns);
         body.appendChild(noteStack);
@@ -6121,11 +6136,11 @@
 
             codeRows.forEach(function (row, i) {
                 const active = step && step.line === i + 1;
-                // Панель тёмная всегда, поэтому подсветка строки одна и та же в
-                // обеих темах: полупрозрачная заливка и яркая полоса слева.
+                // Полупрозрачная заливка и яркая полоса слева; на светлом фоне
+                // заливку перекрашивает .trace-code__active в CSS.
                 row.className = 'flex items-start gap-3 pl-2 pr-4 py-0.5 font-mono text-sm whitespace-pre border-l-2 ' +
                     (active
-                        ? 'border-cyan-400 bg-white/10'
+                        ? 'trace-code__active border-cyan-400 bg-white/10'
                         : 'border-transparent');
             });
 
@@ -8180,10 +8195,7 @@
         // pos: -1 — программа ещё не запущена, дальше индекс текущего шага.
         let pos = -1;
 
-        // ---- листинг кода (тёмная панель в обеих темах, как в loop-trace) ----
-        const HLJS_BG = '#282c34';
-        const HLJS_FG = '#abb2bf';
-        const HLJS_GUTTER = '#5c6370';
+        // ---- листинг кода (.trace-code, как в loop-trace) ----
         const lang = config.language || 'python';
 
         function highlightLine(line) {
@@ -8198,15 +8210,12 @@
         }
 
         const codePane = document.createElement('div');
-        codePane.className = 'rounded-lg py-2 overflow-x-auto self-start';
-        codePane.style.background = HLJS_BG;
-        codePane.style.color = HLJS_FG;
+        codePane.className = 'trace-code rounded-lg py-2 overflow-x-auto self-start';
         const codeRows = code.map(function (line, i) {
             const row = document.createElement('div');
             row.className = 'flex items-start gap-3 pl-2 pr-4 py-0.5 font-mono text-sm whitespace-pre border-l-2 border-transparent';
             const num = document.createElement('span');
-            num.className = 'w-5 shrink-0 text-right select-none';
-            num.style.color = HLJS_GUTTER;
+            num.className = 'trace-code__num w-5 shrink-0 text-right select-none';
             num.textContent = String(i + 1);
             const text = document.createElement('span');
             text.innerHTML = highlightLine(line);
@@ -8253,7 +8262,7 @@
         outputTitle.className = 'mt-4 mb-1 text-xs uppercase tracking-wide text-gray-400 dark:text-slate-500';
         outputTitle.textContent = 'Вывод программы';
         const outputPane = document.createElement('div');
-        outputPane.className = 'rounded-lg px-4 py-3 font-mono text-sm whitespace-pre-wrap break-words bg-slate-900 text-slate-100 min-h-[3.5rem] max-h-40 overflow-y-auto';
+        outputPane.className = 'trace-out rounded-lg px-4 py-3 font-mono text-sm whitespace-pre-wrap break-words bg-slate-900 text-slate-100 min-h-[3.5rem] max-h-40 overflow-y-auto';
 
         // ---- управление (то же, что у loop-trace) ----
         const slider = document.createElement('input');
@@ -8287,7 +8296,7 @@
 
         const controls = document.createElement('div');
         controls.className = 'flex flex-wrap items-center gap-2 mt-4';
-        [prevBtn, nextBtn, endBtn, resetBtn, counter].forEach(function (node) {
+        [prevBtn, nextBtn, endBtn, resetBtn, counter, codeThemeButton(btnSecondary)].forEach(function (node) {
             controls.appendChild(node);
         });
 
@@ -8368,7 +8377,7 @@
             codeRows.forEach(function (row, i) {
                 const active = step && step.line === i + 1;
                 row.className = 'flex items-start gap-3 pl-2 pr-4 py-0.5 font-mono text-sm whitespace-pre border-l-2 ' +
-                    (active ? 'border-cyan-400 bg-white/10' : 'border-transparent');
+                    (active ? 'trace-code__active border-cyan-400 bg-white/10' : 'border-transparent');
             });
 
             stackPane.innerHTML = '';

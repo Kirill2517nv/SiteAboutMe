@@ -478,6 +478,9 @@ html.dark :is(.article-body, .article-summary-card__body, .article-lead__text, .
    класс .hljs – тогда тёмные чернила статьи ложились на тёмный фон. */
 .code-block pre { margin: 0; border-radius: 0; overflow-x: auto; background: #282c34; color: #abb2bf; }
 .code-block pre code { font-size: 14px; line-height: 1.6; background: transparent; }
+/* Листинг трассировщиков (loop-trace, call-stack) – тот же atom-one-dark. */
+.trace-code { background: #282c34; color: #abb2bf; }
+.trace-code__num { color: #5c6370; }
 
 /* ============================================================
    РИСУНОК В ТЕКСТЕ СТАТЬИ — .ege-fig (числовая прямая, координатная плоскость)
@@ -510,39 +513,45 @@ html.dark .code-block__copy:hover { color: #fff; background: #334155; }
    проектор выбеливает полутона, и серый/салатовый с задней парты пропадают.
    .hljs переопределён явно – atom-one-dark ставит на <code> свой #abb2bf,
    и без этого переменные и скобки оставались светло-серыми.
-   Правила скоупнуты .code-block – виджеты учебника красят код своей тёмной
-   подложкой и остаются как были. */
+   Правила скоупнуты .code-block и .trace-code (листинг трассировщиков
+   loop-trace и call-stack, у них своя кнопка темы); остальные виджеты
+   красят код своей тёмной подложкой и остаются как были. */
 html.code-light .code-block pre,
-html.code-light .code-block .hljs { background: #fff; color: #111827; }
-html.code-light .code-block .hljs-comment,
-html.code-light .code-block .hljs-quote { color: #4b5563; font-style: italic; }
-html.code-light .code-block .hljs-doctag,
-html.code-light .code-block .hljs-keyword,
-html.code-light .code-block .hljs-formula,
-html.code-light .code-block .hljs-literal { color: #b3122a; font-weight: 600; }
-html.code-light .code-block .hljs-section,
-html.code-light .code-block .hljs-name,
-html.code-light .code-block .hljs-selector-tag,
-html.code-light .code-block .hljs-deletion,
-html.code-light .code-block .hljs-subst { color: #b3122a; }
-html.code-light .code-block .hljs-string,
-html.code-light .code-block .hljs-regexp,
-html.code-light .code-block .hljs-addition,
-html.code-light .code-block .hljs-attribute { color: #0a6b2e; }
-html.code-light .code-block .hljs-number,
-html.code-light .code-block .hljs-symbol,
-html.code-light .code-block .hljs-bullet,
-html.code-light .code-block .hljs-link { color: #0550ae; }
-html.code-light .code-block .hljs-attr,
-html.code-light .code-block .hljs-variable,
-html.code-light .code-block .hljs-template-variable,
-html.code-light .code-block .hljs-type,
-html.code-light .code-block .hljs-params { color: #111827; }
-html.code-light .code-block .hljs-meta,
-html.code-light .code-block .hljs-title,
-html.code-light .code-block .hljs-title.function_ { color: #6b21a8; }
-html.code-light .code-block .hljs-built_in,
-html.code-light .code-block .hljs-title.class_ { color: #9a3412; }
+html.code-light .code-block .hljs,
+html.code-light .trace-code { background: #fff; color: #111827; }
+html.code-light .trace-code { box-shadow: inset 0 0 0 1px var(--color-border-medium); }
+html.code-light .trace-code .trace-code__num { color: #6b7280; }
+html.code-light .trace-code .trace-code__active { background: #e0f2fe; }
+html.code-light .trace-out { background: #f3f4f6; color: #111827; }
+html.code-light :is(.code-block, .trace-code) .hljs-comment,
+html.code-light :is(.code-block, .trace-code) .hljs-quote { color: #4b5563; font-style: italic; }
+html.code-light :is(.code-block, .trace-code) .hljs-doctag,
+html.code-light :is(.code-block, .trace-code) .hljs-keyword,
+html.code-light :is(.code-block, .trace-code) .hljs-formula,
+html.code-light :is(.code-block, .trace-code) .hljs-literal { color: #b3122a; font-weight: 600; }
+html.code-light :is(.code-block, .trace-code) .hljs-section,
+html.code-light :is(.code-block, .trace-code) .hljs-name,
+html.code-light :is(.code-block, .trace-code) .hljs-selector-tag,
+html.code-light :is(.code-block, .trace-code) .hljs-deletion,
+html.code-light :is(.code-block, .trace-code) .hljs-subst { color: #b3122a; }
+html.code-light :is(.code-block, .trace-code) .hljs-string,
+html.code-light :is(.code-block, .trace-code) .hljs-regexp,
+html.code-light :is(.code-block, .trace-code) .hljs-addition,
+html.code-light :is(.code-block, .trace-code) .hljs-attribute { color: #0a6b2e; }
+html.code-light :is(.code-block, .trace-code) .hljs-number,
+html.code-light :is(.code-block, .trace-code) .hljs-symbol,
+html.code-light :is(.code-block, .trace-code) .hljs-bullet,
+html.code-light :is(.code-block, .trace-code) .hljs-link { color: #0550ae; }
+html.code-light :is(.code-block, .trace-code) .hljs-attr,
+html.code-light :is(.code-block, .trace-code) .hljs-variable,
+html.code-light :is(.code-block, .trace-code) .hljs-template-variable,
+html.code-light :is(.code-block, .trace-code) .hljs-type,
+html.code-light :is(.code-block, .trace-code) .hljs-params { color: #111827; }
+html.code-light :is(.code-block, .trace-code) .hljs-meta,
+html.code-light :is(.code-block, .trace-code) .hljs-title,
+html.code-light :is(.code-block, .trace-code) .hljs-title.function_ { color: #6b21a8; }
+html.code-light :is(.code-block, .trace-code) .hljs-built_in,
+html.code-light :is(.code-block, .trace-code) .hljs-title.class_ { color: #9a3412; }
 .code-block__theme { margin-left: 0; }
 
 /* ============================================================

@@ -244,20 +244,16 @@
         </div>
 
         <div class="mb-10">
-            <h3 class="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400 mb-3">Примерные темы</h3>
+            <h3 class="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400 mb-3">Темы проектов</h3>
             {% comment %}
-            Темы – просто разметкой: список правится раз в год перед набором,
-            и модель (или фильтр split) ради восьми строк стоила бы дороже,
-            чем правка самой строки.
+            Темы живут в базе (ProjectTopic) и на своей странице – с описанием,
+            иллюстрациями и этапами работы. Список чипов здесь был бы второй
+            копией тех же названий и разошёлся бы с ней при первой правке.
             {% endcomment %}
-            <div class="flex flex-wrap gap-2 [&>span]:px-3 [&>span]:py-1.5 [&>span]:rounded-lg [&>span]:bg-white dark:[&>span]:bg-slate-800 [&>span]:border [&>span]:border-gray-200 dark:[&>span]:border-slate-700 [&>span]:text-sm [&>span]:text-gray-700 dark:[&>span]:text-slate-300">
-                <span>Электрический пробой в диэлектрике</span>
-                <span>Уравнение теплопроводности</span>
-                <span>Задача N тел и устойчивость планетной системы</span>
-                <span>Волны на струне и мембране</span>
-                <span>Диффузия и случайные блуждания</span>
-                <span>Движение заряда в магнитном поле</span>
-            </div>
+            <a href="{% url 'spetskurs:project_list' %}"
+               class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium transition-colors">
+                Выбрать тему проекта →
+            </a>
             <p class="mt-3 text-sm text-gray-500 dark:text-slate-500">
                 Список открытый: своя тема принимается, если у неё есть уравнение и способ проверить ответ.
             </p>

@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import CourseTask
+from .models import CourseTask, ProjectImage, ProjectTopic
 
 
 @admin.register(CourseTask)
@@ -31,3 +31,17 @@ class CourseTaskAdmin(admin.ModelAdmin):
     # Статьи задачи редактируются в админке учебника (textbook.Article с
     # track='spetskurs'): это одна модель на весь сайт, и второй набор инлайнов
     # к ней разошёлся бы с основным при первой же правке.
+
+
+class ProjectImageInline(admin.TabularInline):
+    model = ProjectImage
+    extra = 0
+
+
+@admin.register(ProjectTopic)
+class ProjectTopicAdmin(admin.ModelAdmin):
+    list_display = ('number', 'title', 'group', 'difficulty', 'is_published')
+    list_display_links = ('title',)
+    list_filter = ('group', 'is_published')
+    list_editable = ('number', 'is_published')
+    inlines = [ProjectImageInline]

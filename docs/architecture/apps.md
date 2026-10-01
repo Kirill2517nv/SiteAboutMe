@@ -9,7 +9,7 @@
 | `lessons` | 4 | Старые уроки с файлами и презентациями |
 | `quizzes` | 16 | Тесты и тренажёр ЕГЭ |
 | `textbook` | 7 | Учебник, теория ЕГЭ, спецкурс |
-| `spetskurs` | 1 | Задачи курса численного моделирования |
+| `spetskurs` | 3 | Задачи курса численного моделирования, темы проектов |
 | `games` | 6 | «Своя игра» |
 
 ---
@@ -22,7 +22,7 @@ graph TD
     ACC[accounts\nProfile, StudentGroup]
     QUI[quizzes\nQuiz, Question, ЕГЭ]
     TXT[textbook\nArticle, EgeTask, Section]
-    SPK[spetskurs\nCourseTask]
+    SPK[spetskurs\nCourseTask, ProjectTopic]
     PAG[pages\nContentBlock, AuthorProfile]
     LES[lessons\nSection, Lesson]
     GAM[games\nСвоя игра]
@@ -214,17 +214,18 @@ graph LR
 
 ## spetskurs – Курс численного моделирования
 
-**Моделей:** 1 (`CourseTask`)
+**Моделей:** 3 (`CourseTask`, `ProjectTopic`, `ProjectImage`)
 
 | Функция | Описание |
 |---------|----------|
 | Задача курса | `CourseTask` связывает физику, исходник `main.cpp`, WASM-симуляцию и задания |
 | Симуляция | `html_path` указывает на сборку в `static/spetskurs/wasm/`, кадр встраивается iframe'ом |
 | Теория | Живёт на моделях учебника: `Article(track='spetskurs')`, где заполненный `course_task` – разбор задачи, пустой – «Основы C++» |
+| Темы проектов | `ProjectTopic` + `ProjectImage`: карточки тем второго семестра, блок «Учителю» – только суперпользователю. Текст и картинки пишет `seed_spetskurs_projects` |
 
 `TheoryPage` / `TheoryBlock` удалены: это была урезанная копия `textbook.Article` / `ArticleBlock`, из которой учебник когда-то и вырос. Модель `Simulation` переименована в `CourseTask`, потому что теперь означает не только симуляцию.
 
-**Endpoints:** 4 (лендинг, список задач, задача, «Основы C++»)
+**Endpoints:** 6 (лендинг, список задач, задача, «Основы C++», темы проектов, тема)
 
 **Выкладка:** `.wasm` и архив исходников библиотеки в git не коммитятся – см. `docs/spetskurs-deploy.md`
 

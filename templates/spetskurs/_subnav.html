@@ -21,6 +21,10 @@
                class="{{ base }} {% if active_section == 'basics' %}{{ on }}{% else %}{{ off }}{% endif %}">
                 Основы C++
             </a>
+            <a href="{% url 'spetskurs:project_list' %}"
+               class="{{ base }} {% if active_section == 'projects' %}{{ on }}{% else %}{{ off }}{% endif %}">
+                Проекты
+            </a>
 
             {% endwith %}{% endwith %}{% endwith %}
         </div>

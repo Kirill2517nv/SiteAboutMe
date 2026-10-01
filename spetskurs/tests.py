@@ -9,7 +9,7 @@ from django.urls import reverse
 
 from textbook.models import Article
 
-from .models import CourseTask
+from .models import CourseTask, ProjectTopic
 
 # Боевое хранилище статики требует прогнанного collectstatic — тестам он не нужен.
 NO_MANIFEST_STATIC = override_settings(STORAGES={
@@ -161,3 +161,106 @@ class PublishSpetskursCommandTests(TestCase):
                 call_command('publish_spetskurs', *args, stdout=StringIO())
 
         self.assertFalse(Article.objects.filter(is_published=True).exists())
+
+
+@NO_MANIFEST_STATIC
+class ProjectTopicsTests(TestCase):
+    """Темы проектов: ученическая часть – всем, заметки учителя – только
+    суперпользователю. Заметки выводятся под if, а не прячутся стилями, поэтому
+    проверяется само содержимое ответа: в HTML ученика их текста нет вовсе."""
+
+    NOTES = 'Каркас: молекулярная динамика, секрет учителя'
+
+    @classmethod
+    def setUpTestData(cls):
+        fields = dict(group='coulomb', teaser='Зацепка', phenomenon='Явление',
+                      where='Где', research='Исследование', result='Результат',
+                      steps='1. Шаг')
+        cls.topic = ProjectTopic.objects.create(
+            slug='coulomb-crystal', number=1, title='Кулоновский кристалл',
+            teacher_notes=cls.NOTES, **fields)
+        cls.hidden = ProjectTopic.objects.create(
+            slug='hidden', number=2, title='Скрытая тема', is_published=False, **fields)
+        cls.student = User.objects.create_user('pupil', password='pw')
+        cls.teacher = User.objects.create_superuser('teacher', password='pw')
+
+    def test_teacher_notes_absent_for_guest_and_student(self):
+        url = self.topic.get_absolute_url()
+        page = self.client.get(url).content.decode()
+        self.assertIn('Явление', page)
+        self.assertNotIn(self.NOTES, page)
+
+        self.client.force_login(self.student)
+        page = self.client.get(url).content.decode()
+        self.assertNotIn(self.NOTES, page)
+        self.assertNotIn('Учителю', page)
+
+    def test_teacher_notes_visible_to_superuser(self):
+        self.client.force_login(self.teacher)
+        page = self.client.get(self.topic.get_absolute_url()).content.decode()
+        self.assertIn(self.NOTES, page)
+
+    def test_hidden_topic(self):
+        page = self.client.get(reverse('spetskurs:project_list')).content.decode()
+        self.assertIn('Кулоновский кристалл', page)
+        self.assertNotIn('Скрытая тема', page)
+        self.assertEqual(self.client.get(self.hidden.get_absolute_url()).status_code, 404)
+
+    def test_landing_links_to_projects(self):
+        page = self.client.get(reverse('spetskurs:landing')).content.decode()
+        self.assertIn(reverse('spetskurs:project_list'), page)
+
+
+class SeedProjectsCommandTests(TestCase):
+    """Сид тем: все 14 на месте, у каждой этапы и иллюстрации с лицензией;
+    повторный прогон не возвращает снятую тему и не плодит картинки."""
+
+    def setUp(self):
+        import tempfile
+        self.media = tempfile.TemporaryDirectory()
+        self.addCleanup(self.media.cleanup)
+        self.enterContext(override_settings(MEDIA_ROOT=self.media.name))
+
+    def test_seed_twice(self):
+        from .models import ProjectImage
+        call_command('seed_spetskurs_projects', stdout=StringIO())
+        self.assertEqual(ProjectTopic.objects.count(), 14)
+        for topic in ProjectTopic.objects.all():
+            self.assertTrue(topic.steps.strip(), topic.slug)
+            self.assertTrue(topic.teacher_notes.strip(), topic.slug)
+        images = ProjectImage.objects.count()
+        self.assertGreater(images, 0)
+        self.assertFalse(ProjectImage.objects.filter(license='').exists())
+
+        ProjectTopic.objects.filter(slug='rutherford').update(is_published=False)
+        call_command('seed_spetskurs_projects', stdout=StringIO())
+        self.assertFalse(ProjectTopic.objects.get(slug='rutherford').is_published)
+        self.assertEqual(ProjectImage.objects.count(), images)
+        files = list(Path(self.media.name, 'spetskurs', 'projects').iterdir())
+        self.assertEqual(len(files), images, 'старые файлы остались в media')
+
+
+class ProjectFormulasSurviveMarkdownTest(SimpleTestCase):
+    """Каждая формула тем доходит до страницы целиком.
+
+    markdownify прогоняет текст через Markdown и bleach, и $\sum_{i<j}$ там
+    погиб: «<j…» принят за HTML-тег, bleach вырезал его вместе со всем текстом
+    до следующей «>» – обрывалась и формула, и остаток абзаца. Сравниваем
+    формулу исходника с HTML после рендера, как check_articles для статей.
+    """
+
+    def test_formulas_survive(self):
+        import html
+        import re
+
+        from textbook.templatetags.textbook_tags import markdownify
+
+        from .project_topics_data import STEPS, TOPICS
+
+        texts = [(t['slug'], k, v) for t in TOPICS for k, v in t.items()
+                 if isinstance(v, str) and '$' in v]
+        texts += [(slug, 'steps', v) for slug, v in STEPS.items()]
+        for slug, field, source in texts:
+            rendered = html.unescape(str(markdownify(source)))
+            for formula in re.findall(r'\$[^$]+\$', source):
+                self.assertIn(formula, rendered, f'{slug}.{field}')

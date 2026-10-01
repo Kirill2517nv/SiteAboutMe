@@ -9,7 +9,7 @@
 | lessons | 4 | Разделы, уроки, вложения, блоки урока |
 | quizzes | 16 | Тесты, варианты ЕГЭ, банк задач, сессии тренировки |
 | textbook | 7 | Учебник: блоки, статьи, теория ЕГЭ, прогресс чтения |
-| spetskurs | 1 | Задачи курса численного моделирования |
+| spetskurs | 3 | Задачи курса численного моделирования, темы проектов |
 | games | 6 | «Своя игра»: темы, вопросы, пакеты, партии |
 
 ---
@@ -554,7 +554,8 @@ erDiagram
 ## Spetskurs – Задачи курса численного моделирования
 
 Теория спецкурса живёт на моделях учебника (`Article` с `track='spetskurs'`);
-в приложении остался один якорь трека – `CourseTask`.
+в приложении остался один якорь трека – `CourseTask`. Отдельно от задач –
+темы проектов второго семестра (`ProjectTopic` + `ProjectImage`).
 
 ```mermaid
 erDiagram
@@ -583,6 +584,35 @@ erDiagram
     означала только третий пункт. Пропорция кадра у каждой задачи своя:
     маятник и гравитация рассчитаны на разные окна, общая сплющила бы половину.
     `Article.course_task` пустой – статья относится к «Основам C++» (`/spetskurs/basics/`).
+
+```mermaid
+erDiagram
+    ProjectTopic ||--o{ ProjectImage : "images"
+
+    ProjectTopic {
+        int id PK
+        slug slug "unique"
+        int number
+        string title
+        string group "coulomb | stat | grid | dynamics"
+        int difficulty "2 | 3"
+        string teaser
+        text steps "Markdown"
+        text teacher_notes "только суперпользователю"
+        bool is_published
+    }
+
+    ProjectImage {
+        int id PK
+        int topic_id FK
+        image image
+        string caption
+        string author
+        string license
+        url source_url
+        int order
+    }
+```
 
 ---
 

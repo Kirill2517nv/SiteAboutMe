@@ -172,3 +172,16 @@ cp GuiLibrary/Demo_Gravity/Demo_Gravity.{html,js,wasm} static/spetskurs/wasm/
 `_published_articles`, тот же, что на лендинге). Обратная связь
 `task.articles.count` фильтра публикации не знает и обещала бы «7 материалов» у
 задачи, разбора которой на сайте нет, – так и было до этого разделения.
+
+## Темы проектов
+
+Темы (`/spetskurs/projects/`) выкатываются обычным `git pull` + `migrate`, а
+затем одной командой на сервере:
+
+```bash
+python manage.py seed_spetskurs_projects
+```
+
+Иллюстрации лежат в репозитории (`spetskurs/seed_media/projects/`), и команда
+сама копирует их в media – переносить media для них не нужно. Повторный прогон
+обновляет текст, не возвращает тему, снятую в админке, и не плодит копии файлов.

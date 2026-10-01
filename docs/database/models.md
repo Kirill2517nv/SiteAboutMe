@@ -1074,6 +1074,39 @@ classDiagram
 все страницы задачи говорят «Разбор готовится», а симуляция работает. Порядок
 выпуска – в [Выкладке симуляций](../spetskurs-deploy.md).
 
+### ProjectTopic
+
+Тема проекта второго семестра – карточка на `/spetskurs/projects/`. Текст
+пишет `seed_spetskurs_projects` из `spetskurs/project_topics_data.py`.
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `slug` | SlugField(100) | URL-идентификатор, unique |
+| `number` | PositiveSmallIntegerField | Номер темы, по нему сортировка |
+| `title` | CharField(200) | Название |
+| `group` | CharField(20) | Раздел: `coulomb`, `stat`, `grid`, `dynamics`. Порядок разделов на странице – порядок `GROUP_CHOICES` |
+| `difficulty` | PositiveSmallIntegerField | 2 (★★) или 3 (★★★), default=2 |
+| `teaser` | CharField(300) | Зацепка для карточки |
+| `phenomenon`, `where`, `research`, `result` | TextField | Что за явление, где встречается, что исследовать, что получится (Markdown) |
+| `steps` | TextField | Этапы работы (Markdown) |
+| `teacher_notes` | TextField | Заметки учителя (Markdown), blank. Выводятся только суперпользователю – под `{% if %}`, не стилями |
+| `is_published` | BooleanField | default=True; сид ставит его только при создании, снятая тема не возвращается |
+
+### ProjectImage
+
+Иллюстрация темы (FK `topic` → `ProjectTopic`, CASCADE, related_name=`images`).
+Файлы – с Wikimedia Commons, поэтому `license` и `source_url` обязательны:
+подпись под картинкой – условие лицензии CC BY.
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `image` | ImageField | `spetskurs/projects/` |
+| `caption` | CharField(300) | Подпись |
+| `author` | CharField(200) | Автор, blank |
+| `license` | CharField(60) | Лицензия |
+| `source_url` | URLField | Страница файла на Commons |
+| `order` | PositiveSmallIntegerField | Порядок; первая картинка – обложка карточки |
+
 ---
 
 ## games – «Своя игра»

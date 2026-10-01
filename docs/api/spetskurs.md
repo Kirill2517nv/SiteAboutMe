@@ -96,6 +96,40 @@
 
 ---
 
+### GET `/spetskurs/projects/` – Темы проектов
+
+**View:** `project_list_view`
+**Auth:** Не требуется
+**Template:** `spetskurs/project_list.html`
+
+Опубликованные `ProjectTopic` с `prefetch_related('images')` (два запроса),
+разложенные по разделам в порядке `GROUP_CHOICES`; пустые разделы не выводятся.
+
+| Переменная | Описание |
+|------------|----------|
+| `groups` | Список пар `(название раздела, [темы])` |
+| `active_section` | `'projects'` |
+
+---
+
+### GET `/spetskurs/projects/<slug>/` – Тема проекта
+
+**View:** `project_detail_view`
+**Auth:** Не требуется
+**Template:** `spetskurs/project_detail.html`
+
+`get_object_or_404(ProjectTopic, slug=slug, is_published=True)`. Блок
+«Учителю» (`teacher_notes`) рендерится только для `user.is_superuser` –
+в HTML ученика и гостя его текста нет (`ProjectTopicsTests`).
+
+| Переменная | Описание |
+|------------|----------|
+| `topic` | Тема |
+| `images` | Иллюстрации с автором и лицензией |
+| `active_section` | `'projects'` |
+
+---
+
 ## Выпуск разборов
 
 Публикация статей – не endpoint, а management-команда:

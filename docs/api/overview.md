@@ -68,6 +68,8 @@ graph LR
 | GET | `/spetskurs/tasks/` | spetskurs | Список задач |
 | GET | `/spetskurs/task/<slug>/` | spetskurs | Страница задачи |
 | GET | `/spetskurs/basics/` | spetskurs | Основы C++ |
+| GET | `/spetskurs/projects/` | spetskurs | Темы проектов |
+| GET | `/spetskurs/projects/<slug>/` | spetskurs | Тема проекта |
 | GET | `/games/` | games | Лендинг игр |
 | GET | `/games/svoya-igra/` | games | Список паков |
 | GET | `/games/svoya-igra/pack/<id>/` | games | Детали пака |

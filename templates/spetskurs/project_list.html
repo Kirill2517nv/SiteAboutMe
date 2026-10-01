@@ -1,0 +1,58 @@
+{% extends 'base.html' %}
+
+{% block title %}Темы проектов – Спецкурс{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 dark:bg-slate-900 text-gray-900 dark:text-slate-100">
+    {% include 'spetskurs/_subnav.html' %}
+
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div class="mb-10 max-w-3xl">
+            <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">Темы проектов</h1>
+            <p class="text-base mt-3 text-gray-600 dark:text-slate-400 leading-relaxed">
+                Проект второго семестра – одна задача на два месяца: физика явления, программа,
+                проверка на случае с известным ответом, собственное исследование и защита.
+                Каждая тема – вопрос, на который вы получите ответ сами, расчётом.
+                Звёздочки – сложность: ★★ посильно за два месяца при ровной работе,
+                ★★★ – для тех, кто готов разбираться больше.
+            </p>
+        </div>
+
+        {% for label, topics in groups %}
+        <section class="mb-14">
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-6">{{ label }}</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                {% for topic in topics %}
+                <a href="{{ topic.get_absolute_url }}"
+                   class="group flex flex-col bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 hover:border-brand-400 dark:hover:border-cyan-600/50 overflow-hidden transition-all hover:shadow-lg hover:shadow-brand-100 dark:hover:shadow-cyan-900/20">
+                    {% with cover=topic.images.all.0 %}
+                    {% comment %}
+                    object-contain, а не cover: иллюстрации разной формы – полоса ионов,
+                    схема, спутниковый снимок, – и обрезка по центру съедает ровно то,
+                    ради чего картинка выбрана (то же правило, что у картинок учебника).
+                    {% endcomment %}
+                    <div class="aspect-video overflow-hidden bg-gray-100 dark:bg-slate-950">
+                        {% if cover %}
+                        <img src="{{ cover.image.url }}" alt="{{ cover.caption }}" loading="lazy"
+                             class="w-full h-full object-contain group-hover:scale-105 transition-transform duration-500">
+                        {% endif %}
+                    </div>
+                    {% endwith %}
+                    <div class="p-5 flex-1 flex flex-col">
+                        <div class="flex items-center justify-between text-xs text-gray-400 dark:text-slate-500 mb-1">
+                            <span>Тема {{ topic.number }}</span>
+                            <span class="text-amber-500" title="Сложность">{{ topic.get_difficulty_display }}</span>
+                        </div>
+                        <h3 class="font-semibold text-gray-900 dark:text-white group-hover:text-brand-600 dark:group-hover:text-cyan-400 transition-colors">{{ topic.title }}</h3>
+                        <p class="mt-2 text-sm text-gray-600 dark:text-slate-400 leading-relaxed">{{ topic.teaser }}</p>
+                    </div>
+                </a>
+                {% endfor %}
+            </div>
+        </section>
+        {% empty %}
+        <p class="text-gray-400 dark:text-slate-500 py-24 text-center">Темы ещё не добавлены</p>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

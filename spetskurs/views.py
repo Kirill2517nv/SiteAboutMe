@@ -5,7 +5,7 @@ from django.shortcuts import get_object_or_404, render
 
 from textbook.models import Article
 
-from .models import CourseTask
+from .models import CourseTask, ProjectTopic
 
 
 # Витрина в шапке лендинга. Это НЕ задача из базы: Task_3 – учебное задание, и
@@ -97,3 +97,28 @@ def basics_view(request):
         'active_section': 'basics',
     }
     return render(request, 'spetskurs/basics.html', context)
+
+
+def project_list_view(request):
+    """Темы проектов второго семестра – карточки по разделам."""
+    topics = (ProjectTopic.objects.filter(is_published=True)
+              .prefetch_related('images'))
+    # Разделы – в порядке GROUP_CHOICES, а не по алфавиту: кулоновская группа
+    # первая, потому что с неё ученики и спрашивают.
+    groups = [(label, [t for t in topics if t.group == key])
+              for key, label in ProjectTopic.GROUP_CHOICES]
+    context = {
+        'groups': [g for g in groups if g[1]],
+        'active_section': 'projects',
+    }
+    return render(request, 'spetskurs/project_list.html', context)
+
+
+def project_detail_view(request, slug):
+    topic = get_object_or_404(ProjectTopic, slug=slug, is_published=True)
+    context = {
+        'topic': topic,
+        'images': topic.images.all(),
+        'active_section': 'projects',
+    }
+    return render(request, 'spetskurs/project_detail.html', context)

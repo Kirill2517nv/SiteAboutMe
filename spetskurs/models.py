@@ -79,3 +79,68 @@ class CourseTask(models.Model):
         """Значение для CSS aspect-ratio. Собирается из двух чисел, а не хранится
         строкой: строка из админки попала бы в атрибут style как есть."""
         return f"{self.frame_width} / {self.frame_height}"
+
+
+class ProjectTopic(models.Model):
+    """Тема проекта второго семестра – карточка на /spetskurs/projects/.
+
+    Ученическая часть (явление, где встречается, исследование, результат,
+    этапы) видна всем; teacher_notes – только суперпользователю, и шаблон не
+    выводит её вовсе, а не прячет стилями: страницу открывают ученики.
+    Текст пишет seed_spetskurs_projects, как и весь контент сайта.
+    """
+
+    GROUP_CHOICES = [
+        ('coulomb', 'Кулоновское взаимодействие'),
+        ('stat', 'Статистические методы'),
+        ('grid', 'Поля на сетке'),
+        ('dynamics', 'Динамика и хаос'),
+    ]
+    DIFFICULTY_CHOICES = [(2, '★★'), (3, '★★★')]
+
+    slug = models.SlugField(max_length=100, unique=True, verbose_name="URL-идентификатор")
+    number = models.PositiveSmallIntegerField(verbose_name="Номер")
+    title = models.CharField(max_length=200, verbose_name="Название")
+    group = models.CharField(max_length=20, choices=GROUP_CHOICES, verbose_name="Раздел")
+    difficulty = models.PositiveSmallIntegerField(
+        choices=DIFFICULTY_CHOICES, default=2, verbose_name="Сложность")
+    teaser = models.CharField(max_length=300, verbose_name="Зацепка для карточки")
+    phenomenon = models.TextField(verbose_name="Что за явление")
+    where = models.TextField(verbose_name="Где встречается")
+    research = models.TextField(verbose_name="Что вы исследуете")
+    result = models.TextField(verbose_name="Что получится в конце")
+    steps = models.TextField(verbose_name="Этапы работы (Markdown)")
+    teacher_notes = models.TextField(blank=True, verbose_name="Заметки учителя (Markdown)")
+    is_published = models.BooleanField(default=True, verbose_name="Опубликовано")
+
+    class Meta:
+        ordering = ['number']
+        verbose_name = "Тема проекта"
+        verbose_name_plural = "Темы проектов"
+
+    def __str__(self):
+        return f"{self.number}. {self.title}"
+
+    def get_absolute_url(self):
+        return reverse('spetskurs:project_detail', kwargs={'slug': self.slug})
+
+
+class ProjectImage(models.Model):
+    """Иллюстрация темы. Чужая картинка – значит, автор, лицензия и ссылка
+    обязательны: подпись под ней – условие лицензии CC BY, а не украшение."""
+
+    topic = models.ForeignKey(ProjectTopic, on_delete=models.CASCADE, related_name='images')
+    image = models.ImageField(upload_to='spetskurs/projects/', verbose_name="Файл")
+    caption = models.CharField(max_length=300, verbose_name="Подпись")
+    author = models.CharField(max_length=200, blank=True, verbose_name="Автор")
+    license = models.CharField(max_length=60, verbose_name="Лицензия")
+    source_url = models.URLField(verbose_name="Источник")
+    order = models.PositiveSmallIntegerField(default=0, verbose_name="Порядок")
+
+    class Meta:
+        ordering = ['order']
+        verbose_name = "Иллюстрация"
+        verbose_name_plural = "Иллюстрации"
+
+    def __str__(self):
+        return self.caption
