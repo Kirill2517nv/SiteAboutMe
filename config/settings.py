@@ -83,6 +83,8 @@ TEMPLATES = [
                 'pages.context_processors.app_version',
                 'pages.context_processors.yandex_metrika',
                 'textbook.context_processors.feedback_badge',
+                'quizzes.context_processors.review_badge',
+                'accounts.context_processors.notifications_badge',
             ],
         },
     },

@@ -1,0 +1,20 @@
+{# Плашки уведомлений: новые и прочитанные (notifications.html). Вид – как у карточек правок, _suggestion_list.html #}
+{# Фон и полоса слева – решение учителя (Notification.status), точка и жирный – непрочитанное #}
+<ul class="space-y-3">
+    {% for n in items %}
+    <li class="rounded-lg border border-l-4 shadow-sm
+               {% if n.status == 'accepted' %}bg-green-50 border-green-200 border-l-green-500 dark:bg-green-900/20 dark:border-green-800 dark:border-l-green-500
+               {% elif n.status == 'rejected' %}bg-red-50 border-red-200 border-l-red-500 dark:bg-red-900/20 dark:border-red-800 dark:border-l-red-500
+               {% else %}bg-amber-50 border-amber-200 border-l-amber-500 dark:bg-amber-900/20 dark:border-amber-800 dark:border-l-amber-500{% endif %}">
+        <a href="{{ n.url|default:'#' }}" class="flex items-start gap-3 px-5 py-3 hover:brightness-95 dark:hover:brightness-125 transition">
+            <span class="mt-1.5 w-2 h-2 rounded-full shrink-0 {% if not n.read_at %}bg-brand-600 dark:bg-cyan-400{% else %}bg-transparent{% endif %}" aria-hidden="true"></span>
+            <span class="min-w-0 flex-1">
+                <span class="block text-sm text-gray-900 dark:text-white {% if not n.read_at %}font-semibold{% endif %}">{{ n.text }}</span>
+                <span class="block text-xs text-gray-600 dark:text-slate-400 mt-0.5">{{ n.created_at|date:"d.m.Y H:i" }}</span>
+            </span>
+            <span class="shrink-0 text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap text-white
+                         {% if n.status == 'accepted' %}bg-green-600{% elif n.status == 'rejected' %}bg-red-600{% else %}bg-amber-600{% endif %}">{{ n.get_status_display }}</span>
+        </a>
+    </li>
+    {% endfor %}
+</ul>

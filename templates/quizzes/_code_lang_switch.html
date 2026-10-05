@@ -1,0 +1,11 @@
+{% comment %}Переключатель языка над редактором кода. key – выражение Alpine с ключом задачи; компонент страницы держит langs и setLang (по умолчанию Python).{% endcomment %}
+<div class="inline-flex rounded-lg border border-gray-300 dark:border-slate-600 overflow-hidden text-xs font-medium" role="group" aria-label="Язык решения">
+    <button type="button" @click="setLang({{ key }}, 'python')"
+            :aria-pressed="(langs[{{ key }}] || 'python') === 'python'"
+            :class="(langs[{{ key }}] || 'python') === 'python' ? 'bg-brand-600 text-white' : 'bg-white dark:bg-slate-800 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700'"
+            class="px-3 py-1 transition-colors">Python</button>
+    <button type="button" @click="setLang({{ key }}, 'cpp')"
+            :aria-pressed="langs[{{ key }}] === 'cpp'"
+            :class="langs[{{ key }}] === 'cpp' ? 'bg-brand-600 text-white' : 'bg-white dark:bg-slate-800 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700'"
+            class="px-3 py-1 border-l border-gray-300 dark:border-slate-600 transition-colors">C++</button>
+</div>

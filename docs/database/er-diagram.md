@@ -37,6 +37,7 @@ erDiagram
         image avatar
         string alumni_place "Вуз выпускника"
         text alumni_about "О себе"
+        string solution_name_visibility "anon/class/all – имя под решениями"
     }
 
     StudentGroup {
@@ -303,8 +304,6 @@ erDiagram
     User ||--o{ CodeSubmission : "submits"
     Question ||--o{ CodeSubmission : "code for"
     Quiz ||--o{ CodeSubmission : "in quiz"
-    UserAnswer ||--o{ SolutionLike : "liked by"
-    User ||--o{ SolutionLike : "likes"
 
     UserResult {
         int id PK
@@ -344,25 +343,19 @@ erDiagram
         float cpu_time_ms
         int memory_kb
     }
-
-    SolutionLike {
-        int id PK
-        int user_id FK
-        int answer_id FK
-        datetime created_at
-    }
 ```
 
-### EGE-прогресс
+### EGE-прогресс и решения
 
 ```mermaid
 erDiagram
     User ||--o{ ExamTaskProgress : "progresses"
     Quiz ||--o{ ExamTaskProgress : "in exam"
     Question ||--o{ ExamTaskProgress : "on task"
-    User ||--o{ SolutionAttachment : "attaches"
-    Quiz ||--o{ SolutionAttachment : "for quiz"
-    Question ||--o{ SolutionAttachment : "for question"
+    User ||--o{ SharedSolution : "shares"
+    Question ||--o{ SharedSolution : "shared on"
+    SharedSolution ||--o{ SolutionLike : "liked by"
+    User ||--o{ SolutionLike : "likes"
 
     ExamTaskProgress {
         int id PK
@@ -380,14 +373,23 @@ erDiagram
         text best_memory_code
     }
 
-    SolutionAttachment {
+    SharedSolution {
         int id PK
         int user_id FK
-        int quiz_id FK
         int question_id FK
-        file file
-        text comment
-        image image
+        string name_visibility "'' – как в профиле, иначе anon/class/all"
+        text comment "разбор"
+        string file
+        string image
+        bool hidden "скрыто учителем"
+        bool notes_hidden "скрыт только разбор"
+        datetime created_at
+    }
+
+    SolutionLike {
+        int id PK
+        int user_id FK
+        int solution_id FK
         datetime created_at
     }
 ```
@@ -725,8 +727,8 @@ erDiagram
 | UserAnswer → CodeSubmission | FK | SET_NULL | Связь с посылкой кода |
 | CodeSubmission → User, Question, Quiz | FK | CASCADE | Посылка кода |
 | ExamTaskProgress → User, Quiz, Question | FK | CASCADE | Прогресс EGE |
-| SolutionAttachment → User, Quiz, Question | FK | CASCADE | Прикрепление решения |
-| SolutionLike → User, UserAnswer | FK | CASCADE | Лайк решения |
+| SharedSolution → User, Question | FK | CASCADE | Решение в галерее «Решения других» |
+| SolutionLike → User, SharedSolution | FK | CASCADE | Лайк решения |
 | Article → Section | FK | SET_NULL | Статья учебного материала |
 | Article → EgeTask | FK | SET_NULL | Теория задания ЕГЭ |
 | Article → CourseTask | FK | SET_NULL | Разбор задачи спецкурса |
@@ -746,8 +748,8 @@ erDiagram
 
 !!! warning "Уникальные ограничения"
     - `ExamTaskProgress`: `unique_together = [user, quiz, question]` – один прогресс на задачу
-    - `SolutionAttachment`: `unique_together = [user, quiz, question]` – одно прикрепление на задачу
-    - `SolutionLike`: `UniqueConstraint(user, answer)` – один лайк на ответ
+    - `SharedSolution`: `UniqueConstraint(user, question)` – одно решение на автора и задачу
+    - `SolutionLike`: `UniqueConstraint(user, solution)` – один лайк на решение
     - `HintChoice`: `UniqueConstraint(user, question)` – один выбор по подсказке
     - `PracticeItem`: `unique_together = [session, question]` – одна задача в сессии один раз
     - `SectionExtension`: `UniqueConstraint(user, section)` – одно продление на пару «ученик + блок»

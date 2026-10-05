@@ -105,6 +105,94 @@ sys.exit(exit_code)
 # (f"__CPU_TIME_MS__:{cpu_ms:.3f}"), поэтому число подставляем заменой.
 RUNNER_PY = RUNNER_PY.replace('__FSIZE__', str(CONTAINER_FSIZE_LIMIT))
 
+# C++. Граница безопасности та же, что у Python, – контейнер, а не язык:
+# выход за массив в C++ задевает только память своего процесса (её изолирует
+# ядро), а дальше процесса всё упирается в те же nobody / cap_drop / без сети.
+# Нового тут два этапа: компиляция (один раз на отправку, отдельным
+# контейнером с запасом памяти – g++ на <bits/stdc++.h> берёт 200+ МБ) и
+# запуск бинарника в контейнере каждого теста, как обычно.
+CPP_IMAGE = "site-sandbox-cpp"  # docker/sandbox-cpp/Dockerfile
+# -fno-diagnostics-show-line-numbers: без колонки «5 |» слева от строки с
+# ошибкой – ученику она только мешает, а стрелка «^» под ошибкой остаётся.
+CPP_COMPILE_CMD = "g++ -std=c++17 -O2 -fno-diagnostics-show-line-numbers -o a.out main.cpp metrics.cpp"
+
+# Метрики C++ меряет сама программа, а не раннер. ru_maxrss ребёнка из
+# RUSAGE_CHILDREN наследует пик процесса, который его запустил (exec переносит
+# maxrss старого адресного пространства), – и любая программа «весила» ровно
+# столько, сколько Python-раннер, ~13 МБ. А utime ребёнка идёт квантами
+# планировщика: быстрое решение получало 0 мс. Поэтому так же, как RUNNER_PY:
+# прирост памяти (VmHWM − VmRSS на старте) и CPU-время процесса после старта.
+# Конструктор с приоритетом 101 – раньше глобальных объектов ученика. Маркеры
+# печатаются при нормальном выходе (return из main, exit) – метрики нужны
+# только верному решению, а оно завершается нормально.
+CPP_METRICS_SRC = r'''
+#include <cstdio>
+#include <cstring>
+#include <ctime>
+static long metrics_kb(const char* key) {
+    FILE* f = std::fopen("/proc/self/status", "r");
+    if (!f) return 0;
+    char line[256];
+    long kb = 0;
+    while (std::fgets(line, sizeof line, f))
+        if (!std::strncmp(line, key, std::strlen(key))) { std::sscanf(line + std::strlen(key), "%ld", &kb); break; }
+    std::fclose(f);
+    return kb;
+}
+static double metrics_cpu_ms() {
+    timespec ts;
+    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &ts);
+    return ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6;
+}
+static long metrics_base_kb;
+static double metrics_t0;
+__attribute__((constructor(101))) static void metrics_start() {
+    metrics_base_kb = metrics_kb("VmRSS:");
+    metrics_t0 = metrics_cpu_ms();
+}
+__attribute__((destructor(101))) static void metrics_stop() {
+    long peak = metrics_kb("VmHWM:") - metrics_base_kb;
+    std::fprintf(stderr, "__CPU_TIME_MS__:%.3f\n__MEMORY_KB__:%ld\n",
+                 metrics_cpu_ms() - metrics_t0, peak > 0 ? peak : 0);
+}
+'''
+CPP_COMPILE_TIMEOUT = 20      # секунд; `timeout` вернёт 124
+CPP_COMPILE_MEM_LIMIT = "512m"
+# Стек решения. По умолчанию 8 МБ, а рекурсия в задачах ЕГЭ (16, 23) уходит
+# на десятки тысяч уровней – segfault на верном алгоритме выглядел бы как
+# ошибка ученика. Общий потолок всё равно держит mem_limit контейнера.
+CPP_STACK_LIMIT = 64 * 1024 * 1024
+
+# Раннер C++ на Python: бинарник – отдельный процесс, метрики печатает он сам
+# (CPP_METRICS_SRC). Лимиты (размер файла, стек) выставляются здесь и
+# наследуются ребёнком; SIG_IGN для SIGXFSZ тоже переживает exec.
+RUNNER_CPP = '''\
+import resource, signal, subprocess, sys
+
+signal.signal(signal.SIGXFSZ, signal.SIG_IGN)
+resource.setrlimit(resource.RLIMIT_FSIZE, (__FSIZE__, __FSIZE__))
+try:
+    _, hard = resource.getrlimit(resource.RLIMIT_STACK)
+    soft = __STACK__ if hard == resource.RLIM_INFINITY else min(__STACK__, hard)
+    resource.setrlimit(resource.RLIMIT_STACK, (soft, hard))
+except (ValueError, OSError):
+    pass
+
+# restore_signals=False: иначе Python вернёт ребёнку SIGXFSZ по умолчанию,
+# и цикл записи убьёт программу молча вместо ошибки записи.
+rc = subprocess.run(["./a.out"], restore_signals=False).returncode
+# Смерть от сигнала (rc = -11) – в код возврата, как его даёт shell: 128 + сигнал.
+sys.exit(128 - rc if rc < 0 else rc)
+'''.replace('__FSIZE__', str(CONTAINER_FSIZE_LIMIT)).replace('__STACK__', str(CPP_STACK_LIMIT))
+
+# Понятный текст для смерти программы от сигнала. Python до такого почти не
+# доходит, C++ – постоянно, а «Exit code 139» ученику ничего не говорит.
+SIGNAL_MESSAGES = {
+    134: "Программа аварийно завершилась (abort): необработанное исключение или нехватка памяти.",
+    136: "Арифметическая ошибка: деление на ноль.",
+    139: "Segmentation fault: обращение к памяти за пределами массива или переполнение стека (слишком глубокая рекурсия).",
+}
+
 
 def truncate_output(raw_bytes, max_bytes=OUTPUT_MAX_BYTES):
     if len(raw_bytes) < max_bytes:
@@ -132,6 +220,8 @@ def create_tar_from_files(files_dict):
         tarinfo = tarfile.TarInfo(name=filename)
         tarinfo.size = len(encoded_content)
         tarinfo.mtime = time.time()
+        # Бинарник C++ контейнер запускает от nobody – без бита исполнения отказ.
+        tarinfo.mode = 0o755 if filename == 'a.out' else 0o644
         
         tar.addfile(tarinfo, io.BytesIO(encoded_content))
         
@@ -153,9 +243,80 @@ def _parse_metrics(stderr_text):
     return cpu_time_ms, memory_kb
 
 
-def run_code_in_docker(code, input_data, extra_files=None):
+def _docker_error(e, prefix="Ошибка Docker"):
+    error_msg = str(e)
+    if "CreateFile" in error_msg or "Не удается найти указанный файл" in error_msg:
+        return "Ошибка: Docker не запущен. Пожалуйста, запустите Docker Desktop и попробуйте снова."
+    if "Connection refused" in error_msg or "connection" in error_msg.lower():
+        return "Ошибка: Не удается подключиться к Docker. Убедитесь, что Docker Desktop запущен."
+    return f"{prefix}: {error_msg}"
+
+
+def _docker_client():
+    client = docker.from_env()
+    client.ping()
+    return client
+
+
+def compile_code(code, language='python'):
     """
-    Запускает код в Docker-контейнере через runner.py wrapper.
+    Готовит программу к запуску: (программа, ошибка).
+
+    Python не компилируется – программа и есть исходник. C++ собирается один
+    раз на отправку, а не на каждый тест: компиляция стоит секунды, прогон
+    бинарника – миллисекунды. Ошибка компиляции возвращается текстом g++.
+    """
+    if language != 'cpp':
+        return code, None
+
+    container = None
+    try:
+        try:
+            client = _docker_client()
+        except (DockerException, APIError) as e:
+            return None, _docker_error(e, "Ошибка подключения к Docker")
+
+        # Исходник ученика – такой же недоверенный ввод, как и программа:
+        # `#include "/dev/urandom"` гоняет компилятор вечно, поэтому те же
+        # nobody / без сети / cap_drop, свой таймаут и память.
+        container = client.containers.run(
+            CPP_IMAGE,
+            command=f"sleep {CPP_COMPILE_TIMEOUT + 10}",
+            detach=True,
+            mem_limit=CPP_COMPILE_MEM_LIMIT,
+            cpu_quota=CONTAINER_CPU_QUOTA,
+            working_dir=CONTAINER_WORKDIR,
+            **CONTAINER_SECURITY,
+        )
+        container.put_archive(f"{CONTAINER_WORKDIR}/", create_tar_from_files({'main.cpp': code, 'metrics.cpp': CPP_METRICS_SRC}))
+        result = container.exec_run(f"timeout {CPP_COMPILE_TIMEOUT} {CPP_COMPILE_CMD}", demux=True)
+        raw_stdout, raw_stderr = result.output
+        if result.exit_code != 0:
+            if result.exit_code in (124, 137):
+                return None, "Ошибка компиляции: превышено время или память компилятора."
+            log = truncate_output((raw_stdout or b'') + (raw_stderr or b''))
+            return None, f"Ошибка компиляции:\n{log}"
+
+        stream, _ = container.get_archive(f"{CONTAINER_WORKDIR}/a.out")
+        with tarfile.open(fileobj=io.BytesIO(b''.join(stream))) as tar:
+            return tar.extractfile('a.out').read(), None
+
+    except (DockerException, APIError) as e:
+        return None, _docker_error(e)
+    except Exception as e:
+        return None, f"Неожиданная ошибка при компиляции: {str(e)}"
+    finally:
+        if container:
+            try:
+                container.remove(force=True)
+            except Exception:
+                pass
+
+
+def run_code_in_docker(code, input_data, extra_files=None, language='python'):
+    """
+    Запускает программу в Docker-контейнере через раннер.
+    code: исходник Python или бинарник C++ из compile_code().
     extra_files: словарь {'filename': content} дополнительных файлов (например, input.txt)
     Возвращает (output, error_message, cpu_time_ms, memory_kb).
     """
@@ -163,20 +324,13 @@ def run_code_in_docker(code, input_data, extra_files=None):
     try:
         # Пытаемся подключиться к Docker
         try:
-            client = docker.from_env()
-            client.ping()
+            client = _docker_client()
         except (DockerException, APIError) as e:
-            error_msg = str(e)
-            if "CreateFile" in error_msg or "Не удается найти указанный файл" in error_msg:
-                return None, "Ошибка: Docker не запущен. Пожалуйста, запустите Docker Desktop и попробуйте снова.", None, None
-            elif "Connection refused" in error_msg or "connection" in error_msg.lower():
-                return None, "Ошибка: Не удается подключиться к Docker. Убедитесь, что Docker Desktop запущен.", None, None
-            else:
-                return None, f"Ошибка подключения к Docker: {error_msg}", None, None
+            return None, _docker_error(e, "Ошибка подключения к Docker"), None, None
 
         # 1. Создаем контейнер с ограничениями CPU и памяти
         container = client.containers.run(
-            "python:3.11-slim",
+            CPP_IMAGE if language == 'cpp' else "python:3.11-slim",
             command=f"sleep {CONTAINER_TIMEOUT}",
             detach=True,
             mem_limit=CONTAINER_MEM_LIMIT,
@@ -185,15 +339,15 @@ def run_code_in_docker(code, input_data, extra_files=None):
             **CONTAINER_SECURITY,
         )
 
-        # 2. Подготавливаем файлы: solution.py + runner.py + stdin + extra.
+        # 2. Подготавливаем файлы: программа + раннер + stdin + extra.
         # Входные данные кладём файлом, а не подставляем в командную строку:
         # printf принимал за опцию данные, начинающиеся с «-» (например,
         # отрицательное число), а также толковал %, $ и обратные слэши.
-        files_to_send = {
-            'solution.py': code,
-            'runner.py': RUNNER_PY,
-            'stdin.txt': input_data or '',
-        }
+        if language == 'cpp':
+            files_to_send = {'a.out': code, 'runner.py': RUNNER_CPP}
+        else:
+            files_to_send = {'solution.py': code, 'runner.py': RUNNER_PY}
+        files_to_send['stdin.txt'] = input_data or ''
         if extra_files:
             files_to_send.update(extra_files)
 
@@ -225,18 +379,15 @@ def run_code_in_docker(code, input_data, extra_files=None):
             error_output = re.sub(r'__CPU_TIME_MS__:[\d.]+\n?', '', stderr_text)
             error_output = re.sub(r'__MEMORY_KB__:\d+\n?', '', error_output).strip()
             combined = (output + '\n' + error_output).strip() if output else error_output
-            return output, f"Ошибка выполнения (Exit code {exit_code}):\n{combined}", cpu_time_ms, memory_kb
+            title = f"Ошибка выполнения (Exit code {exit_code})"
+            if exit_code in SIGNAL_MESSAGES:
+                title += f". {SIGNAL_MESSAGES[exit_code]}"
+            return output, f"{title}:\n{combined}" if combined else title, cpu_time_ms, memory_kb
 
         return output, None, cpu_time_ms, memory_kb
 
     except (DockerException, APIError) as e:
-        error_msg = str(e)
-        if "CreateFile" in error_msg or "Не удается найти указанный файл" in error_msg:
-            return None, "Ошибка: Docker не запущен. Пожалуйста, запустите Docker Desktop и попробуйте снова.", None, None
-        elif "Connection refused" in error_msg or "connection" in error_msg.lower():
-            return None, "Ошибка: Не удается подключиться к Docker. Убедитесь, что Docker Desktop запущен.", None, None
-        else:
-            return None, f"Ошибка Docker: {error_msg}", None, None
+        return None, _docker_error(e), None, None
     except Exception as e:
         return None, f"Неожиданная ошибка при выполнении кода: {str(e)}", None, None
 

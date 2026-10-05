@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.http import HttpResponseRedirect
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
-from .models import Quiz, Question, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, QuestionImage, QuestionFile, ExamTaskProgress, SolutionAttachment, SolutionLike, CodeSubmission, HintChoice, PracticeSession, PracticeItem
+from .models import Quiz, Question, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, QuestionImage, QuestionFile, ExamTaskProgress, SharedSolution, SolutionLike, CodeSubmission, HintChoice, PracticeSession, PracticeItem
 from .forms import BulkQuizAssignmentForm
 
 class ChoiceInline(admin.TabularInline):
@@ -183,11 +183,14 @@ admin.site.register(Quiz, QuizAdmin)
 admin.site.register(Question, QuestionAdmin)
 admin.site.register(UserResult, UserResultAdmin)
 admin.site.register(QuizAssignment, QuizAssignmentAdmin)
-class SolutionAttachmentAdmin(admin.ModelAdmin):
-    list_display = ('user', 'quiz', 'question', 'has_file', 'has_image', 'created_at')
-    list_filter = ('quiz',)
+class SharedSolutionAdmin(admin.ModelAdmin):
+    list_display = ('user', 'question', 'name_visibility', 'hidden', 'notes_hidden',
+                    'has_file', 'has_image', 'created_at')
+    list_editable = ('hidden', 'notes_hidden')
+    list_filter = ('hidden', 'notes_hidden', 'question__quiz__quiz_type')
     search_fields = ('user__last_name', 'user__first_name', 'user__username')
-    list_select_related = ('user', 'quiz', 'question')
+    list_select_related = ('user', 'question')
+    raw_id_fields = ('user', 'question')
     readonly_fields = ('created_at',)
 
     @admin.display(boolean=True, description='Файл')
@@ -206,10 +209,10 @@ class CodeSubmissionAdmin(admin.ModelAdmin):
     readonly_fields = ('cpu_time_ms', 'memory_kb')
 
 class SolutionLikeAdmin(admin.ModelAdmin):
-    list_display = ('user', 'answer', 'created_at')
+    list_display = ('user', 'solution', 'created_at')
     list_filter = ('created_at',)
     search_fields = ('user__last_name', 'user__first_name', 'user__username')
-    readonly_fields = ('user', 'answer', 'created_at')
+    readonly_fields = ('user', 'solution', 'created_at')
 
 class PracticeItemInline(admin.TabularInline):
     model = PracticeItem
@@ -239,7 +242,7 @@ class PracticeSessionAdmin(admin.ModelAdmin):
 
 
 admin.site.register(ExamTaskProgress, ExamTaskProgressAdmin)
-admin.site.register(SolutionAttachment, SolutionAttachmentAdmin)
+admin.site.register(SharedSolution, SharedSolutionAdmin)
 admin.site.register(CodeSubmission, CodeSubmissionAdmin)
 admin.site.register(SolutionLike, SolutionLikeAdmin)
 

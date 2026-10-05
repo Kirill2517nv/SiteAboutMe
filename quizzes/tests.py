@@ -3,7 +3,7 @@ import re
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
-from django.test import SimpleTestCase, TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
 from . import ege_practice, ege_scoring, ege_stats
@@ -1929,9 +1929,22 @@ class RetrySessionTests(TestCase):
         self._submission(True, cpu=800, memory=1000)
         self._submission(False, cpu=1, memory=1)      # неверное не считается
         best = ege_practice.best_code_metrics(self.user, [self.question.id])
-        self.assertEqual(best[self.question.id]['best_cpu'], 100)
-        self.assertEqual(best[self.question.id]['best_memory'], 1000)
-        self.assertEqual(best[self.question.id]['attempts'], 3)
+        [python] = best[self.question.id]
+        self.assertEqual(python['best_cpu'], 100)
+        self.assertEqual(python['best_memory'], 1000)
+        self.assertEqual(python['attempts'], 3)
+
+    def test_best_metrics_are_split_by_language(self):
+        # Рекорд C++ не должен перекрывать рекорд Python – иначе оптимизировать
+        # решение на Python после одного запуска на C++ становится незачем.
+        self._submission(True, cpu=500, memory=9000)
+        cpp = self._submission(True, cpu=3, memory=1500)
+        cpp.language = 'cpp'
+        cpp.save(update_fields=['language'])
+        rows = ege_practice.best_code_metrics(self.user, [self.question.id])[self.question.id]
+        self.assertEqual([(r['language'], r['best_cpu']) for r in rows],
+                         [('python', 500), ('cpp', 3)])
+        self.assertEqual(rows[1]['language_label'], 'C++')
 
     def test_retry_kind_cannot_be_requested_from_the_form(self):
         self.client.force_login(self.user)
@@ -2819,6 +2832,92 @@ class SandboxLimitsTests(SimpleTestCase):
         # Число в раннер подставляется заменой – шаблон не должен остаться.
         self.assertIn(f'({CONTAINER_FSIZE_LIMIT}, {CONTAINER_FSIZE_LIMIT})', RUNNER_PY)
 
+    def test_cpp_runner_keeps_the_limits(self):
+        # Бинарник C++ – отдельный процесс: лимиты ставит раннер, и ребёнок их
+        # наследует. restore_signals=False – иначе Python вернёт ребёнку SIGXFSZ
+        # и цикл записи убьёт программу молча (проба: exit 153 вместо ошибки).
+        from .utils import CONTAINER_FSIZE_LIMIT, CPP_COMPILE_CMD, CPP_STACK_LIMIT, RUNNER_CPP
+
+        self.assertIn(f'({CONTAINER_FSIZE_LIMIT}, {CONTAINER_FSIZE_LIMIT})', RUNNER_CPP)
+        self.assertIn('restore_signals=False', RUNNER_CPP)
+        # Метрики меряет сама программа: RUSAGE_CHILDREN отдавал пик раннера (~13 МБ).
+        self.assertNotIn('RUSAGE_CHILDREN', RUNNER_CPP)
+        self.assertIn('metrics.cpp', CPP_COMPILE_CMD)
+        self.assertIn(str(CPP_STACK_LIMIT), RUNNER_CPP)
+        self.assertNotIn('__', RUNNER_CPP.replace('__CPU_TIME_MS__', '').replace('__MEMORY_KB__', ''))
+        self.assertIn('-std=c++17', CPP_COMPILE_CMD)
+
+    def test_cpp_binary_is_executable_in_the_archive(self):
+        import tarfile
+        from .utils import create_tar_from_files
+
+        with tarfile.open(fileobj=create_tar_from_files({'a.out': b'x', 'stdin.txt': ''})) as tar:
+            self.assertEqual(tar.getmember('a.out').mode, 0o755)
+            self.assertEqual(tar.getmember('stdin.txt').mode, 0o644)
+
+    def test_python_needs_no_compilation(self):
+        from .utils import compile_code
+
+        self.assertEqual(compile_code('print(1)', 'python'), ('print(1)', None))
+
+
+class CodeLanguageTests(TestCase):
+    """Язык решения выбирает ученик; по умолчанию – Python."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user('cpp-student', password='pwd')
+        self.quiz = Quiz.objects.create(title='Вариант C++', quiz_type='exam',
+                                        slug='var-cpp', is_public=True, exam_mode='practice')
+        self.question = Question.objects.create(
+            quiz=self.quiz, text='напишите программу', question_type='code',
+            ege_number=17, points=1,
+        )
+        self.client.force_login(self.user)
+
+    def _submit(self, payload):
+        from unittest import mock
+        with mock.patch('quizzes.views.check_code_task.delay') as delay:
+            delay.return_value.id = 'task'
+            self.client.post(
+                f'/quizzes/{self.quiz.pk}/question/{self.question.pk}/submit/',
+                data=json.dumps(payload), content_type='application/json',
+            )
+        return CodeSubmission.objects.get(question=self.question)
+
+    def test_submission_keeps_the_chosen_language(self):
+        self.assertEqual(self._submit({'code': 'int main(){}', 'language': 'cpp'}).language, 'cpp')
+
+    def test_language_defaults_to_python(self):
+        self.assertEqual(self._submit({'code': 'print(1)'}).language, 'python')
+
+    def test_unknown_language_falls_back_to_python(self):
+        # Значение приходит от клиента: всё, что не C++, проверяется как Python.
+        self.assertEqual(self._submit({'code': 'x', 'language': 'rust'}).language, 'python')
+
+    def test_finish_creates_submission_in_the_chosen_language(self):
+        # Экзамен: код без «Проверить» уходит на проверку только при завершении,
+        # и язык должен приехать вместе с ним.
+        from unittest import mock
+        with mock.patch('quizzes.views.check_code_task.delay') as delay:
+            delay.return_value.id = 'task'
+            self.client.post(
+                f'/ege/{self.quiz.pk}/finish/',
+                data=json.dumps({
+                    'answers': {str(self.question.pk): 'int main(){}'},
+                    'languages': {str(self.question.pk): 'cpp'},
+                }),
+                content_type='application/json',
+            )
+        self.assertEqual(CodeSubmission.objects.get(question=self.question).language, 'cpp')
+
+    def test_last_submission_reports_its_language(self):
+        # Редактор открывается в языке последней отправки – иначе код C++
+        # подсветился бы как Python и ушёл бы на проверку как Python.
+        CodeSubmission.objects.create(user=self.user, quiz=self.quiz, question=self.question,
+                                      code='int main(){}', language='cpp', status='failed')
+        response = self.client.get(f'/ege/{self.quiz.pk}/')
+        self.assertIn('"language": "cpp"', response.context['last_submissions_json'])
+
 
 class QuestionFileDownloadTests(TestCase):
     """Запись о файле переживает сам файл: seed-команды учебника сносят старый
@@ -2984,3 +3083,471 @@ class TaskStudentsTests(TestCase):
         response = self.client.get('/ege/task/17/students/?group=all')
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, f'/ege/task/17/students/{self.student.id}/')
+
+
+class SolutionGalleryTests(TestCase):
+    """
+    «Решения других»: доступ только решившим, имя – по выбору автора.
+
+    Проверяется HTML целиком, а не контекст: имя анонима не должно попасть в
+    страницу ни текстом, ни атрибутом, ни инициалом аватара.
+    """
+
+    NAME = 'Секретов'
+
+    def setUp(self):
+        from accounts.models import Profile, StudentGroup
+
+        User = get_user_model()
+        self.group_a = StudentGroup.objects.create(name='10А')
+        self.group_b = StudentGroup.objects.create(name='10Б')
+
+        def make(username, group=None, **extra):
+            user = User.objects.create_user(username, password='pwd', **extra)
+            Profile.objects.create(user=user, group=group)
+            return user
+
+        self.author = make('author', self.group_a, last_name=self.NAME, first_name='Автор')
+        self.classmate = make('classmate', self.group_a)
+        self.stranger = make('stranger', self.group_b)
+        self.teacher = User.objects.create_superuser('teacher', password='pwd')
+
+        self.quiz = Quiz.objects.create(title='Банк 5', quiz_type='bank', slug='bank-5', is_public=True)
+        self.question = Question.objects.create(
+            quiz=self.quiz, text='напишите программу', question_type='code', ege_number=5,
+        )
+        self._solve(self.author, code='print("AUTHOR_CODE")')
+        self.url = f'/quizzes/question/{self.question.pk}/solutions/'
+
+    def _solve(self, user, question=None, code='print(1)'):
+        return CodeSubmission.objects.create(
+            user=user, quiz=self.quiz, question=question or self.question,
+            code=code, status='success', is_correct=True, cpu_time_ms=12.0, memory_kb=900,
+        )
+
+    def _page(self, viewer):
+        self.client.force_login(viewer)
+        return self.client.get(self.url).content.decode()
+
+    def _set_visibility(self, value):
+        self.author.profile.solution_name_visibility = value
+        self.author.profile.save()
+
+    # --- доступ ---
+
+    def test_locked_until_solved(self):
+        html = self._page(self.stranger)
+        self.assertNotIn('AUTHOR_CODE', html)
+        self.assertIn('Решите задачу, чтобы увидеть решения других', html)
+
+    def test_gave_up_and_partial_do_not_open(self):
+        session = PracticeSession.objects.create(user=self.stranger, kind='topic', mode='study', ege_number=5)
+        PracticeItem.objects.create(session=session, question=self.question, is_correct=False, gave_up=True)
+        CodeSubmission.objects.create(user=self.stranger, quiz=self.quiz, question=self.question,
+                                      code='x', status='failed', is_correct=False, score=1)
+        self.assertNotIn('AUTHOR_CODE', self._page(self.stranger))
+
+    def test_exam_opens_only_after_finish(self):
+        session = PracticeSession.objects.create(user=self.stranger, kind='topic', mode='exam', ege_number=5)
+        PracticeItem.objects.create(session=session, question=self.question, is_correct=True)
+        self.assertNotIn('AUTHOR_CODE', self._page(self.stranger))
+        session.finished_at = timezone.now()
+        session.save(update_fields=['finished_at'])
+        self.assertIn('AUTHOR_CODE', self._page(self.stranger))
+
+    # --- имя ---
+
+    def test_anonymous_by_default(self):
+        self._solve(self.classmate)
+        html = self._page(self.classmate)
+        self.assertIn('AUTHOR_CODE', html)
+        self.assertNotIn(self.NAME, html)
+        self.assertIn('Ученик №', html)
+
+    def test_class_only(self):
+        self._set_visibility('class')
+        self._solve(self.classmate)
+        self._solve(self.stranger)
+        self.assertIn(self.NAME, self._page(self.classmate))
+        self.assertNotIn(self.NAME, self._page(self.stranger))
+
+    def test_everyone(self):
+        self._set_visibility('all')
+        self._solve(self.stranger)
+        self.assertIn(self.NAME, self._page(self.stranger))
+
+    def test_per_solution_override_beats_profile(self):
+        from .models import SharedSolution
+
+        self._set_visibility('all')
+        SharedSolution.objects.create(user=self.author, question=self.question, name_visibility='anon')
+        self._solve(self.stranger)
+        self.assertNotIn(self.NAME, self._page(self.stranger))
+
+    def test_teacher_sees_name_always(self):
+        self.assertIn(self.NAME, self._page(self.teacher))
+
+    def test_pseudonym_per_question(self):
+        from . import solutions
+
+        with self.settings(SECRET_KEY='fixed-for-test'):
+            one = solutions.pseudonyms('q1', [5, 7])
+            self.assertEqual(one[5], solutions.pseudonyms('q1', [5])[5])
+            self.assertNotEqual(one[5], solutions.pseudonyms('q2', [5])[5])
+
+    # --- учитель, лайки, разбор ---
+
+    def test_teacher_hides_solution(self):
+        from .models import SharedSolution
+
+        self._solve(self.classmate)
+        self._page(self.classmate)  # галерея создаёт записи
+        solution = SharedSolution.objects.get(user=self.author, question=self.question)
+        self.client.force_login(self.teacher)
+        self.client.post(f'/quizzes/solution/{solution.pk}/moderate/', {'field': 'hidden'})
+        self.assertNotIn('AUTHOR_CODE', self._page(self.classmate))
+        self.assertIn('AUTHOR_CODE', self._page(self.teacher))
+        self.assertIn('AUTHOR_CODE', self._page(self.author))  # своё видно, с пометкой
+
+    def test_student_cannot_moderate(self):
+        from .models import SharedSolution
+
+        solution = SharedSolution.objects.create(user=self.author, question=self.question)
+        self.client.force_login(self.classmate)
+        self.client.post(f'/quizzes/solution/{solution.pk}/moderate/', {'field': 'hidden'})
+        solution.refresh_from_db()
+        self.assertFalse(solution.hidden)
+
+    def test_like_rules(self):
+        from .models import SharedSolution
+
+        solution = SharedSolution.objects.create(user=self.author, question=self.question)
+        like = f'/quizzes/solution/{solution.pk}/like/'
+
+        self.client.force_login(self.stranger)  # не решал
+        self.assertEqual(self.client.post(like).status_code, 403)
+        self.client.force_login(self.author)  # своё
+        self.assertEqual(self.client.post(like).status_code, 403)
+
+        self._solve(self.classmate)
+        self.client.force_login(self.classmate)
+        self.assertEqual(self.client.post(like).json(), {'liked': True, 'like_count': 1})
+        self.assertEqual(self.client.post(like).json(), {'liked': False, 'like_count': 0})
+
+    def test_text_task_shows_notes_only(self):
+        text = Question.objects.create(quiz=self.quiz, text='2+2', question_type='text',
+                                       correct_text_answer='4', ege_number=1)
+        for user in (self.author, self.classmate):
+            session = PracticeSession.objects.create(user=user, kind='topic', mode='study', ege_number=1)
+            PracticeItem.objects.create(session=session, question=text, is_correct=True)
+        self.client.force_login(self.author)
+        self.client.post(f'/quizzes/question/{text.pk}/solutions/mine/', {'comment': 'РАЗБОР_АВТОРА'})
+        from .models import SharedSolution  # разбор публикуется после учителя
+        self.client.force_login(self.teacher)
+        self.client.post(f'/quizzes/solution/{SharedSolution.objects.get(question=text).pk}/review/',
+                         {'action': 'approve', 'comment': 'РАЗБОР_АВТОРА'})
+
+        self.client.force_login(self.classmate)
+        html = self.client.get(f'/quizzes/question/{text.pk}/solutions/').content.decode()
+        self.assertIn('РАЗБОР_АВТОРА', html)
+        self.assertNotIn(self.NAME, html)
+
+    def test_unsolved_cannot_attach(self):
+        from .models import SharedSolution
+
+        self.client.force_login(self.stranger)
+        self.client.post(f'/quizzes/question/{self.question.pk}/solutions/mine/', {'comment': 'спам'})
+        self.assertFalse(SharedSolution.objects.filter(user=self.stranger).exists())
+
+    def test_old_solution_url_redirects_without_author(self):
+        variant = Quiz.objects.create(title='Вариант', quiz_type='exam', slug='v-1', is_public=True)
+        question = Question.objects.create(quiz=variant, text='x', question_type='code', ege_number=5)
+        self.client.force_login(self.classmate)
+        response = self.client.get(f'/ege/{variant.pk}/task/5/solution/{self.author.pk}/')
+        self.assertRedirects(response, f'/quizzes/question/{question.pk}/solutions/',
+                             fetch_redirect_response=False)
+
+    # --- таблица результатов варианта ---
+
+    def test_variant_results_table_respects_choice(self):
+        variant = Quiz.objects.create(title='Вариант', quiz_type='exam', slug='v-2', is_public=True)
+        question = Question.objects.create(quiz=variant, text='x', question_type='text',
+                                           correct_text_answer='1', ege_number=1)
+        for user in (self.author, self.classmate):
+            result = UserResult.objects.create(user=user, quiz=variant, score=1)
+            result.answers.create(question=question, text_answer='1', is_correct=True)
+
+        self.client.force_login(self.stranger)
+        html = self.client.get(f'/ege/{variant.pk}/results/').content.decode()
+        self.assertNotIn(self.NAME, html)
+        self.assertNotIn(f'"{self.author.pk}"', html)
+        self.assertIn('Участник №', html)
+
+        self._set_visibility('all')
+        self.assertIn(self.NAME, self.client.get(f'/ege/{variant.pk}/results/').content.decode())
+
+    def test_condition_rendered_like_for_the_solver(self):
+        """Практикум учебника – Markdown (как в quiz_detail), ЕГЭ – партиал сессии."""
+        practicum = Quiz.objects.create(title='Практикум', is_self_check=True)
+        question = Question.objects.create(
+            quiz=practicum, question_type='code',
+            text='Задача 1. Приветствие\n**Ввод:** имя.\n\n```text\nАня\n```',
+        )
+        self._solve(self.classmate, question=question)
+        self.client.force_login(self.classmate)
+        html = self.client.get(f'/quizzes/question/{question.pk}/solutions/').content.decode()
+        self.assertIn('<strong>Ввод:</strong>', html)
+        self.assertNotIn('```', html)
+        self.assertNotIn('<details class="bg-white', html)  # условие не сворачивается
+
+        self._solve(self.classmate)
+        html = self._page(self.classmate)
+        self.assertIn(str(render_question_text(self.question.get_body(), self.question)), html)
+
+    def test_language_filter(self):
+        CodeSubmission.objects.create(user=self.author, quiz=self.quiz, question=self.question,
+                                      code='CPP_ONLY_MARK', language='cpp', status='success', is_correct=True)
+        self._solve(self.classmate, code='print("MATE_PY")')
+        self._solve(self.stranger)
+        self.client.force_login(self.stranger)  # своя карточка – в превью, смотрим чужие
+
+        html = self.client.get(self.url + '?lang=cpp&sort=cpu').content.decode()
+        self.assertIn('CPP_ONLY_MARK', html)
+        self.assertNotIn('AUTHOR_CODE', html)   # Python-версия того же автора скрыта
+        self.assertNotIn('MATE_PY', html)       # у одноклассника C++ нет – карточки нет
+        self.assertIn('?sort=cpu&amp;lang=python', html)  # фильтр языка сохраняет сортировку
+
+        html = self.client.get(self.url).content.decode()
+        self.assertIn('CPP_ONLY_MARK', html)
+        self.assertIn('MATE_PY', html)
+
+    def test_own_card_in_preview_and_in_list(self):
+        self._solve(self.classmate)
+        html = self._page(self.author)
+        self.assertIn('Моё решение', html)
+        self.assertIn('Решения других учеников', html)
+        self.assertIn('1 решение', html)  # одноклассник; своё в счёт не идёт
+        self.assertEqual(html.count('AUTHOR_CODE'), 2)  # в превью формы и в общем списке
+        data = json.loads(re.search(r'id="preview-data">(.*?)</script>', html).group(1))
+        self.assertTrue(data['pseudo'].startswith('Ученик №'))
+        self.assertEqual(data['real'], f'{self.NAME} Автор')
+
+    def test_no_metrika_on_gallery(self):
+        self._solve(self.classmate)
+        with self.settings(YANDEX_METRIKA_ID='12345'):
+            self.assertNotIn('mc.yandex.ru', self._page(self.classmate))
+
+    def test_profile_switch(self):
+        from accounts.models import Profile
+
+        self.client.force_login(self.author)
+        options = self.client.get('/accounts/profile/').context['name_visibility_options']
+        self.assertEqual([o[0] for o in options], [v for v, _ in Profile.NAME_VISIBILITY_CHOICES])
+        self.client.post('/accounts/profile/', {'solution_name_visibility': 'class'})
+        self.author.profile.refresh_from_db()
+        self.assertEqual(self.author.profile.solution_name_visibility, 'class')
+
+
+class SolutionMigrationTests(TransactionTestCase):
+    """
+    Перенос лайков и вложений вариантов на SharedSolution (0049–0051).
+
+    Миграция необратима – старые таблицы удаляются, – поэтому проверяется на
+    данных: дубль лайка схлопывается, лайк себе пропадает, файл и комментарий
+    доезжают до записи (автор, задача).
+    """
+
+    def test_likes_and_attachments_move(self):
+        from django.db import connection
+        from django.db.migrations.executor import MigrationExecutor
+
+        executor = MigrationExecutor(connection)
+        executor.migrate([('quizzes', '0049_sharedsolution')])
+        old = executor.loader.project_state([('quizzes', '0049_sharedsolution')]).apps
+        User = old.get_model('auth', 'User')
+        Quiz_ = old.get_model('quizzes', 'Quiz')
+        Question_ = old.get_model('quizzes', 'Question')
+        Result = old.get_model('quizzes', 'UserResult')
+        Answer = old.get_model('quizzes', 'UserAnswer')
+        Like = old.get_model('quizzes', 'SolutionLike')
+        Attachment = old.get_model('quizzes', 'SolutionAttachment')
+
+        author = User.objects.create(username='author')
+        fan = User.objects.create(username='fan')
+        quiz = Quiz_.objects.create(title='В', quiz_type='exam', slug='v')
+        question = Question_.objects.create(quiz=quiz, text='x', question_type='code', ege_number=5)
+        result = Result.objects.create(user=author, quiz=quiz, score=1)
+        first = Answer.objects.create(user_result=result, question=question, is_correct=True)
+        second = Answer.objects.create(user_result=result, question=question, is_correct=True)
+        Like.objects.create(user=fan, answer=first)
+        Like.objects.create(user=fan, answer=second)   # дубль – тот же автор и задача
+        Like.objects.create(user=author, answer=first)  # себе
+        Attachment.objects.create(user=author, quiz=quiz, question=question,
+                                  comment='разбор', file='ege/v/solutions/u1/table.xlsx')
+
+        executor = MigrationExecutor(connection)
+        executor.loader.build_graph()
+        executor.migrate(executor.loader.graph.leaf_nodes())
+
+        from .models import SharedSolution, SolutionLike
+
+        shared = SharedSolution.objects.get(user_id=author.pk, question_id=question.pk)
+        self.assertEqual(shared.comment, 'разбор')
+        self.assertEqual(shared.file.name, 'ege/v/solutions/u1/table.xlsx')
+        self.assertEqual(list(SolutionLike.objects.values_list('user_id', 'solution_id')),
+                         [(fan.pk, shared.pk)])
+
+
+class SolutionModerationTests(TestCase):
+    """
+    Разбор в «Решениях других» публикуется только после учителя.
+
+    Пока правка на проверке, остальные видят прежнюю одобренную версию; первый
+    разбор не видит никто, кроме автора и учителя. Проверяется HTML страницы
+    одноклассника целиком – текст, картинка и ссылка на файл.
+    """
+
+    GIF = (b'GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!\xf9\x04\x01\x00\x00\x00\x00,'
+           b'\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;')
+
+    def setUp(self):
+        import tempfile
+        from accounts.models import Profile, StudentGroup
+
+        self.media = tempfile.mkdtemp()
+        self.override = override_settings(MEDIA_ROOT=self.media)
+        self.override.enable()
+
+        User = get_user_model()
+        group = StudentGroup.objects.create(name='10А')
+        self.author = User.objects.create_user('author', password='pwd')
+        self.mate = User.objects.create_user('mate', password='pwd')
+        for user in (self.author, self.mate):
+            Profile.objects.create(user=user, group=group)
+        self.teacher = User.objects.create_superuser('teacher', password='pwd')
+
+        quiz = Quiz.objects.create(title='Банк', quiz_type='bank', slug='bank-m', is_public=True)
+        self.question = Question.objects.create(quiz=quiz, text='2+2', question_type='text',
+                                                correct_text_answer='4', ege_number=1)
+        for user in (self.author, self.mate):
+            session = PracticeSession.objects.create(user=user, kind='topic', mode='study', ege_number=1)
+            PracticeItem.objects.create(session=session, question=self.question, is_correct=True)
+        self.gallery = f'/quizzes/question/{self.question.pk}/solutions/'
+        self.mine = f'/quizzes/question/{self.question.pk}/solutions/mine/'
+
+    def tearDown(self):
+        import shutil
+        self.override.disable()
+        shutil.rmtree(self.media, ignore_errors=True)
+
+    def _send(self, **data):
+        self.client.force_login(self.author)
+        return self.client.post(self.mine, data)
+
+    def _mate_sees(self):
+        self.client.force_login(self.mate)
+        return self.client.get(self.gallery).content.decode()
+
+    def _solution(self):
+        from .models import SharedSolution
+        return SharedSolution.objects.get(user=self.author, question=self.question)
+
+    def _decide(self, action, **data):
+        self.client.force_login(self.teacher)
+        return self.client.post(f'/quizzes/solution/{self._solution().pk}/review/', {'action': action, **data})
+
+    def test_first_notes_hidden_until_approved(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        self._send(comment='ЧЕРНОВИК_1', image=SimpleUploadedFile('draft.gif', self.GIF, 'image/gif'))
+        self.assertEqual(self._solution().review_status, 'pending')
+        html = self._mate_sees()
+        self.assertNotIn('ЧЕРНОВИК_1', html)
+        self.assertNotIn('draft', html)
+
+        self._decide('approve', comment='ЧЕРНОВИК_1')
+        html = self._mate_sees()
+        self.assertIn('ЧЕРНОВИК_1', html)
+        self.assertIn('draft', html)  # картинка опубликована
+        self.assertEqual(self._solution().review_status, 'approved')
+
+    def test_pending_edit_keeps_approved_version(self):
+        self._send(comment='ОДОБРЕНО')
+        self._decide('approve', comment='ОДОБРЕНО')
+        self._send(comment='НОВАЯ_ПРАВКА')
+        html = self._mate_sees()
+        self.assertIn('ОДОБРЕНО', html)
+        self.assertNotIn('НОВАЯ_ПРАВКА', html)
+
+    def test_reject_keeps_text_for_author_and_deletes_files(self):
+        import os
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        self._send(comment='ГРУБОСТЬ', image=SimpleUploadedFile('bad.gif', self.GIF, 'image/gif'))
+        path = self._solution().draft_image.path
+        self._decide('reject', note='Без грубостей')
+        solution = self._solution()
+        self.assertEqual(solution.review_status, 'rejected')
+        self.assertFalse(os.path.exists(path))
+        self.assertNotIn('ГРУБОСТЬ', self._mate_sees())
+
+        self.client.force_login(self.author)
+        html = self.client.get(self.gallery).content.decode()
+        self.assertIn('Без грубостей', html)
+        self.assertIn('ГРУБОСТЬ', html)  # текст остался в форме – поправить и отправить снова
+
+    def test_teacher_edit_is_published_and_marked(self):
+        self._send(comment='черновик с ошибкой')
+        self._decide('approve', comment='ИСПРАВЛЕНО_УЧИТЕЛЕМ', note='поправил формулировку')
+        self.assertEqual(self._solution().review_status, 'edited')
+        self.assertIn('ИСПРАВЛЕНО_УЧИТЕЛЕМ', self._mate_sees())
+        self.client.force_login(self.author)
+        self.assertIn('поправил формулировку', self.client.get(self.gallery).content.decode())
+        self.assertNotIn('поправил формулировку', self._mate_sees())  # слово учителя – только автору
+
+    def test_removal_and_name_choice_skip_review(self):
+        self._send(comment='ОДОБРЕНО')
+        self._decide('approve', comment='ОДОБРЕНО')
+        self._send(comment='', name_visibility='all')
+        solution = self._solution()
+        self.assertEqual(solution.review_status, 'approved')
+        self.assertEqual(solution.name_visibility, 'all')
+        self.assertNotIn('ОДОБРЕНО', self._mate_sees())
+
+    def test_author_is_notified(self):
+        from accounts.models import Notification
+
+        self._send(comment='первый')
+        self._decide('reject', note='Без спойлеров')
+        self._send(comment='второй')
+        self._decide('approve', comment='второй исправленный')
+        texts = list(Notification.objects.filter(user=self.author).order_by('pk').values_list('text', flat=True))
+        self.assertEqual(len(texts), 2)
+        self.assertIn('отклонил', texts[0])
+        self.assertIn('Без спойлеров', texts[0])
+        self.assertIn('с правками', texts[1])
+        statuses = list(Notification.objects.filter(user=self.author).order_by('pk').values_list('status', flat=True))
+        self.assertEqual(statuses, ['rejected', 'accepted'])  # красная, потом зелёная плашка
+        self.assertFalse(Notification.objects.filter(user=self.mate).exists())
+
+        self.client.force_login(self.teacher)
+        page = self.client.get(self.gallery)
+        self.assertNotIn('UNREAD_NOTIFICATIONS', page.context)  # у учителя колокольчика нет
+
+    def test_queue_and_badge_are_teacher_only(self):
+        self._send(comment='НА_ПРОВЕРКУ')
+        self.client.force_login(self.mate)
+        response = self.client.get('/quizzes/solutions/review/')
+        self.assertNotEqual(response.status_code, 200)
+        self.assertNotIn('PENDING_NOTES', response.context or {})
+        self._decide_as(self.mate)  # ученик не может принять – статус не меняется
+
+        self.client.force_login(self.teacher)
+        response = self.client.get('/quizzes/solutions/review/')
+        self.assertContains(response, 'НА_ПРОВЕРКУ')
+        self.assertEqual(response.context['PENDING_NOTES'], 1)
+
+    def _decide_as(self, user):
+        self.client.force_login(user)
+        self.client.post(f'/quizzes/solution/{self._solution().pk}/review/', {'action': 'approve'})
+        self.assertEqual(self._solution().review_status, 'pending')

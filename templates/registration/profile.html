@@ -193,6 +193,36 @@
     </form>
     {% endif %}
 
+    <!-- ===== Имя под решениями («Решения других») ===== -->
+    {% if is_own and profile and not profile_user.is_superuser %}
+    {# Выбор сохраняется сразу по клику: три плитки и кнопка «Сохранить» под ними – лишний шаг, о котором забывают. #}
+    <form method="post" class="mb-10 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden" data-aos="fade-up">
+        {% csrf_token %}
+        <div class="px-6 py-4 border-b border-gray-100 dark:border-slate-700">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Кто видит моё имя над решением задачи</h2>
+        </div>
+        <div class="p-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {% for value, icon, title, hint in name_visibility_options %}
+            <label class="cursor-pointer">
+                <input type="radio" name="solution_name_visibility" value="{{ value }}" class="peer sr-only"
+                       onchange="this.form.submit()"
+                       {% if profile.solution_name_visibility == value %}checked{% endif %}>
+                <span class="flex h-full items-start gap-3 rounded-xl border-2 border-gray-100 dark:border-slate-700 px-4 py-3 transition-colors
+                             hover:border-brand-200 dark:hover:border-slate-500
+                             peer-checked:border-brand-500 peer-checked:bg-brand-50/60 dark:peer-checked:border-cyan-500 dark:peer-checked:bg-cyan-900/20
+                             peer-focus-visible:ring-2 peer-focus-visible:ring-brand-500">
+                    <span class="text-xl leading-none mt-0.5" aria-hidden="true">{{ icon }}</span>
+                    <span>
+                        <span class="block text-sm font-semibold text-gray-900 dark:text-white">{{ title }}</span>
+                        <span class="block text-xs text-gray-500 dark:text-slate-400 mt-0.5">{{ hint }}</span>
+                    </span>
+                </span>
+            </label>
+            {% endfor %}
+        </div>
+    </form>
+    {% endif %}
+
     <!-- ===== Сводка ===== -->
     <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-10" data-aos="fade-up" data-aos-delay="100">
         <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 px-4 py-3.5">
@@ -328,7 +358,7 @@
                class="text-sm font-medium text-brand-600 dark:text-cyan-400 hover:underline">Посмотреть все ({{ suggestions_total }})</a>
             {% endif %}
         </div>
-        {% include 'textbook/_suggestion_list.html' %}
+        <div class="p-4">{% include 'textbook/_suggestion_list.html' %}</div>
     </div>
     {% endif %}
 

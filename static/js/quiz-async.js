@@ -123,7 +123,7 @@ class QuizCodeChecker {
         });
     }
 
-    async submitCode(questionId, code) {
+    async submitCode(questionId, code, language = 'python') {
         // Check if already submitting
         if (this.pendingSubmissions.has(questionId)) {
             return { error: 'Код уже на проверке' };
@@ -144,7 +144,7 @@ class QuizCodeChecker {
                     'Content-Type': 'application/json',
                     'X-CSRFToken': this.csrfToken,
                 },
-                body: JSON.stringify({ code }),
+                body: JSON.stringify({ code, language }),
             });
 
             const data = await response.json();

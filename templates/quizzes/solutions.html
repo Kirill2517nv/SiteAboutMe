@@ -1,0 +1,312 @@
+{% extends 'base.html' %}
+{% load textbook_tags %}
+
+{% block title %}Решения других – {{ question.get_title }}{% endblock title %}
+
+{# На странице имена авторов. В заголовке их нет, но Метрика отправляет его в Яндекс – счётчик выключен, как на старой странице решения, чтобы правка заголовка не стала утечкой. См. _yandex_metrika.html #}
+{% block metrika %}{% endblock metrika %}
+
+{% block content %}
+{% comment %}
+«Решения других» – одна страница для банка ЕГЭ, вариантов и практикума учебника.
+Карточки, подписи и доступ собирает quizzes/solutions.py; здесь только вывод.
+Имя автора приходит готовой строкой: у анонима это псевдоним, и настоящего
+имени нет нигде в разметке – ни в тексте, ни в атрибутах.
+{% endcomment %}
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+    <a href="{{ back_url }}"
+       class="inline-flex items-center gap-1 text-sm text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200 mb-4">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+        </svg>
+        {{ back_label }}
+    </a>
+
+    <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-1">Решения других</h1>
+    <p class="text-base text-gray-500 dark:text-slate-400 mb-6">{{ question.get_title }}</p>
+
+    {% if messages %}
+    <div class="mb-4 space-y-2">
+        {% for message in messages %}
+        <div class="px-4 py-2 rounded-lg text-sm {% if message.tags == 'error' %}bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300{% else %}bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300{% endif %}">{{ message }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% comment %}
+    Условие – тем же рендером, что у ученика при решении: ЕГЭ – общим партиалом
+    банка и вариантов, тесты учебника (практикум помечен is_self_check, как все
+    тесты учебника) – Markdown со стилями _task_text_css.html, как в разборе
+    ответов учителя. Остальные тесты размечены пробелами – pre-wrap.
+    {% endcomment %}
+    <section class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-5 mb-6">
+        <h2 class="text-sm font-semibold text-gray-500 dark:text-slate-400 mb-3">Условие задачи</h2>
+        {% if is_ege %}
+        {% include 'quizzes/_ege_question_body.html' with question=question %}
+        {% else %}
+        {% if question.quiz.is_self_check %}
+        <div class="task-text bg-gray-50 dark:bg-slate-900 rounded-lg p-4">{{ question.get_body|markdownify }}</div>
+        {% else %}
+        <div class="text-gray-700 dark:text-slate-300 whitespace-pre-wrap font-mono text-sm">{{ question.get_body }}</div>
+        {% endif %}
+        {% for file in question.files.all %}
+        <a href="{% url 'quizzes:question_file_download' file.id %}" download
+           class="mt-3 inline-flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-slate-700 hover:bg-gray-100 dark:hover:bg-slate-600 rounded-lg text-sm text-gray-700 dark:text-slate-200 transition-colors">
+            &#8595; {{ file.get_filename }}
+        </a>
+        {% endfor %}
+        {% endif %}
+    </section>
+
+    {% if not allowed %}
+    <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-8 text-center">
+        <p class="text-gray-700 dark:text-slate-200 font-medium">Решите задачу, чтобы увидеть решения других.</p>
+        <p class="text-sm text-gray-500 dark:text-slate-400 mt-2">
+            Чужие решения открываются после верного ответа. «Показать ответ» и частичный балл их не открывают.
+        </p>
+    </div>
+    {% else %}
+
+    {% if mine %}
+    {# Данные превью – JSON в <script>, а не в атрибуте: имя и разбор пишет ученик (js_json, см. CLAUDE.md) #}
+    <script type="application/json" id="preview-data">{{ preview_json|safe }}</script>
+    <form method="post" action="{% url 'quizzes:my_solution' question.id %}" enctype="multipart/form-data"
+          x-data="solutionForm('preview-data')"
+          class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden mb-6">
+        {% csrf_token %}
+        {# Шапки «Моё решение» и «Решения других учеников» – одной плашкой: два раздела страницы читаются как два #}
+        <div class="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-brand-50 dark:bg-cyan-900/20 border-l-4 border-brand-600 dark:border-cyan-500">
+            <h2 class="flex items-center gap-2 text-xl font-semibold text-gray-900 dark:text-white"><svg class="w-5 h-5 text-brand-600 dark:text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg> Моё решение</h2>
+            {% if mine.hidden %}
+            <span class="px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">Скрыто учителем – другие его не видят</span>
+            {% endif %}
+        </div>
+
+        <div class="p-6 space-y-6">
+            {% comment %}Статус проверки разбора учителем (SharedSolution.review_status). Слово учителя видит только автор.{% endcomment %}
+            {% if mine.review_status == 'pending' %}
+            <div class="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
+                ⏳ Разбор на проверке у учителя.
+                {% if mine.comment or mine.image or mine.file %}Пока другие видят прежний одобренный вариант.{% else %}Другие увидят его после одобрения.{% endif %}
+            </div>
+            {% elif mine.review_status == 'rejected' %}
+            <div class="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-4 py-3 text-sm text-red-800 dark:text-red-200">
+                ✋ Учитель отклонил разбор{% if mine.review_note %}: «{{ mine.review_note }}»{% endif %}. Текст остался в поле ниже – поправьте и сохраните снова.
+            </div>
+            {% elif mine.review_status == 'edited' %}
+            <div class="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 px-4 py-3 text-sm text-emerald-800 dark:text-emerald-200">
+                ✅ Разбор опубликован с правками учителя{% if mine.review_note %}: «{{ mine.review_note }}»{% endif %}.
+            </div>
+            {% elif mine.review_status == 'approved' and mine.review_note %}
+            <div class="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 px-4 py-3 text-sm text-emerald-800 dark:text-emerald-200">
+                ✅ Разбор опубликован. Учитель: «{{ mine.review_note }}»
+            </div>
+            {% endif %}
+
+            <div>
+                <p class="text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Так его увидят другие ученики</p>
+                <p class="text-xs text-gray-500 dark:text-slate-400 mb-3" x-show="effective === 'class'" x-cloak>
+                    Это вид для учеников других классов. Одноклассники вместо «<span x-text="pseudo"></span>» видят «<span x-text="real"></span>».
+                </p>
+                <div class="rounded-xl bg-gray-50 dark:bg-slate-900/60 p-3">
+                    {% include 'quizzes/_solution_card.html' with card=own_card preview=True %}
+                </div>
+                <p class="mt-2 text-xs text-gray-400">Превью меняется сразу. Разбор – комментарий, картинка, файл – после «Сохранить» уходит учителю на проверку, подпись имени меняется сразу.</p>
+            </div>
+
+            <fieldset>
+                <legend class="text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Кто видит моё имя над этим решением</legend>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    {% for value, icon, title, hint in visibility_options %}
+                    <label class="cursor-pointer">
+                        <input type="radio" name="name_visibility" value="{{ value }}" class="peer sr-only" x-model="vis"
+                               {% if mine.name_visibility == value %}checked{% endif %}>
+                        <span class="flex h-full items-start gap-3 rounded-xl border-2 border-gray-100 dark:border-slate-700 px-4 py-3 transition-colors
+                                     hover:border-brand-200 dark:hover:border-slate-500
+                                     peer-checked:border-brand-500 peer-checked:bg-brand-50/60 dark:peer-checked:border-cyan-500 dark:peer-checked:bg-cyan-900/20
+                                     peer-focus-visible:ring-2 peer-focus-visible:ring-brand-500">
+                            <span class="text-xl leading-none mt-0.5" aria-hidden="true">{{ icon }}</span>
+                            <span>
+                                <span class="block text-sm font-semibold text-gray-900 dark:text-white">{{ title }}</span>
+                                <span class="block text-xs text-gray-500 dark:text-slate-400 mt-0.5">{{ hint }}</span>
+                            </span>
+                        </span>
+                    </label>
+                    {% endfor %}
+                </div>
+            </fieldset>
+
+            <label class="block">
+                <span class="text-sm font-medium text-gray-700 dark:text-slate-300">Разбор – как думали, почему так</span>
+                <textarea name="comment" rows="4" x-model="comment"
+                          class="mt-2 w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
+                          placeholder="Например: перебрал все пары, а потом заметил, что хватает одного прохода">{{ mine_draft.comment }}</textarea>
+            </label>
+
+            {% comment %}
+            Поля загрузки – зоны с пунктиром вместо кнопки браузера «Выберите файл»:
+            сама <input> спрятана внутри <label>, а имя выбранного файла
+            показывает Alpine – иначе после выбора ничего не меняется на глаз.
+            {% endcomment %}
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {% for field, icon, title, hint, accept, current, remove in uploads %}
+                <div>
+                    <label class="flex items-center gap-3 rounded-xl border-2 border-dashed border-gray-200 dark:border-slate-600 px-4 py-3 cursor-pointer transition-colors hover:border-brand-300 hover:bg-brand-50/40 dark:hover:border-cyan-700 dark:hover:bg-slate-700/40"
+                           :class="picked.{{ field }} && 'border-brand-400 bg-brand-50/40 dark:border-cyan-600'">
+                        <span class="text-xl leading-none" aria-hidden="true">{{ icon }}</span>
+                        <span class="min-w-0">
+                            <span class="block text-sm font-semibold text-gray-900 dark:text-white">{{ title }}</span>
+                            <span class="block text-xs text-gray-500 dark:text-slate-400 truncate" x-text="picked.{{ field }} || $el.dataset.hint" data-hint="{{ hint }}">{{ hint }}</span>
+                        </span>
+                        <input type="file" name="{{ field }}" class="sr-only" x-ref="input_{{ field }}"
+                               {% if accept %}accept="{{ accept }}"{% endif %}
+                               @change="pick('{{ field }}', $event)">
+                    </label>
+                    {# Флажок удаления сохранённого – скрытое поле: его ставят кнопки ✕ здесь и в превью #}
+                    <input type="hidden" name="{{ remove }}" :value="remove.{{ field }} ? '1' : ''">
+                    <div class="mt-2 flex items-center gap-2 text-xs text-gray-500 dark:text-slate-400" x-show="has('{{ field }}') || remove.{{ field }}" x-cloak>
+                        <template x-if="has('{{ field }}')">
+                            <span class="flex items-center gap-2 min-w-0">
+                                <span class="truncate" x-text="picked.{{ field }} ? 'Выбран: ' + picked.{{ field }} : 'Сохранён: {% if field == 'file' %}{{ current|escapejs }}{% else %}картинка{% endif %}'"></span>
+                                <button type="button" @click="drop('{{ field }}')"
+                                        class="shrink-0 px-2 py-0.5 rounded-md border border-gray-200 dark:border-slate-600 hover:border-red-300 hover:text-red-600 transition-colors">✕ убрать</button>
+                            </span>
+                        </template>
+                        <template x-if="remove.{{ field }} && !picked.{{ field }}">
+                            <span class="flex items-center gap-2">
+                                Будет удалён при сохранении
+                                <button type="button" @click="remove.{{ field }} = false"
+                                        class="px-2 py-0.5 rounded-md border border-gray-200 dark:border-slate-600 hover:border-brand-300 hover:text-brand-600 transition-colors">вернуть</button>
+                            </span>
+                        </template>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="flex justify-end">
+                <button type="submit" class="px-5 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium shadow-sm transition-colors">
+                    Сохранить
+                </button>
+            </div>
+        </div>
+    </form>
+    {% endif %}
+
+    {% comment %}
+    Фильтры и список – один блок #solutions-list: клик по фильтру подгружает ту
+    же страницу в фоне и подменяет только его (solutionsFilter ниже), без
+    перехода наверх. Ссылки остаются настоящими – без JS работают как раньше.
+    {% endcomment %}
+    <div id="solutions-list">
+    <div class="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-brand-50 dark:bg-cyan-900/20 border-l-4 border-brand-600 dark:border-cyan-500 rounded-xl mb-4">
+        <h2 class="flex items-center gap-2 text-xl font-semibold text-gray-900 dark:text-white"><svg class="w-5 h-5 text-brand-600 dark:text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg> Решения других учеников</h2>
+        <span class="text-sm text-gray-500 dark:text-slate-400 tabular-nums">{{ others_count }} решени{{ others_count|plural:"е,я,й" }}</span>
+    </div>
+    {% if question.question_type == 'code' %}
+    <div class="mb-4 space-y-2 text-sm bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 px-4 py-3">
+        <div class="flex flex-wrap items-center gap-2">
+            <span class="w-20 text-gray-500 dark:text-slate-400">Сначала:</span>
+            {% for key, label, url in sort_links %}
+            <a href="{{ url }}" data-filter class="px-3 py-1 rounded-full border {% if sort == key %}bg-brand-600 text-white border-brand-600{% else %}border-gray-300 dark:border-slate-600 text-gray-700 dark:text-slate-300 hover:border-brand-300{% endif %}">{{ label }}</a>
+            {% endfor %}
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+            <span class="w-20 text-gray-500 dark:text-slate-400">Язык:</span>
+            {% for key, label, count, url in language_links %}
+            <a href="{{ url }}" data-filter class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border {% if language == key %}bg-brand-600 text-white border-brand-600{% else %}border-gray-300 dark:border-slate-600 text-gray-700 dark:text-slate-300 hover:border-brand-300{% endif %}">
+                {{ label }}{% if count is not None %}<span class="text-xs tabular-nums {% if language == key %}text-brand-100{% else %}text-gray-400{% endif %}">{{ count }}</span>{% endif %}
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="space-y-4">
+        {% for card in cards %}
+        {% include 'quizzes/_solution_card.html' with card=card %}
+        {% empty %}
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-8 text-center text-gray-500 dark:text-slate-400">
+            {% if language %}Решений на этом языке пока нет – посмотрите все языки.{% elif question.question_type == 'code' %}Пока здесь только вы – других верных решений нет.{% else %}Ответ у всех один, поэтому здесь показываются разборы. Пока их никто не написал – начните с себя.{% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock content %}
+
+{% block extra_css %}{% if not is_ege %}{% include 'quizzes/_task_text_css.html' %}{% endif %}{% endblock extra_css %}
+
+{% block pre_alpine_js %}{% include 'quizzes/_mathjax.html' %}{% include 'quizzes/_code_highlight.html' %}
+<script>
+// Форма «Моё решение»: состояние полей и превью карточки (_solution_card.html, preview).
+function solutionForm(id) {
+    const d = JSON.parse(document.getElementById(id).textContent);
+    return {
+        vis: d.vis, profileVis: d.profileVis, real: d.real, pseudo: d.pseudo, comment: d.comment,
+        picked: { file: '', image: '' }, pickedImage: '', remove: { file: false, image: false },
+        get effective() { return this.vis || this.profileVis; },
+        // Превью показывает вид «для чужого»: при «Мой класс» это псевдоним.
+        get named() { return this.effective === 'all'; },
+        get previewName() { return this.named ? this.real : this.pseudo; },
+        saved: { file: d.savedFile, image: d.savedImage },
+        get imageSrc() { return this.pickedImage || (this.remove.image ? '' : this.saved.image); },
+        get fileShown() { return this.picked.file || (this.remove.file ? '' : this.saved.file); },
+        // Есть ли что показывать в поле: выбранное сейчас или сохранённое и не помеченное к удалению.
+        has(field) { return !!(this.picked[field] || (this.saved[field] && !this.remove[field])); },
+        // ✕: только что выбранное снимается с поля (на сервер не уйдёт), сохранённое – помечается к удалению.
+        drop(field) {
+            if (this.picked[field]) {
+                this.$refs['input_' + field].value = '';
+                this.picked[field] = '';
+                if (field === 'image' && this.pickedImage) { URL.revokeObjectURL(this.pickedImage); this.pickedImage = ''; }
+            } else {
+                this.remove[field] = true;
+            }
+        },
+        pick(field, event) {
+            const file = event.target.files[0];
+            this.picked[field] = file ? file.name : '';
+            if (field === 'image') {
+                if (this.pickedImage) URL.revokeObjectURL(this.pickedImage);
+                this.pickedImage = file ? URL.createObjectURL(file) : '';
+            }
+        },
+    };
+}
+
+// Фильтры галереи без перезагрузки: тянем ту же страницу и подменяем только
+// #solutions-list. Новые кнопки лайка Alpine подхватит сам (он следит за DOM),
+// подсветку кода запускаем руками – highlightAll уже отработал при загрузке.
+(function () {
+    async function load(url, push) {
+        const box = document.getElementById('solutions-list');
+        if (!box) return;
+        box.style.opacity = '0.5';
+        try {
+            const response = await fetch(url, { headers: { 'X-Requested-With': 'fetch' } });
+            if (!response.ok) throw new Error(response.status);
+            const doc = new DOMParser().parseFromString(await response.text(), 'text/html');
+            const fresh = doc.getElementById('solutions-list');
+            if (!fresh) throw new Error('no list');
+            box.innerHTML = fresh.innerHTML;
+            box.querySelectorAll('pre code').forEach(el => window.hljs && hljs.highlightElement(el));
+            if (push) history.pushState({ solutions: true }, '', url);
+        } catch (e) {
+            window.location.href = url;  // что-то пошло не так – обычный переход
+        } finally {
+            box.style.opacity = '';
+        }
+    }
+    document.addEventListener('click', function (event) {
+        const link = event.target.closest('#solutions-list a[data-filter]');
+        if (!link || event.ctrlKey || event.metaKey || event.shiftKey || event.button !== 0) return;
+        event.preventDefault();
+        load(link.href, true);
+    });
+    window.addEventListener('popstate', () => load(window.location.href, false));
+})();
+</script>
+{% endblock pre_alpine_js %}

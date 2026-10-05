@@ -118,7 +118,7 @@ base.html
 | `quizzes/ege_results.html` | `resultsPage()` | История результатов, сортировка |
 | `quizzes/ege_solved.html` | `{ open }` | Архив решённых задач |
 | `quizzes/ege_student_mistakes.html` | `{ open }`, `{ peek }` | Разбор ошибок ученика (взгляд учителя) |
-| `quizzes/ege_solution_detail.html` | `{ viewMode }` | Просмотр решения (cpu / memory) |
+| `quizzes/solutions.html` | `{ liked, count, busy }` | Галерея решений задачи, кнопка лайка |
 | `quizzes/ege_bank.html` | `{ open }` | Банк заданий |
 | `quizzes/ege_class.html` | подсказка `data-tip` | Таблица класса |
 | `quizzes/_ege_progress.html` | подсказка `data-tip` | Прогресс ученика |

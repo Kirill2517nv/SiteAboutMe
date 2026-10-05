@@ -1879,6 +1879,33 @@ class ArticleFeedbackTests(TestCase):
         self.assertContains(profile, 'Поправил')
         self.assertNotIn('NEW_SUGGESTIONS', profile.context)
 
+    def test_answer_rings_the_bell_once(self):
+        """Ответ на правку – уведомление автору; повторное «Сохранить» без изменений не звенит."""
+        from accounts.models import Notification
+        from textbook.models import Suggestion
+
+        s = Suggestion.objects.create(user=self.student, article=self.article, block=self.text,
+                                      original='ячейка', proposed='именованная ячейка')
+        self.client.force_login(self.teacher)
+        url = reverse('textbook:suggestion_update', args=[s.pk])
+        self.client.post(url, {'status': 'accepted', 'reply': 'Поправил', 'filter': 'new'})
+        self.client.post(url, {'status': 'accepted', 'reply': 'Поправил', 'filter': 'new'})
+        notes = Notification.objects.filter(user=self.student)
+        self.assertEqual(notes.count(), 1)
+        self.assertIn('«Переменные»: принято', notes.get().text)
+        self.assertTrue(notes.get().url.endswith(f'#s{s.pk}'))
+        self.assertEqual(notes.get().status, 'accepted')  # зелёная плашка
+
+        self.client.force_login(self.student)
+        self.assertEqual(self.client.get(reverse('textbook:home')).context['UNREAD_NOTIFICATIONS'], 1)
+        # Правка – в своём разделе, а не в разделе задач, который стоит ниже.
+        html = self.client.get(reverse('accounts:notifications')).content.decode()
+        self.assertLess(html.index('Ваши правки к статьям'), html.index('Поправил'))
+        self.assertLess(html.index('Поправил'), html.index('Ваши комментарии к задачам'))
+        # Второй заход: уведомление уже прочитано и свёрнуто под «Прочитанные».
+        self.assertContains(self.client.get(reverse('accounts:notifications')), 'Прочитанные (1)')
+        self.assertEqual(self.client.get(reverse('textbook:home')).context['UNREAD_NOTIFICATIONS'], 0)
+
     def test_profile_shows_last_eight_and_link_to_all(self):
         from textbook.models import Suggestion
 
@@ -1899,11 +1926,18 @@ class ArticleFeedbackTests(TestCase):
         foreign = self.client.get(reverse('textbook:suggestions'), {'user': self.student.pk})
         self.assertEqual(len(foreign.context['suggestions']), 10)
 
+        # Вкладки по статусу: учителю на чужом списке вкладка не теряет ?user=.
+        Suggestion.objects.filter(proposed='правка 00').update(status='rejected')
+        rejected = self.client.get(reverse('textbook:suggestions'), {'user': self.student.pk, 'status': 'rejected'})
+        self.assertEqual([s.proposed for s in rejected.context['suggestions']], ['правка 00'])
+        self.assertIn(('new', 'На рассмотрении', 9, f'?status=new&user={self.student.pk}'),
+                      rejected.context['status_tabs'])
+
     def test_home_announcement_only_for_logged_in(self):
         """Анонс на главной – только вошедшим: гостю хватает врезки «Что это за сайт»."""
-        self.assertNotContains(self.client.get(reverse('home')), 'news:marker')
+        self.assertNotContains(self.client.get(reverse('home')), 'news:solutions')
         self.client.force_login(self.student)
-        self.assertContains(self.client.get(reverse('home')), 'news:marker')
+        self.assertContains(self.client.get(reverse('home')), 'news:solutions')
 
     def test_student_cannot_change_status(self):
         from textbook.models import Suggestion

@@ -10,6 +10,7 @@
 <!-- CodeMirror -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/theme/material-darker.min.css">
+<link rel="stylesheet" href="{% static 'css/codemirror-vscode.css' %}">
 <style>
     /* CodeMirror overrides */
     .CodeMirror {
@@ -208,7 +209,10 @@
                             <div class="text-sm"><span class="font-medium text-gray-600">Ваш ответ:</span> <span class="{% if question.is_solved %}text-green-700{% else %}text-red-700{% endif %}">{{ question.solved_answer.text_answer }}</span></div>
                             {% elif question.question_type == 'code' and question.solved_answer.code_answer %}
                             <div class="text-sm font-medium text-gray-600 mb-2">Ваш код:</div>
-                            <pre class="rounded-lg overflow-x-auto !text-sm"><code class="language-python">{{ question.solved_answer.code_answer }}</code></pre>
+                            <pre class="rounded-lg overflow-x-auto !text-sm"><code class="language-{{ question.solved_answer.code_language }}">{{ question.solved_answer.code_answer }}</code></pre>
+                            {% endif %}
+                            {% if show_solutions and question.is_solved %}
+                            <div class="mt-3">{% include 'quizzes/_solutions_link.html' with question_id=question.id %}</div>
                             {% endif %}
                         </div>
                     </div>
@@ -310,9 +314,14 @@ Alpine ищет данные вверх по дереву, поэтому кно
                               :class="tasks[currentTask]?.points > 1 ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'"
                               x-text="(tasks[currentTask]?.points || 1) + ' б.'"></span>
                     </div>
-                    <div x-show="tasks[currentTask]?.is_solved" class="flex items-center gap-1 text-green-600 text-sm font-medium">
+                    <div x-show="tasks[currentTask]?.is_solved" class="flex items-center gap-3 text-sm font-medium">
+                        {% if show_solutions %}
+                        {% include 'quizzes/_solutions_link.html' with question_id=question.id compact=True %}
+                        {% endif %}
+                        <span class="flex items-center gap-1 text-green-600">
                         <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
                         Решена
+                        </span>
                     </div>
                 </div>
 
@@ -426,7 +435,10 @@ Alpine ищет данные вверх по дереву, поэтому кно
                 <!-- Answer input: code -->
                 {% elif question.question_type == 'code' %}
                 <div class="mt-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Код (Python):</label>
+                    <div class="flex items-center justify-between gap-3 mb-2">
+                        <span class="text-sm font-medium text-gray-700 dark:text-slate-300">Код:</span>
+                        {% include 'quizzes/_code_lang_switch.html' with key=question.id %}
+                    </div>
                     <div id="codemirror-wrap-{{ question.id }}"></div>
 
                     <!-- Submit code -->
@@ -460,7 +472,7 @@ Alpine ищет данные вверх по дереву, поэтому кно
                         </div>
                         <div x-show="codeStatuses[{{ question.id }}] === 'failed'" class="code-status failed">
                             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-                            <span x-text="codeErrors[{{ question.id }}] || 'Тесты не пройдены'"></span>
+                            <span class="min-w-0 font-mono whitespace-pre-wrap break-words" x-text="codeErrors[{{ question.id }}] || 'Тесты не пройдены'"></span>
                         </div>
                         <div x-show="codeStatuses[{{ question.id }}] === 'error'" class="code-status error">
                             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
@@ -747,6 +759,7 @@ Alpine ищет данные вверх по дереву, поэтому кно
 <!-- CodeMirror -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/python/python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/clike/clike.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/edit/closebrackets.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/edit/matchbrackets.min.js"></script>
 <!-- Highlight.js for code display in solved answers -->
@@ -758,6 +771,7 @@ Alpine ищет данные вверх по дереву, поэтому кно
 {% endcomment %}
 <script>hljs.highlightAll();</script>
 <!-- Quiz async (WebSocket + code submission) -->
+<script src="{% static 'js/code-lang.js' %}"></script>
 <script src="{% static 'js/quiz-async.js' %}"></script>
 
 <script>
@@ -791,6 +805,7 @@ function quizApp() {
         // Modules
         codeChecker: null,
         codeMirrors: {},
+        langs: {},  // id задачи → 'python' | 'cpp'
 
         init() {
             // Guard against Alpine calling init() twice
@@ -813,6 +828,12 @@ function quizApp() {
                     this.codeMetrics[qid] = { cpu_time_ms: sub.cpu_time_ms, memory_kb: sub.memory_kb };
                 }
             }
+
+            // Язык: из последней отправки, а выбор в браузере новее неё – как и черновик кода.
+            for (const [qid, sub] of Object.entries(lastSubs)) {
+                this.langs[qid] = sub.language || 'python';
+            }
+            Object.assign(this.langs, loadCodeLangs(this._langKey()));
 
             // Restore saved answers for solved tasks
             for (const task of this.tasks) {
@@ -966,6 +987,14 @@ function quizApp() {
             this.textChecking[questionId] = false;
         },
 
+        _langKey() { return `quiz_lang_${this.quizId}`; },
+
+        setLang(id, lang) {
+            this.langs[id] = lang;
+            saveCodeLangs(this._langKey(), this.langs);
+            codeLangApply(this.codeMirrors[id], lang);
+        },
+
         _createCodeMirror(task) {
             const wrap = document.getElementById(`codemirror-wrap-${task.id}`);
             if (!wrap || wrap.offsetParent === null) return;
@@ -976,8 +1005,8 @@ function quizApp() {
 
             const cm = CodeMirror(wrap, {
                 value: this.answers[task.id] || '',
-                mode: 'python',
-                theme: 'material-darker',
+                mode: codeLangMode(this.langs[task.id]),
+                theme: codeLangTheme(this.langs[task.id]),
                 lineNumbers: true,
                 matchBrackets: true,
                 autoCloseBrackets: true,
@@ -1092,7 +1121,7 @@ function quizApp() {
             this.answers[questionId] = code;
             const sessionKey = 'quiz_' + this.quizId + '_question_' + questionId;
             sessionStorage.setItem(sessionKey, code);
-            const result = await this.codeChecker.submitCode(questionId, code);
+            const result = await this.codeChecker.submitCode(questionId, code, this.langs[questionId] || 'python');
             if (result.error && !result.submission_id) {
                 alert(result.error);
             }
@@ -1220,7 +1249,7 @@ function quizApp() {
                 const resp = await fetch(`/quizzes/${this.quizId}/finish/`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.csrfToken },
-                    body: JSON.stringify({ answers: answersPayload, force }),
+                    body: JSON.stringify({ answers: answersPayload, languages: this.langs, force }),
                 });
                 const data = await resp.json();
 

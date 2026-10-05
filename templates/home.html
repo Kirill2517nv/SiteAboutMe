@@ -518,81 +518,110 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
     64%  { transform: translateY(0) rotate(-5deg); }
   }
 
-  /* ==================== АНОНС: МАРКЕР ====================
+  /* ==================== АНОНС: C++ И РЕШЕНИЯ ДРУГИХ ====================
      Тот же язык, что у гостевой врезки: подложка .intro__stage, полоски
-     вместо текста, курсор и «тап». Две сцены – ровно два действия ученика:
-     открыть маркер и рисовать. Курсор и тап – те же keyframes icursor/itap,
-     что у карточки: нажатие приходится на 28% из 7s. */
-  .inote__page {
-    background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
-    padding: 12px 13px 13px; box-shadow: 0 8px 20px -10px rgba(15, 23, 42, .4);
-  }
-  html.dark .inote__page { background: #1e293b; border-color: #334155; }
-  .inote__line {
-    position: relative; width: var(--w); height: 5px; border-radius: 999px;
-    background: #e5e7eb; margin-bottom: 7px;
-  }
-  html.dark .inote__line { background: #334155; }
-  .inote__line:last-child { margin-bottom: 0; }
+     вместо текста, курсор и «тап». Две сцены – два новых действия ученика:
+     переключить язык и лайкнуть чужое решение. Курсор и тап – те же keyframes
+     icursor/itap, что у карточки (нажатие на 28% из 7s); они стоят внутри
+     элемента, который «нажимают», и центрируются на нём сами. */
+  .itap-host { position: relative; }
 
-  /* ---------- 4. Круглая кнопка у края → палитра ---------- */
-  .imark { position: relative; width: 170px; }
-  .imark__fab {
-    position: absolute; right: -14px; top: 50%; margin-top: -14px;
-    width: 28px; height: 28px; border-radius: 999px;
-    display: flex; align-items: center; justify-content: center;
-    background: #fff; color: #4b5563; border: 1px solid #e5e7eb;
-    box-shadow: 0 6px 14px -6px rgba(15, 23, 42, .55);
-    animation: ifab 7s ease-in-out infinite;
+  /* ---------- 4. Python → C++ ---------- */
+  .ilang { position: relative; width: 174px; }
+  .ilang__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .ilang__head .icode__dots { margin-bottom: 0; }
+  .ilang__sw {
+    position: relative; display: flex; padding: 2px; border-radius: 7px; background: #1e293b;
   }
-  html.dark .imark__fab { background: #1e293b; border-color: #475569; color: #cbd5e1; }
-  @keyframes ifab {
-    0%, 26%   { transform: scale(1); opacity: 1; }
-    28%       { transform: scale(.85); opacity: 1; }
-    33%, 88%  { transform: scale(.6); opacity: 0; }
-    96%, 100% { transform: scale(1); opacity: 1; }
+  /* Подложка выбранного языка едет вправо – так же выглядит настоящий
+     переключатель над редактором. */
+  .ilang__pill {
+    position: absolute; top: 2px; left: 2px; width: 40px; height: 14px; border-radius: 5px;
+    background: #2563eb; animation: ipill 7s ease-in-out infinite;
   }
-  /* Палитра встаёт на место кнопки, как настоящая .marker-panel. */
-  .imark__panel {
-    position: absolute; right: -16px; top: 50%; margin-top: -33px;
-    display: flex; flex-direction: column; gap: 4px; padding: 5px;
-    background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
-    box-shadow: 0 8px 20px -10px rgba(15, 23, 42, .5);
-    transform-origin: right center;
-    animation: ipanel 7s ease-out infinite;
+  @keyframes ipill {
+    0%, 28%   { transform: translateX(0); }
+    34%, 86%  { transform: translateX(40px); }
+    94%, 100% { transform: translateX(0); }
   }
-  html.dark .imark__panel { background: #1e293b; border-color: #475569; }
-  .imark__panel i { display: block; width: 10px; height: 10px; border-radius: 999px; }
-  .imark__panel i:first-child { outline: 1.5px solid #3b82f6; outline-offset: 1px; }
-  @keyframes ipanel {
-    0%, 30%   { transform: scale(.5); opacity: 0; }
-    37%       { transform: scale(1.08); opacity: 1; }
-    42%, 86%  { transform: scale(1); opacity: 1; }
-    94%, 100% { transform: scale(.5); opacity: 0; }
+  .ilang__opt {
+    position: relative; width: 40px; height: 14px; text-align: center;
+    font-size: 9px; font-weight: 700; line-height: 14px; color: #cbd5e1;
   }
-  .imark__tap { left: auto; top: 50%; right: -14px; margin: -14px 0 0; }
-  .imark__cursor { left: auto; right: -12px; }
+  /* Две раскраски одного кода: Python (синий/жёлтый) и C++ «как в VS»
+     (фиолетовый/бирюзовый) – меняются в такт подложке. */
+  .ilang__code { position: relative; height: 36px; }
+  .ilang__layer { position: absolute; inset: 0; animation: ipy 7s ease-in-out infinite; }
+  .ilang__layer--cpp { animation-name: icpp; }
+  .ilang__layer--cpp .icode__ln i.kw { background: #c084fc; }
+  .ilang__layer--cpp .icode__ln i.st { background: #2dd4bf; }
+  @keyframes ipy {
+    0%, 28%   { opacity: 1; }
+    34%, 86%  { opacity: 0; }
+    94%, 100% { opacity: 1; }
+  }
+  @keyframes icpp {
+    0%, 28%   { opacity: 0; }
+    34%, 86%  { opacity: 1; }
+    94%, 100% { opacity: 0; }
+  }
 
-  /* ---------- 5. Штрихи рисуются поверх текста ---------- */
-  .idraw { position: relative; width: 170px; }
-  .idraw__ink { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-  /* pathLength="1" у контуров – поэтому длина штриха всегда 1, и одни
-     keyframes «прорисовывают» любую кривую. */
-  .idraw__ink path {
-    fill: none; stroke-linecap: round; stroke-linejoin: round;
-    stroke-dasharray: 1; stroke-dashoffset: 1;
-    animation: iink 7s ease-in-out infinite;
+  /* ---------- 5. Решения других + лайк ---------- */
+  .isol { position: relative; width: 174px; }
+  .isol__head { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+  .isol__ok {
+    padding: 2px 7px; border-radius: 999px; white-space: nowrap;
+    background: #dcfce7; color: #15803d; font-size: 9px; font-weight: 700; line-height: 1.4;
   }
-  .idraw__ink path:nth-child(2) { animation-name: iink2; }
-  @keyframes iink {
-    0%, 8%    { stroke-dashoffset: 1; opacity: 1; }
-    34%, 86%  { stroke-dashoffset: 0; opacity: 1; }
-    94%, 100% { stroke-dashoffset: 0; opacity: 0; }
+  html.dark .isol__ok { background: #052e16; color: #4ade80; }
+  .isol__card {
+    display: flex; align-items: center; gap: 7px; margin-bottom: 6px; padding: 7px 9px;
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 9px;
+    box-shadow: 0 6px 16px -10px rgba(15, 23, 42, .45);
+    animation: icard 7s ease-out infinite;
   }
-  @keyframes iink2 {
-    0%, 40%   { stroke-dashoffset: 1; opacity: 1; }
-    58%, 86%  { stroke-dashoffset: 0; opacity: 1; }
-    94%, 100% { stroke-dashoffset: 0; opacity: 0; }
+  html.dark .isol__card { background: #1e293b; border-color: #334155; }
+  .isol__card:last-child { margin-bottom: 0; animation-name: icard2; }
+  @keyframes icard {
+    0%        { transform: translateY(8px); opacity: 0; }
+    8%, 90%   { transform: translateY(0); opacity: 1; }
+    100%      { transform: translateY(0); opacity: 0; }
+  }
+  @keyframes icard2 {
+    0%, 6%    { transform: translateY(8px); opacity: 0; }
+    14%, 90%  { transform: translateY(0); opacity: 1; }
+    100%      { transform: translateY(0); opacity: 0; }
+  }
+  .isol__ava { flex-shrink: 0; width: 14px; height: 14px; border-radius: 999px; background: #bfdbfe; }
+  html.dark .isol__ava { background: #1e3a8a; }
+  .isol__card:last-child .isol__ava { background: #fde68a; }
+  html.dark .isol__card:last-child .isol__ava { background: #713f12; }
+  .isol__body { flex: 1; min-width: 0; }
+  .isol__name { font-size: 9px; font-weight: 700; line-height: 1; color: #475569; margin-bottom: 5px; white-space: nowrap; }
+  html.dark .isol__name { color: #cbd5e1; }
+  .isol__body .icode__ln { margin-bottom: 0; }
+  .isol__like { display: flex; align-items: center; gap: 3px; color: #94a3b8; }
+  .isol__heart { width: 12px; height: 12px; animation: iheart 7s ease-out infinite; }
+  .isol__card:last-child .isol__heart { animation: none; }
+  @keyframes iheart {
+    0%, 28%   { transform: scale(1); fill: transparent; color: #94a3b8; }
+    32%       { transform: scale(1.35); fill: #ef4444; color: #ef4444; }
+    38%, 92%  { transform: scale(1); fill: #ef4444; color: #ef4444; }
+    100%      { transform: scale(1); fill: transparent; color: #94a3b8; }
+  }
+  /* Счётчик 3 → 4: две цифры в одной клетке, одна гаснет, другая всплывает. */
+  .isol__cnt { position: relative; width: 7px; height: 11px; font-size: 9px; font-weight: 700; line-height: 11px; }
+  .isol__cnt i { position: absolute; inset: 0; font-style: normal; animation: icnt-old 7s ease-out infinite; }
+  .isol__cnt i + i { animation-name: icnt-new; color: #ef4444; }
+  @keyframes icnt-old {
+    0%, 29%   { transform: translateY(0); opacity: 1; }
+    34%, 92%  { transform: translateY(-6px); opacity: 0; }
+    100%      { transform: translateY(0); opacity: 1; }
+  }
+  @keyframes icnt-new {
+    0%, 29%   { transform: translateY(6px); opacity: 0; }
+    34%, 92%  { transform: translateY(0); opacity: 1; }
+    100%      { transform: translateY(6px); opacity: 0; }
   }
 
   /* Зацикленная анимация в фоне – первое, что мешает при вестибулярных
@@ -600,13 +629,20 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
   @media (prefers-reduced-motion: reduce) {
     .iflip__inner, .iflip__cursor, .iflip__tap, .iread__page, .iread__line,
     .iread__badge, .icode__type, .icode__caret, .icode__res, .icode__lock,
-    .imark__fab, .imark__panel, .idraw__ink path {
+    .ilang__pill, .ilang__layer, .isol__card, .isol__heart, .isol__cnt i {
       animation: none;
     }
     .iread__line { width: var(--w); }
-    .iflip__cursor, .iread__badge, .icode__res, .imark__panel { opacity: 1; }
-    .iflip__tap, .imark__fab { opacity: 0; }
-    .idraw__ink path { stroke-dashoffset: 0; }
+    .iflip__cursor, .iread__badge, .icode__res { opacity: 1; }
+    .iflip__tap { opacity: 0; }
+    /* Статичный кадр – «после нажатия»: выбран C++, лайк поставлен. */
+    .ilang__pill { transform: translateX(40px); }
+    .ilang__layer { opacity: 0; }
+    .ilang__layer--cpp { opacity: 1; }
+    .isol__card { opacity: 1; }
+    .isol__card:first-child .isol__heart { fill: #ef4444; color: #ef4444; }
+    .isol__cnt i { opacity: 0; }
+    .isol__cnt i + i { opacity: 1; }
   }
 
   /* На узком экране змейка не читается – маршрут разворачивается в столбик */
@@ -684,25 +720,25 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
 
   {% if user.is_authenticated %}
   {% comment %}
-  Анонс маркера. Только вошедшим: гостю хватает врезки «Что это за сайт».
+  Анонс C++ и «Решений других». Только вошедшим: гостю хватает врезки «Что это за сайт».
   Закрывается кнопкой «Понятно», флаг – в localStorage (без модели и
   миграции): с другого устройства анонс покажется ещё раз, и это не беда.
   Следующий анонс – новый ключ, иначе его не увидят те, кто закрыл этот.
   {% endcomment %}
-  <section x-data="{ shown: (() => { try { return localStorage.getItem('news:marker') !== 'seen' } catch (e) { return true } })() }"
+  <section x-data="{ shown: (() => { try { return localStorage.getItem('news:solutions') !== 'seen' } catch (e) { return true } })() }"
            x-show="shown" x-cloak
            class="mb-8 rounded-2xl border border-brand-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-5 py-6 sm:px-7 shadow-sm">
     <div class="flex flex-wrap items-start justify-between gap-4 mb-5">
       <div class="max-w-3xl">
         <span class="inline-block mb-2 px-2 py-0.5 rounded-full bg-brand-100 dark:bg-slate-700 text-brand-700 dark:text-cyan-400 text-xs font-semibold">Новое</span>
-        <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-1.5">Рисуйте прямо на уроке</h2>
+        <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-1.5">Решайте на C++ и смотрите, как решили другие</h2>
         <p class="text-sm leading-relaxed text-gray-600 dark:text-slate-300">
-          В статьях учебника, тренировке ЕГЭ, вариантах и практикуме появился маркер:
-          обведите главное, подчеркните непонятное, дорисуйте схему – прямо поверх текста.
+          В тренировке ЕГЭ, вариантах и практикуме теперь можно выбрать язык программирования,
+          а после верного решения – открыть решения одноклассников и поставить лайк лучшим.
         </p>
       </div>
       <button type="button"
-              @click="shown = false; try { localStorage.setItem('news:marker', 'seen') } catch (e) {}"
+              @click="shown = false; try { localStorage.setItem('news:solutions', 'seen') } catch (e) {}"
               class="shrink-0 px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold transition-colors">
         Понятно
       </button>
@@ -712,57 +748,92 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
       <div>
         <div class="intro__stage" aria-hidden="true">
           <div class="idemo">
-            <div class="imark">
-              <div class="inote__page">
-                <div class="iread__title"></div>
-                <div class="inote__line" style="--w: 100%"></div>
-                <div class="inote__line" style="--w: 84%"></div>
-                <div class="inote__line" style="--w: 64%"></div>
+            <div class="ilang">
+              <div class="icode__win">
+                <div class="ilang__head">
+                  <div class="icode__dots"><i></i><i></i><i></i></div>
+                  <div class="ilang__sw">
+                    <span class="ilang__pill"></span>
+                    <span class="ilang__opt">Python</span>
+                    <span class="ilang__opt itap-host">C++
+                      <span class="iflip__tap"></span>
+                      <svg class="iflip__cursor" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M5.5 2.6v16.1l3.9-3.8 2.3 5.5 3-1.3-2.3-5.4 5.4-0.3z"/>
+                      </svg>
+                    </span>
+                  </div>
+                </div>
+                <div class="ilang__code">
+                  <div class="ilang__layer">
+                    <div class="icode__ln"><i class="kw" style="width:18px"></i><i style="width:30px"></i><i class="st" style="width:26px"></i></div>
+                    <div class="icode__ln icode__ln--pad"><i class="kw" style="width:14px"></i><i style="width:52px"></i></div>
+                    <div class="icode__ln icode__ln--pad"><i style="width:34px"></i><i class="st" style="width:20px"></i></div>
+                  </div>
+                  <div class="ilang__layer ilang__layer--cpp">
+                    <div class="icode__ln"><i class="kw" style="width:26px"></i><i class="st" style="width:44px"></i></div>
+                    <div class="icode__ln"><i class="st" style="width:16px"></i><i style="width:24px"></i><i class="kw" style="width:14px"></i><i style="width:30px"></i></div>
+                    <div class="icode__ln icode__ln--pad"><i style="width:22px"></i><i class="kw" style="width:12px"></i><i style="width:28px"></i></div>
+                  </div>
+                </div>
               </div>
-              <span class="imark__fab">
-                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4"><path stroke-linecap="round" stroke-linejoin="round" d="m15 5 4 4M4 20l1-5L16 4l4 4L9 19z"/></svg>
-              </span>
-              <span class="imark__panel">
-                <i style="background: #ef4444"></i><i style="background: #eab308"></i><i style="background: #22c55e"></i><i style="background: #3b82f6"></i>
-              </span>
-              <span class="iflip__tap imark__tap"></span>
-              <svg class="iflip__cursor imark__cursor" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M5.5 2.6v16.1l3.9-3.8 2.3 5.5 3-1.3-2.3-5.4 5.4-0.3z"/>
-              </svg>
             </div>
           </div>
         </div>
-        <div class="text-sm font-semibold text-gray-900 dark:text-white mb-1">Кнопка с карандашом справа</div>
+        <div class="text-sm font-semibold text-gray-900 dark:text-white mb-1">Python или C++ – на выбор</div>
         <p class="text-sm leading-relaxed text-gray-500 dark:text-slate-400">
-          Круглая кнопка у правого края экрана (или клавиша <kbd class="px-1 rounded border border-gray-300 dark:border-slate-600 font-mono text-xs">M</kbd>)
-          открывает палитру: восемь цветов, пять толщин и ластик. На телефоне маркера нет –
-          там палец листает страницу.
+          Над каждым редактором кода – переключатель языка. По умолчанию Python; выберите C++,
+          и решение соберётся компилятором и пройдёт те же тесты. Рекорды времени и памяти
+          считаются для каждого языка отдельно.
         </p>
       </div>
 
       <div>
         <div class="intro__stage" aria-hidden="true">
           <div class="idemo">
-            <div class="idraw">
-              <div class="inote__page">
-                <div class="iread__title"></div>
-                <div class="inote__line" style="--w: 100%"></div>
-                <div class="inote__line" style="--w: 70%"></div>
-                <div class="inote__line" style="--w: 92%"></div>
-                <div class="inote__line" style="--w: 58%"></div>
+            <div class="isol">
+              <div class="isol__head">
+                <span class="isol__ok">✓ Решена</span>
+                <div class="ibar" style="width: 60px"></div>
               </div>
-              <svg class="idraw__ink" viewBox="0 0 170 87">
-                <path pathLength="1" stroke="#ef4444" stroke-width="2.5" d="M70 37C134 33 134 57 66 56C-14 55-14 36 80 38"/>
-                <path pathLength="1" stroke="#3b82f6" stroke-width="2.5" d="M13 78q8-4 16 0t16 0t16 0t16 0t16 0"/>
-              </svg>
+              <div>
+                <div class="isol__card">
+                  <span class="isol__ava"></span>
+                  <div class="isol__body">
+                    <div class="isol__name">Ученик №4821</div>
+                    <div class="icode__ln"><i class="kw" style="width:14px"></i><i style="width:36px"></i><i class="st" style="width:18px"></i></div>
+                  </div>
+                  <span class="isol__like">
+                    <span class="itap-host">
+                      <svg class="isol__heart" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4"><path stroke-linejoin="round" d="M12 20.5s-7.5-4.6-9.3-9.4C1.4 7.6 3.6 4 7.1 4c2 0 3.6 1.1 4.9 2.8C13.3 5.1 14.9 4 16.9 4c3.5 0 5.7 3.6 4.4 7.1-1.8 4.8-9.3 9.4-9.3 9.4z"/></svg>
+                      <span class="iflip__tap"></span>
+                      <svg class="iflip__cursor" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M5.5 2.6v16.1l3.9-3.8 2.3 5.5 3-1.3-2.3-5.4 5.4-0.3z"/>
+                      </svg>
+                    </span>
+                    <span class="isol__cnt"><i>3</i><i>4</i></span>
+                  </span>
+                </div>
+                <div class="isol__card">
+                  <span class="isol__ava"></span>
+                  <div class="isol__body">
+                    <div class="isol__name">Ученик №1307</div>
+                    <div class="icode__ln"><i class="kw" style="width:20px"></i><i class="st" style="width:28px"></i><i style="width:22px"></i></div>
+                  </div>
+                  <span class="isol__like">
+                    <svg class="isol__heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path stroke-linejoin="round" d="M12 20.5s-7.5-4.6-9.3-9.4C1.4 7.6 3.6 4 7.1 4c2 0 3.6 1.1 4.9 2.8C13.3 5.1 14.9 4 16.9 4c3.5 0 5.7 3.6 4.4 7.1-1.8 4.8-9.3 9.4-9.3 9.4z"/></svg>
+                    <span class="isol__cnt" style="width:auto">1</span>
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
-        <div class="text-sm font-semibold text-gray-900 dark:text-white mb-1">Рисуйте поверх текста</div>
+        <div class="text-sm font-semibold text-gray-900 dark:text-white mb-1">Решили – посмотрите, как решили другие</div>
         <p class="text-sm leading-relaxed text-gray-500 dark:text-slate-400">
-          Рисунок едет вместе со страницей, когда вы её листаете. Ошиблись – «Отменить»
-          или <kbd class="px-1 rounded border border-gray-300 dark:border-slate-600 font-mono text-xs">Ctrl+Z</kbd>.
-          Рисунок видите только вы, и он не сохраняется: после перезагрузки страница снова чистая.
+          После верного решения откройте «Решения других»: код одноклассников, их рекорды
+          по скорости и памяти и разборы. Понравилось – ставьте лайк. Ваше имя видят,
+          только если вы сами так выбрали в профиле, иначе вы «Ученик №…».
+          «Показать ответ» доступа не открывает.
         </p>
       </div>
     </div>

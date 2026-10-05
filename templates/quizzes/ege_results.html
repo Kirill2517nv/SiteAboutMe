@@ -96,9 +96,8 @@
                 <tbody id="results-tbody" class="divide-y divide-gray-50">
                     {% for row in results_matrix %}
                     <tr class="hover:bg-gray-50 dark:hover:bg-transparent transition-colors"
-                        data-user-id="{{ row.user_id }}"
-                        data-score="{{ row.score }}"
-                        data-full-name="{{ row.full_name }}">
+                        data-row="{{ row.key }}"
+                        data-score="{{ row.score }}">
                         <!-- Sticky name column -->
                         <td class="sticky left-0 z-10 bg-white px-4 py-3 font-medium text-gray-900 whitespace-nowrap">
                             {% if user.is_superuser %}
@@ -117,9 +116,9 @@
                         {% for result in row.task_results %}
                         <td class="px-2 py-3 text-center">
                             {% if result.correct is True %}
-                            <a href="{% url 'ege:ege_user_solution' quiz_id=quiz.id ege_number=result.ege_number user_id=result.user_id %}"
+                            <a href="{% url 'quizzes:solutions' result.question_id %}"
                                class="inline-flex items-center justify-center w-7 h-7 rounded-full bg-green-100 text-green-700 hover:bg-green-200 transition-colors"
-                               title="Верно – посмотреть решение">
+                               title="Верно – решения других по этой задаче">
                                 <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
                                 </svg>
@@ -308,7 +307,7 @@ function resultsPage() {
             const tbody = document.getElementById('results-tbody');
             if (tbody) {
                 this.originalOrder = Array.from(tbody.querySelectorAll('tr')).map(
-                    tr => tr.getAttribute('data-user-id')
+                    tr => tr.getAttribute('data-row')
                 );
             }
         },
@@ -328,10 +327,10 @@ function resultsPage() {
 
             const descending = (criterion === 'likes');
 
-            const rows = Array.from(tbody.querySelectorAll('tr[data-user-id]'));
+            const rows = Array.from(tbody.querySelectorAll('tr[data-row]'));
             rows.sort((a, b) => {
-                const uidA = a.getAttribute('data-user-id');
-                const uidB = b.getAttribute('data-user-id');
+                const uidA = a.getAttribute('data-row');
+                const uidB = b.getAttribute('data-row');
 
                 const valA = this._getSortValue(uidA, egeNumber, criterion);
                 const valB = this._getSortValue(uidB, egeNumber, criterion);
@@ -368,7 +367,7 @@ function resultsPage() {
             if (!tbody) return;
 
             for (const uid of this.originalOrder) {
-                const row = tbody.querySelector(`tr[data-user-id="${uid}"]`);
+                const row = tbody.querySelector(`tr[data-row="${uid}"]`);
                 if (row) tbody.appendChild(row);
             }
         },

@@ -11,6 +11,7 @@
 {% endcomment %}
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/theme/material-darker.min.css">
+<link rel="stylesheet" href="{% static 'css/codemirror-vscode.css' %}">
 <style>
     .CodeMirror {
         border: 1px solid #374151;
@@ -256,7 +257,10 @@
 
                 {% if item.question.question_type == 'code' %}
                 <div class="mt-4">
-                    <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Код (Python):</label>
+                    <div class="flex items-center justify-between gap-3 mb-2">
+                        <span class="text-sm font-medium text-gray-700 dark:text-slate-300">Код:</span>
+                        {% include 'quizzes/_code_lang_switch.html' with key=item.id %}
+                    </div>
                     <div id="cm-wrap-{{ item.id }}"></div>
                     <button @click="submitCode({{ item.id }})"
                             :disabled="busy[{{ item.id }}] || locked[{{ item.id }}]"
@@ -369,7 +373,7 @@
                         </div>
                     </div>
                     <div x-show="errors[{{ item.id }}]" x-cloak
-                         class="mt-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300 text-xs whitespace-pre-wrap"
+                         class="mt-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300 text-sm font-mono whitespace-pre-wrap break-words"
                          x-text="errors[{{ item.id }}]"></div>
                 </div>
                 {% endif %}
@@ -424,6 +428,8 @@
 {% include 'quizzes/_mathjax.html' %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/python/python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/clike/clike.min.js"></script>
+<script src="{% static 'js/code-lang.js' %}"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/edit/matchbrackets.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/edit/closebrackets.min.js"></script>
 
@@ -455,6 +461,7 @@ function practiceApp() {
         showFinishConfirm: false,
 
         editors: {},
+        langs: {},  // item_id → 'python' | 'cpp', по умолчанию Python
         clock: '0:00',
         examLeft: {{ seconds_left|default_if_none:"null" }},
         _examEnd: null,
@@ -475,6 +482,7 @@ function practiceApp() {
                 if (it.correct_answer) this.correct[it.item_id] = it.correct_answer;
                 const sub = this.lastSubs[it.question_id];
                 if (sub && sub.code) this.answers[it.item_id] = sub.code;
+                if (sub) this.langs[it.item_id] = sub.language || 'python';
             }
 
             if (this.examLeft !== null) this._examEnd = Date.now() + this.examLeft * 1000;
@@ -580,9 +588,10 @@ function practiceApp() {
         // Время задачи кончается в момент верного ответа (или «Показать ответ»),
         // а не когда ученик нажал «Завершить» или ушёл к соседней: минуты,
         // пока он любуется зелёной галочкой, – это не время решения.
-        // В повторе задача не закрывается – там каждый заход считается заново.
+        // В повторе замка нет, но часы встают так же – на верном ответе;
+        // правка кода после него снимает вердикт и запускает их снова (_ensureEditor).
         _frozen(it) {
-            if (!it || this.isRetry) return false;
+            if (!it) return false;
             return this.verdict[it.item_id] === true || !!this.locked[it.item_id];
         },
 
@@ -735,8 +744,8 @@ function practiceApp() {
 
             const cm = CodeMirror(wrap, {
                 value: this.answers[it.item_id] || '',
-                mode: 'python',
-                theme: 'material-darker',
+                mode: codeLangMode(this.langs[it.item_id]),
+                theme: codeLangTheme(this.langs[it.item_id]),
                 lineNumbers: true,
                 matchBrackets: true,
                 autoCloseBrackets: true,
@@ -745,8 +754,21 @@ function practiceApp() {
                 indentWithTabs: false,
                 extraKeys: { Tab: (cm) => cm.replaceSelection('    ', 'end') },
             });
-            cm.on('change', () => { this.answers[it.item_id] = cm.getValue(); });
+            cm.on('change', () => {
+                this.answers[it.item_id] = cm.getValue();
+                // Повтор: верный вариант сдан, ученик пишет следующий – это снова
+                // время решения. Соседей связки (carried) правка не размораживает.
+                if (this.isRetry && !it.carried && this.verdict[it.item_id] === true) {
+                    delete this.verdict[it.item_id];
+                    this._taskStart = Date.now();
+                }
+            });
             this.editors[it.item_id] = cm;
+        },
+
+        setLang(itemId, lang) {
+            this.langs[itemId] = lang;
+            codeLangApply(this.editors[itemId], lang);
         },
 
         async submitCode(itemId) {
@@ -762,7 +784,7 @@ function practiceApp() {
                 const resp = await fetch(`/quizzes/${it.quiz_id}/question/${it.question_id}/submit/`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.csrf },
-                    body: JSON.stringify({ code }),
+                    body: JSON.stringify({ code, language: this.langs[itemId] || 'python' }),
                 });
                 const data = await resp.json();
                 if (!resp.ok && !data.submission_id) {

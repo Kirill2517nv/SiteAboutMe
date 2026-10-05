@@ -136,7 +136,7 @@
                 <div class="space-y-4">
                     <div>
                         <p class="text-sm text-gray-500 mb-2">Код ученика:</p>
-                        <pre class="rounded-lg overflow-x-auto !text-sm"><code class="language-python">{{ answer.code_answer }}</code></pre>
+                        <pre class="rounded-lg overflow-x-auto !text-sm"><code class="language-{{ answer.code_language }}">{{ answer.code_answer }}</code></pre>
                     </div>
                     
                     {% if not answer.is_correct %}

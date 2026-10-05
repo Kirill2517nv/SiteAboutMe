@@ -7,7 +7,7 @@
 {% endcomment %}
 {% block extra_css %}{% include 'quizzes/_task_text_css.html' %}{% endblock extra_css %}
 
-{% block pre_alpine_js %}{% include 'quizzes/_mathjax.html' %}{% endblock pre_alpine_js %}
+{% block pre_alpine_js %}{% include 'quizzes/_mathjax.html' %}{% include 'quizzes/_code_highlight.html' %}{% endblock pre_alpine_js %}
 
 {% block title %}{% if errors_only %}Ошибки{% else %}Ответы{% endif %} – {{ student.username }}{% endblock %}
 
@@ -90,7 +90,7 @@
                         <div class="text-sm text-gray-700 dark:text-slate-300">Ответил: <span class="{% if attempt.is_correct %}text-green-700{% else %}text-red-600{% endif %} font-mono">{{ attempt.text_answer }}</span></div>
                         {% endif %}
                         {% if attempt.code_answer %}
-                        <pre class="mt-2 p-3 bg-gray-50 dark:bg-slate-900 rounded-lg overflow-x-auto text-xs text-gray-700 dark:text-slate-300">{{ attempt.code_answer }}</pre>
+                        <pre class="mt-2 p-3 rounded-lg bg-slate-900 text-slate-100 text-xs overflow-x-auto"><code class="language-{{ attempt.code_language }}">{{ attempt.code_answer }}</code></pre>
                         {% endif %}
                         {% if attempt.error_log %}
                         <pre class="mt-2 p-3 bg-red-50 rounded-lg overflow-x-auto text-xs text-red-700">{{ attempt.error_log }}</pre>

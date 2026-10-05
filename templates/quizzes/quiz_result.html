@@ -83,7 +83,7 @@
                     {% if answer.question.question_type == 'code' %}
                     <div class="mb-4">
                         <p class="text-sm text-gray-500 mb-2">Ваш код:</p>
-                        <pre class="rounded-lg overflow-x-auto !text-sm"><code class="language-python">{{ answer.code_answer }}</code></pre>
+                        <pre class="rounded-lg overflow-x-auto !text-sm"><code class="language-{{ answer.code_language }}">{{ answer.code_answer }}</code></pre>
                     </div>
                     
                     {% if answer.error_log %}

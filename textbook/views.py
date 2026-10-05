@@ -512,7 +512,7 @@ def section_stats_errors_view(request, slug, user_id):
         answers = answers.filter(is_correct=False)
     answers = list(
         answers
-        .select_related('question', 'question__quiz', 'selected_choice', 'user_result')
+        .select_related('question', 'question__quiz', 'selected_choice', 'user_result', 'submission')
         .order_by('question__quiz_id', 'question_id', '-user_result__date_completed')
     )
 

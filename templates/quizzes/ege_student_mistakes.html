@@ -102,9 +102,9 @@
                     </div>
 
                     <div class="mt-4">
-                        <div class="text-xs font-medium text-gray-500 dark:text-slate-400 mb-1.5">Ответ ученика</div>
+                        <div class="text-xs font-medium text-gray-500 dark:text-slate-400 mb-1.5">Ответ ученика{% if item.question.question_type == 'code' and item.submission %} · {{ item.submission.get_language_display }}{% endif %}</div>
                         {% if item.question.question_type == 'code' and item.submission %}
-                        <pre class="p-3 rounded-lg bg-slate-900 text-slate-100 text-xs overflow-x-auto"><code>{{ item.submission.code }}</code></pre>
+                        <pre class="p-3 rounded-lg bg-slate-900 text-slate-100 text-xs overflow-x-auto"><code class="language-{{ item.submission.language }}">{{ item.submission.code }}</code></pre>
                         {% if item.submission.error_log %}
                         {% comment %}
                         Лог падения – половина разбора: по нему сразу видно, ошибка это
@@ -155,4 +155,4 @@
 </div>
 {% endblock content %}
 
-{% block pre_alpine_js %}{% include 'quizzes/_mathjax.html' %}{% endblock pre_alpine_js %}
+{% block pre_alpine_js %}{% include 'quizzes/_mathjax.html' %}{% include 'quizzes/_code_highlight.html' %}{% endblock pre_alpine_js %}

@@ -1,0 +1,105 @@
+{% extends 'base.html' %}
+
+{% block title %}Разборы на проверку{% endblock title %}
+
+{% block content %}
+{% comment %}
+Очередь учителя: разборы «Решений других», которые ученики прислали на проверку.
+Текст можно поправить прямо здесь – «Принять» опубликует то, что в поле, и
+автор увидит «принят с правками». Картинку и файл можно снять, не отклоняя
+разбор целиком. Логика – quizzes/solutions.py (approve_notes / reject_notes).
+{% endcomment %}
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-1">Разборы на проверку</h1>
+    <p class="text-base text-gray-500 dark:text-slate-400 mb-6">
+        {% if items %}Ждут решения: {{ items|length }}. Пока разбор здесь, остальные ученики видят прежнюю одобренную версию.{% else %}Очередь пуста.{% endif %}
+    </p>
+
+    {% if messages %}
+    <div class="mb-4 space-y-2">
+        {% for message in messages %}
+        <div class="px-4 py-2 rounded-lg text-sm {% if message.tags == 'error' %}bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300{% else %}bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300{% endif %}">{{ message }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="space-y-6">
+        {% for item in items %}
+        {% with s=item.solution %}
+        <form method="post" action="{% url 'quizzes:solution_review_decide' s.pk %}"
+              class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
+            {% csrf_token %}
+            <div class="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-brand-50 dark:bg-cyan-900/20 border-l-4 border-brand-600 dark:border-cyan-500">
+                <div class="min-w-0">
+                    <div class="text-xl font-semibold text-gray-900 dark:text-white truncate">{{ item.author }}</div>
+                    <div class="text-sm text-gray-500 dark:text-slate-400">
+                        {% if s.user.profile.group %}{{ s.user.profile.group.name }} · {% endif %}{{ s.submitted_at|date:"d.m.Y H:i" }}
+                    </div>
+                </div>
+                <a href="{% url 'quizzes:solutions' s.question_id %}" target="_blank"
+                   class="text-sm font-medium text-brand-700 dark:text-cyan-400 hover:underline">
+                    {{ s.question.get_title }} · {{ s.question.quiz.title }} &rarr;
+                </a>
+            </div>
+
+            <div class="p-6 space-y-5">
+                {% if s.comment or s.image or s.file %}
+                <div class="rounded-lg bg-gray-50 dark:bg-slate-900/60 px-4 py-3">
+                    <div class="text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Сейчас опубликовано</div>
+                    {% if s.comment %}<p class="text-sm text-gray-600 dark:text-slate-300 whitespace-pre-line">{{ s.comment }}</p>{% endif %}
+                    {% if s.image %}<img src="{{ s.image.url }}" alt="" class="mt-2 max-h-40 rounded border border-gray-200 dark:border-slate-700">{% endif %}
+                    {% if s.file %}<div class="mt-1 text-sm text-gray-500">&#8595; {{ s.get_filename }}</div>{% endif %}
+                </div>
+                {% endif %}
+
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700 dark:text-slate-300">Прислано – можно поправить перед публикацией</span>
+                    <textarea name="comment" rows="4"
+                              class="mt-2 w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none">{{ s.draft_comment }}</textarea>
+                </label>
+
+                {% if s.draft_image %}
+                <div>
+                    <img src="{{ s.draft_image.url }}" alt="Новая картинка" class="max-w-full sm:max-w-md rounded-lg border border-gray-200 dark:border-slate-700">
+                    <label class="mt-2 flex items-center gap-2 text-sm text-gray-600 dark:text-slate-300">
+                        <input type="checkbox" name="drop_image" value="1" class="rounded border-gray-300"> не публиковать картинку
+                    </label>
+                </div>
+                {% endif %}
+                {% if s.draft_file %}
+                <div>
+                    <a href="{{ s.draft_file.url }}" download class="inline-flex items-center gap-1 text-sm text-brand-600 dark:text-cyan-400 hover:underline">&#8595; {{ item.draft_filename }}</a>
+                    <label class="mt-2 flex items-center gap-2 text-sm text-gray-600 dark:text-slate-300">
+                        <input type="checkbox" name="drop_file" value="1" class="rounded border-gray-300"> не публиковать файл
+                    </label>
+                </div>
+                {% endif %}
+
+                <label class="block">
+                    <span class="text-sm font-medium text-gray-700 dark:text-slate-300">Слово автору (необязательно)</span>
+                    <input type="text" name="note" maxlength="500"
+                           placeholder="Почему отклонён или что поправлено"
+                           class="mt-2 w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white px-3 py-2 text-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none">
+                </label>
+
+                <div class="flex flex-wrap justify-end gap-3">
+                    <button type="submit" name="action" value="reject"
+                            class="px-5 py-2 rounded-lg border border-red-300 text-red-700 dark:text-red-300 dark:border-red-800 text-sm font-medium hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors">
+                        Отклонить
+                    </button>
+                    <button type="submit" name="action" value="approve"
+                            class="px-5 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium shadow-sm transition-colors">
+                        Принять
+                    </button>
+                </div>
+            </div>
+        </form>
+        {% endwith %}
+        {% empty %}
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-8 text-center text-gray-500 dark:text-slate-400">
+            Новых разборов нет. Когда ученик напишет комментарий или приложит файл к решению, он появится здесь.
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock content %}

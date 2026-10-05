@@ -258,3 +258,26 @@ flowchart TD
     - Docker контейнер завершился по OOM, но Celery не получил результат
     - Celery worker перезапустился во время выполнения
     - Сетевая ошибка между Celery и Redis
+
+---
+
+## Решения на C++
+
+Язык выбирает ученик переключателем над редактором (`CodeSubmission.language`, по умолчанию `python`). Для C++ проверка идёт в два этапа:
+
+```mermaid
+flowchart LR
+    SUB[CodeSubmission language=cpp] --> COMP["compile_code()\nконтейнер site-sandbox-cpp, 512m\ng++ -std=c++17 -O2, timeout 20 с"]
+    COMP -->|ошибка| FAIL["error_log = «Ошибка компиляции» + вывод g++"]
+    COMP -->|a.out| RUN["run_code_in_docker(a.out, …, 'cpp')\nна каждый тест: тот же образ, 128m\nRUNNER_CPP меряет ребёнка (RUSAGE_CHILDREN)"]
+```
+
+- Компиляция – **один раз на отправку**, бинарник забирается `get_archive` и кладётся в контейнер каждого теста (с правами 755).
+- Ограничения те же `CONTAINER_SECURITY`, что у Python, – и на компиляции тоже: исходник ученика недоверенный (`#include "/dev/zero"`, `#include "/etc/shadow"`).
+- Коды смерти от сигнала переводятся в текст (`SIGNAL_MESSAGES`): 139 – segfault, 136 – деление на ноль, 134 – abort.
+
+Образ собирается вручную на dev и на проде:
+
+```bash
+docker build -t site-sandbox-cpp docker/sandbox-cpp
+```

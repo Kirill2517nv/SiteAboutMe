@@ -93,9 +93,11 @@ graph LR
 | POST | `/ege/<id>/finish/` | ege | Завершить вариант |
 | GET | `/ege/<id>/result/` | ege | Результат варианта |
 | POST | `/ege/<id>/save-time/` | ege | Сохранить время задачи |
-| POST | `/ege/<id>/task/<num>/upload-attachment/` | ege | Загрузить файл решения |
-| GET | `/ege/<id>/task/<num>/solution/<user_id>/` | ege | Просмотр решения |
-| POST | `/ege/solutions/<answer_id>/like/` | ege | Лайк решения |
+| GET | `/ege/<id>/task/<num>/solution/<user_id>/` | ege | Старый адрес решения – редирект в галерею задачи |
+| GET | `/quizzes/question/<id>/solutions/` | quizzes | «Решения других» – галерея задачи |
+| POST | `/quizzes/question/<id>/solutions/mine/` | quizzes | Своё решение: подпись, разбор, файл, картинка |
+| POST | `/quizzes/solution/<id>/like/` | quizzes | Лайк решения |
+| POST | `/quizzes/solution/<id>/moderate/` | quizzes | Скрыть решение или разбор (superuser) |
 | POST | `/ege/task/<number>/classroom/` | ege | Рубильник «Задачи для урока» (superuser) |
 | GET | `/ege/task/<number>/solved/` | ege | Решённые задачи задания |
 | GET/POST | `/ege/task/<number>/bank/` | ege | Банк задач задания (superuser) |

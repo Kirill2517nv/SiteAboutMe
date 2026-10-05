@@ -11,6 +11,7 @@ from .views import (
     question_hint_view,
     question_check_view,
 )
+from . import views_solutions
 
 app_name = 'quizzes'
 
@@ -28,6 +29,14 @@ urlpatterns = [
 
     # Проверка одного текстового ответа: вердикт без сохранения, балл ставит finish_quiz_view
     path('question/<int:question_id>/check/', question_check_view, name='question_check'),
+
+    # «Решения других» – одна галерея для банка ЕГЭ, вариантов и практикума
+    path('question/<int:question_id>/solutions/', views_solutions.solutions_view, name='solutions'),
+    path('question/<int:question_id>/solutions/mine/', views_solutions.my_solution_view, name='my_solution'),
+    path('solution/<int:solution_id>/like/', views_solutions.like_view, name='solution_like'),
+    path('solution/<int:solution_id>/moderate/', views_solutions.moderate_view, name='solution_moderate'),
+    path('solutions/review/', views_solutions.review_view, name='solutions_review'),
+    path('solution/<int:solution_id>/review/', views_solutions.review_decide_view, name='solution_review_decide'),
 
     # Статистика
     path('<int:quiz_id>/stats/', quiz_stats_view, name='quiz_stats'),

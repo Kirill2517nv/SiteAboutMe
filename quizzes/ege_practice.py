@@ -425,7 +425,10 @@ def build_retry_session(user, question):
 
 def best_code_metrics(user, question_ids):
     """
-    {id задачи: лучшие время и память среди верных решений ученика}.
+    {id задачи: [лучшие время и память среди верных решений – по строке на язык]}.
+
+    Рекорды Python и C++ не сравниваются: один запуск на C++ навсегда перекрыл
+    бы любую оптимизацию на Python, и переписывать на нём стало бы незачем.
 
     Считается по CodeSubmission, а не по последней отправке: переписывая код,
     ученик может сделать быстрее, но прожорливее – тогда лучшими остаются
@@ -436,14 +439,20 @@ def best_code_metrics(user, question_ids):
 
     if not question_ids:
         return {}
+    labels = dict(CodeSubmission.LANGUAGE_CHOICES)
     rows = (
         CodeSubmission.objects
         .filter(user=user, question_id__in=question_ids, is_correct=True)
-        .values('question_id')
+        .values('question_id', 'language')
         .annotate(best_cpu=Min('cpu_time_ms'), best_memory=Min('memory_kb'),
                   attempts=Count('id'))
+        .order_by('question_id', '-language')  # Python раньше C++
     )
-    return {row['question_id']: row for row in rows}
+    best = {}
+    for row in rows:
+        row['language_label'] = labels.get(row['language'], row['language'])
+        best.setdefault(row['question_id'], []).append(row)
+    return best
 
 
 def active_exam(user):

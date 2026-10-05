@@ -4,7 +4,7 @@ from django.db import models
 from django.conf import settings
 from django.utils import timezone
 from django.contrib.auth import get_user_model
-from accounts.models import StudentGroup
+from accounts.models import Profile, StudentGroup
 
 User = get_user_model()
 
@@ -329,7 +329,15 @@ class CodeSubmission(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='code_submissions', verbose_name="Пользователь")
     question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name='submissions', verbose_name="Вопрос")
     quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE, related_name='submissions', verbose_name="Тест")
+    LANGUAGE_CHOICES = [
+        ('python', 'Python'),
+        ('cpp', 'C++'),
+    ]
+
     code = models.TextField(verbose_name="Код")
+    # Язык выбирает ученик в каждой отправке: тесты сравнивают вывод и от языка
+    # не зависят. Отправки до появления C++ – все на Python.
+    language = models.CharField(max_length=10, choices=LANGUAGE_CHOICES, default='python', verbose_name="Язык")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending', verbose_name="Статус")
     is_correct = models.BooleanField(null=True, verbose_name="Правильно?")
     score = models.PositiveSmallIntegerField(
@@ -553,23 +561,75 @@ class PracticeItem(models.Model):
         return f"Сессия {self.session_id}, задача {self.question_id} ({status})"
 
 
-class SolutionAttachment(models.Model):
-    """Дополнительные материалы к решению задачи (файл, комментарий, изображение)."""
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='solution_attachments', verbose_name="Пользователь")
-    quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE, related_name='solution_attachments', verbose_name="Вариант")
-    question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name='solution_attachments', verbose_name="Задача")
+class SharedSolution(models.Model):
+    """
+    Решение автора по задаче в «Решениях других» – одна запись на (автор, задача).
+
+    Сам код здесь не хранится: он лежит в CodeSubmission (или в UserAnswer у
+    синхронного практикума), и галерея берёт его оттуда – последнее верное и
+    рекорды. Здесь только то, чего в отправке нет: как подписать автора,
+    разбор (комментарий, картинка, файл – задания 1, 9, 22 решают в Excel и на
+    бумаге), решение учителя скрыть, и лайки. Лайк висит на авторе, а не на
+    отправке: переписав код, ученик не должен терять набранное.
+
+    Запись создаётся лениво, когда галерея впервые показывает автора, – поэтому
+    задача без единого зрителя строк не плодит.
+    """
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='shared_solutions', verbose_name="Автор")
+    question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name='shared_solutions', verbose_name="Задача")
+    name_visibility = models.CharField(
+        max_length=5, blank=True, default='',
+        choices=[('', 'Как в профиле')] + Profile.NAME_VISIBILITY_CHOICES,
+        verbose_name="Имя под этим решением",
+    )
+    comment = models.TextField(blank=True, default='', verbose_name="Разбор")
     file = models.FileField(upload_to=solution_file_upload_path, blank=True, null=True, verbose_name="Файл")
-    comment = models.TextField(blank=True, default='', verbose_name="Комментарий")
     image = models.ImageField(upload_to=solution_image_upload_path, blank=True, null=True, verbose_name="Изображение")
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
+    hidden = models.BooleanField(default=False, verbose_name="Скрыто учителем",
+                                 help_text="Решение не показывается ученикам (списано, не по делу).")
+    notes_hidden = models.BooleanField(default=False, verbose_name="Разбор скрыт учителем",
+                                       help_text="Код виден, комментарий, картинка и файл – нет.")
+
+    # Модерация разбора. comment/file/image выше – одобренная версия, её видят
+    # все. Новое от ученика ложится в черновик и ждёт учителя; пока ждёт,
+    # остальные видят прежнюю одобренную (первый разбор – не видят вовсе).
+    # Пустой статус – на проверке ничего нет: так старые разборы, написанные
+    # до модерации, остались одобренными без переноса данных.
+    REVIEW_CHOICES = [
+        ('', 'Нет на проверке'),
+        ('pending', 'На проверке'),
+        ('approved', 'Принят'),
+        ('edited', 'Принят с правками учителя'),
+        ('rejected', 'Отклонён'),
+    ]
+    draft_comment = models.TextField(blank=True, default='', verbose_name="Разбор на проверке")
+    draft_file = models.FileField(upload_to=solution_file_upload_path, blank=True, null=True, verbose_name="Файл на проверке")
+    draft_image = models.ImageField(upload_to=solution_image_upload_path, blank=True, null=True, verbose_name="Картинка на проверке")
+    review_status = models.CharField(max_length=10, choices=REVIEW_CHOICES, blank=True, default='',
+                                     db_index=True, verbose_name="Проверка разбора")
+    review_note = models.TextField(blank=True, default='', verbose_name="Слово учителя",
+                                   help_text="Видит только автор – почему отклонён или что поправлено.")
+    submitted_at = models.DateTimeField(null=True, blank=True, verbose_name="Отправлен на проверку")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создано")
 
     class Meta:
-        verbose_name = "Доп. материал к решению"
-        verbose_name_plural = "Доп. материалы к решениям"
-        unique_together = ['user', 'quiz', 'question']
+        verbose_name = "Решение в галерее"
+        verbose_name_plural = "Решения в галерее"
+        constraints = [
+            models.UniqueConstraint(fields=['user', 'question'], name='unique_shared_solution'),
+        ]
 
     def __str__(self):
-        return f"Материал: {self.user.username} – задача {self.question_id}"
+        return f"{self.user.username} – задача {self.question_id}"
+
+    @property
+    def quiz(self):
+        # upload_to-функции раскладывают файлы по варианту (instance.quiz).
+        return self.question.quiz
+
+    @property
+    def has_notes(self):
+        return bool(self.comment or self.file or self.image)
 
     def get_filename(self):
         import os
@@ -592,6 +652,11 @@ class UserAnswer(models.Model):
     )
     submission = models.ForeignKey(CodeSubmission, null=True, blank=True, on_delete=models.SET_NULL, verbose_name="Отправка кода")
 
+    @property
+    def code_language(self):
+        """Язык кода для подсветки: из отправки, а ответ без неё – Python."""
+        return self.submission.language if self.submission_id else 'python'
+
     class Meta:
         verbose_name = "Ответ пользователя"
         verbose_name_plural = "Ответы пользователя"
@@ -604,18 +669,18 @@ class UserAnswer(models.Model):
 class SolutionLike(models.Model):
     """Лайк решения другого пользователя."""
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='solution_likes', verbose_name="Пользователь")
-    answer = models.ForeignKey(UserAnswer, on_delete=models.CASCADE, related_name='likes', verbose_name="Ответ")
+    solution = models.ForeignKey(SharedSolution, on_delete=models.CASCADE, related_name='likes', verbose_name="Решение")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата")
 
     class Meta:
         verbose_name = "Лайк решения"
         verbose_name_plural = "Лайки решений"
         constraints = [
-            models.UniqueConstraint(fields=['user', 'answer'], name='unique_solution_like'),
+            models.UniqueConstraint(fields=['user', 'solution'], name='unique_solution_like_v2'),
         ]
 
     def __str__(self):
-        return f"{self.user.username} -> answer #{self.answer_id}"
+        return f"{self.user.username} -> решение #{self.solution_id}"
 
 
 class HintChoice(models.Model):

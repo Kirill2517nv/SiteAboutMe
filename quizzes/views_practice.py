@@ -608,8 +608,21 @@ def ege_solved_view(request, number):
     best = ege_practice.best_code_metrics(
         request.user, [row['question'].id for row in rows if row['is_code']]
     )
+    # Последнее верное решение на каждом языке: переписав задачу на C++, ученик
+    # хочет видеть рядом и свой Python, а не только последнюю отправку.
+    latest = {}
+    for sub in (CodeSubmission.objects
+                .filter(user=request.user, is_correct=True,
+                        question_id__in=[row['question'].id for row in rows if row['is_code']])
+                .order_by('-created_at')):
+        latest.setdefault((sub.question_id, sub.language), sub)
     for row in rows:
         row['best'] = best.get(row['question'].id)
+        row['solutions'] = [latest[key] for key in
+                            ((row['question'].id, 'python'), (row['question'].id, 'cpp'))
+                            if key in latest]
+        if row['is_code'] and not row['solutions'] and row['item'].submission:
+            row['solutions'] = [row['item'].submission]
 
     return render(request, 'quizzes/ege_solved.html', {
         'number': number,
@@ -658,6 +671,7 @@ def practice_view(request, pk):
                 last_submissions[sub.question_id] = {
                     'id': sub.id, 'status': sub.status,
                     'is_correct': sub.is_correct, 'code': sub.code,
+                    'language': sub.language,
                 }
 
     # Сколько секунд осталось до конца экзамена: считаем на сервере, чтобы

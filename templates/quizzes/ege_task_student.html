@@ -136,12 +136,13 @@
                             {% else %}
                             <span class="text-xs text-gray-400">{{ sub.get_status_display }}</span>
                             {% endif %}
+                            <span class="text-xs text-gray-400">{{ sub.get_language_display }}</span>
                             {% if sub.cpu_time_ms is not None %}
-                            <span class="text-xs text-gray-400 tabular-nums">{{ sub.cpu_time_ms|floatformat:0 }} мс{% if sub.memory_kb %} · {{ sub.memory_kb }} КБ{% endif %}</span>
+                            <span class="text-xs text-gray-400 tabular-nums">{{ sub.cpu_time_ms|floatformat:0 }} мс{% if sub.memory_kb is not None %} ·{{ sub.memory_kb }} КБ{% endif %}</span>
                             {% endif %}
                         </summary>
                         <div class="px-3 pb-3">
-                            <pre class="p-3 rounded-lg bg-slate-900 text-slate-100 text-xs overflow-x-auto"><code>{{ sub.code }}</code></pre>
+                            <pre class="p-3 rounded-lg bg-slate-900 text-slate-100 text-xs overflow-x-auto"><code class="language-{{ sub.language }}">{{ sub.code }}</code></pre>
                             {% if sub.error_log %}
                             <pre class="mt-2 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 text-xs overflow-x-auto whitespace-pre-wrap">{{ sub.error_log }}</pre>
                             {% endif %}
@@ -177,4 +178,4 @@
 </div>
 {% endblock content %}
 
-{% block pre_alpine_js %}{% include 'quizzes/_mathjax.html' %}{% endblock pre_alpine_js %}
+{% block pre_alpine_js %}{% include 'quizzes/_mathjax.html' %}{% include 'quizzes/_code_highlight.html' %}{% endblock pre_alpine_js %}

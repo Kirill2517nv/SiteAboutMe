@@ -9,7 +9,7 @@ from django.conf import settings
 from django.core.exceptions import PermissionDenied
 from django.views.decorators.http import require_POST, require_GET
 from django.views.decorators.csrf import csrf_protect
-from .models import PracticeItem, Quiz, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, Question, CodeSubmission, QuestionFile, ExamTaskProgress, SolutionAttachment, SolutionLike, HintChoice
+from .models import PracticeItem, Quiz, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, Question, CodeSubmission, QuestionFile, ExamTaskProgress, HintChoice, SharedSolution
 from accounts.models import StudentGroup
 import datetime
 import os
@@ -17,7 +17,7 @@ import json
 import mimetypes
 import re
 from urllib.parse import quote
-from .utils import js_json, run_code_in_docker
+from .utils import compile_code, js_json, run_code_in_docker
 from .tasks import check_code_task
 
 # Константы ЕГЭ переехали в ege_constants.py – их делят между собой views,
@@ -30,6 +30,11 @@ from .ege_constants import (  # noqa: F401
 )
 from .ege_constants import EXCLUDED_KINDS, PRACTICE_QUIZ_TYPES
 from .ege_scoring import grade as ege_grade
+
+
+def _language(value):
+    """Язык отправки из запроса: всё, кроме явного C++, – Python (по умолчанию везде)."""
+    return 'cpp' if value == 'cpp' else 'python'
 
 
 def _natural_sort_key(text):
@@ -190,7 +195,7 @@ def build_ege_results_matrix(quiz):
     for uid, best_map in user_best.items():
         user = users_map[uid]
         task_results = [
-            {'correct': best_map.get(q.id), 'ege_number': q.ege_number, 'user_id': uid}
+            {'correct': best_map.get(q.id), 'ege_number': q.ege_number, 'question_id': q.id}
             for q in questions
         ]
         correct_count = sum(1 for r in task_results if r['correct'] is True)
@@ -467,6 +472,7 @@ def ege_detail_view(request, quiz_id):
                     'status': sub.status,
                     'is_correct': sub.is_correct,
                     'code': sub.code,
+                    'language': sub.language,
                     'cpu_time_ms': sub.cpu_time_ms,
                     'memory_kb': sub.memory_kb,
                 }
@@ -604,6 +610,7 @@ def ege_finish_view(request, quiz_id):
 
     answers_data = data.get('answers', {})  # {question_id: answer_text}
     force = data.get('force', False)
+    languages = data.get('languages', {})  # {question_id: 'python' | 'cpp'}
 
     questions = list(quiz.questions.all().order_by('ege_number', 'id'))
 
@@ -674,6 +681,7 @@ def ege_finish_view(request, quiz_id):
                 new_sub = CodeSubmission.objects.create(
                     user=request.user, quiz=quiz, question=question,
                     code=user_input, status='pending',
+                    language=_language(languages.get(str(question.id))),
                 )
                 try:
                     task = check_code_task.delay(new_sub.id)
@@ -800,14 +808,26 @@ def ege_results_view(request, quiz_id):
     question_types = {q.ege_number: q.question_type for q in questions}
     question_id_map = {q.id: q.ege_number for q in questions}
 
-    # Лайки по best_answer_id
-    all_answer_ids = list(best_answer_map.values())
-    like_counts = {}
-    if all_answer_ids:
-        like_qs = SolutionLike.objects.filter(
-            answer_id__in=all_answer_ids,
-        ).values('answer_id').annotate(cnt=Count('id'))
-        like_counts = {row['answer_id']: row['cnt'] for row in like_qs}
+    # Подписи строк – по выбору ученика, как в галерее (solutions.name_visible).
+    # Строка – весь вариант целиком, поэтому выбор берётся из профиля, а
+    # псевдоним – свой у варианта: «Участник №…» не совпадает с «Ученик №…» в
+    # галереях его задач.
+    from . import solutions as gallery_rules
+    labels = gallery_rules.author_labels(
+        [row['user'] for row in results_matrix], request.user, f'quiz{quiz.id}', word='Участник',
+    )
+    for row in results_matrix:
+        row['full_name'], row['named'] = labels[row['user_id']]
+    results_matrix.sort(key=lambda r: (-r['score'], r['full_name']))
+    for index, row in enumerate(results_matrix):
+        row['key'] = f'r{index}'
+
+    # Лайки висят на (автор, задача) – SharedSolution
+    like_counts = {
+        (row['user_id'], row['question_id']): row['cnt']
+        for row in SharedSolution.objects.filter(question__in=questions)
+        .values('user_id', 'question_id').annotate(cnt=Count('likes'))
+    }
 
     # CPU/memory из CodeSubmission
     code_answer_ids = [
@@ -847,14 +867,16 @@ def ege_results_view(request, quiz_id):
             row['total_time'] = ''
         row['test_score'] = EGE_SCORE_CONVERSION.get(row['score'], 100 if row['score'] > 29 else 0)
 
-    # Собираем sort_data: {user_id: {ege_number: {likes, cpu, memory, time}}}
+    # sort_data: {ключ строки: {ege_number: {likes, cpu, memory, time}}}. Ключ –
+    # номер строки, а не user_id: id в разметке связал бы аноним с человеком.
+    row_keys = {row['user_id']: row['key'] for row in results_matrix}
     sort_data = {}
     for (uid, qid), aid in best_answer_map.items():
         ege_num = question_id_map.get(qid)
         if ege_num is None:
             continue
-        sort_data.setdefault(uid, {})[ege_num] = {
-            'likes': like_counts.get(aid, 0),
+        sort_data.setdefault(row_keys[uid], {})[ege_num] = {
+            'likes': like_counts.get((uid, qid), 0),
             'cpu': (cpu_mem_map.get(aid) or {}).get('cpu'),
             'memory': (cpu_mem_map.get(aid) or {}).get('mem'),
             'time': time_map.get((uid, qid)),
@@ -990,172 +1012,13 @@ def ege_save_time_view(request, quiz_id):
 
 
 @login_required
-@require_POST
-def ege_upload_attachment_view(request, quiz_id, ege_number):
-    from django.contrib import messages
-    """Загрузка/обновление SolutionAttachment."""
-    quiz = get_object_or_404(Quiz, id=quiz_id, quiz_type='exam', is_public=True)
-    question = get_object_or_404(Question, quiz=quiz, ege_number=ege_number)
-
-    # Проверка: решил задачу
-    if not ExamTaskProgress.objects.filter(
-        user=request.user, quiz=quiz, question=question, is_solved=True,
-    ).exists():
-        return redirect('ege:ege_user_solution', quiz_id=quiz.id, ege_number=ege_number, user_id=request.user.id)
-
-    attachment, _ = SolutionAttachment.objects.get_or_create(
-        user=request.user, quiz=quiz, question=question,
-    )
-
-    ALLOWED_FILE_EXT = {"txt", "csv", "ods", "odt", "xlsx", "doc", "docx", "pdf"}
-    ALLOWED_IMAGE_EXT = {"jpg", "jpeg", "png", "gif", "webp"}
-    has_changes = False
-
-    if request.FILES.get('file'):
-        if request.FILES['file'].size > 20 * 1024 * 1024:
-            messages.error(request, 'Нельзя загрузить документ более 20 МБ')
-            return redirect('ege:ege_user_solution', quiz_id=quiz.id, ege_number=ege_number, user_id=request.user.id)
-        ext = os.path.splitext(request.FILES['file'].name)[1].lower().lstrip('.')
-        if ext not in ALLOWED_FILE_EXT:
-            messages.error(request, f'Допустимые расширения: {", ".join(sorted(ALLOWED_FILE_EXT))}')
-            return redirect('ege:ege_user_solution', quiz_id=quiz.id, ege_number=ege_number, user_id=request.user.id)
-        attachment.file = request.FILES['file']
-        has_changes = True
-
-    if request.FILES.get('image'):
-        if request.FILES['image'].size > 5 * 1024 * 1024:
-            messages.error(request, 'Нельзя загрузить изображение более 5 МБ')
-            return redirect('ege:ege_user_solution', quiz_id=quiz.id, ege_number=ege_number, user_id=request.user.id)
-        ext = os.path.splitext(request.FILES['image'].name)[1].lower().lstrip('.')
-        if ext not in ALLOWED_IMAGE_EXT:
-            messages.error(request, f'Допустимые расширения: {", ".join(sorted(ALLOWED_IMAGE_EXT))}')
-            return redirect('ege:ege_user_solution', quiz_id=quiz.id, ege_number=ege_number, user_id=request.user.id)
-        attachment.image = request.FILES['image']
-        has_changes = True
-
-    comment = request.POST.get('comment', '').strip()
-    if comment:
-        attachment.comment = comment
-        has_changes = True
-
-    if has_changes:
-        attachment.save()
-
-    return redirect('ege:ege_user_solution', quiz_id=quiz.id, ege_number=ege_number, user_id=request.user.id)
-
-
-@login_required
-@require_POST
-def ege_toggle_like_view(request, answer_id):
-    """Toggle лайка на решение. POST, возвращает JSON {liked, like_count}."""
-    answer = get_object_or_404(
-        UserAnswer.objects.select_related('user_result__user'),
-        id=answer_id,
-    )
-
-    if answer.user_result.user == request.user:
-        return JsonResponse({'error': 'Нельзя лайкать своё решение'}, status=403)
-
-    existing = SolutionLike.objects.filter(user=request.user, answer=answer)
-    if existing.exists():
-        existing.delete()
-        liked = False
-    else:
-        SolutionLike.objects.create(user=request.user, answer=answer)
-        liked = True
-
-    return JsonResponse({'liked': liked, 'like_count': answer.likes.count()})
-
-
-@login_required
 @require_GET
 def ege_solution_detail_view(request, quiz_id, ege_number, user_id):
-    """Страница просмотра решения конкретного пользователя по задаче ЕГЭ."""
-    quiz = get_object_or_404(Quiz, id=quiz_id, quiz_type='exam', is_public=True)
-    question = get_object_or_404(Question, quiz=quiz, ege_number=ege_number)
-
-    # Проверка доступа: текущий пользователь решил задачу или superuser
-    has_solved = request.user.is_superuser or ExamTaskProgress.objects.filter(
-        user=request.user, quiz=quiz, question=question, is_solved=True,
-    ).exists()
-    if not has_solved:
-        from django.contrib import messages
-        messages.warning(request, 'Решите задачу, чтобы увидеть решения других.')
-        return redirect('ege:ege_results', quiz_id=quiz.id)
-
-    # Лучший ответ целевого пользователя (prefer correct, потом latest)
-    all_answers = UserAnswer.objects.filter(
-        user_result__quiz=quiz, question=question, user_result__user_id=user_id,
-    ).select_related('user_result__user', 'submission').order_by('-user_result__date_completed')
-
-    best = None
-    for ans in all_answers:
-        if best is None:
-            best = ans
-        elif ans.is_correct and not best.is_correct:
-            best = ans
-
-    if not best:
-        raise Http404('Решение не найдено')
-
-    user = best.user_result.user
-    full_name = f"{user.last_name} {user.first_name}".strip() or user.username
-
-    cpu_time_ms = None
-    memory_kb = None
-    if best.submission:
-        cpu_time_ms = best.submission.cpu_time_ms
-        memory_kb = best.submission.memory_kb
-
-    # Лучшие попытки по CPU и памяти из ExamTaskProgress (для code-задач)
-    best_cpu_code = ''
-    best_cpu_time_ms = None
-    best_memory_code = ''
-    best_memory_kb = None
-    if question.question_type == 'code':
-        try:
-            progress = ExamTaskProgress.objects.get(
-                user_id=user_id, quiz=quiz, question=question,
-            )
-            best_cpu_code = progress.best_cpu_code or ''
-            best_cpu_time_ms = progress.best_cpu_time_ms
-            best_memory_code = progress.best_memory_code or ''
-            best_memory_kb = progress.best_memory_kb
-        except ExamTaskProgress.DoesNotExist:
-            pass
-
-    # Аттачмент
-    attachment = None
-    try:
-        attachment = SolutionAttachment.objects.get(user_id=user_id, quiz=quiz, question=question)
-    except SolutionAttachment.DoesNotExist:
-        pass
-
-    # Лайки
-    like_count = best.likes.count()
-    user_liked = best.likes.filter(user=request.user).exists()
-
-    is_own = (user_id == request.user.id)
-
-    return render(request, 'quizzes/ege_solution_detail.html', {
-        'quiz': quiz,
-        'question': question,
-        'ege_number': ege_number,
-        'target_user_name': full_name,
-        'answer': best,
-        'cpu_time_ms': cpu_time_ms,
-        'memory_kb': memory_kb,
-        'attachment': attachment,
-        'like_count': like_count,
-        'user_liked': user_liked,
-        'is_own': is_own,
-        'has_solved': has_solved,
-        'answer_id': best.id,
-        'best_cpu_code': best_cpu_code,
-        'best_cpu_time_ms': best_cpu_time_ms,
-        'best_memory_code': best_memory_code,
-        'best_memory_kb': best_memory_kb,
-    })
+    """Старая страница «решение такого-то». Ссылки на неё живут в закладках –
+    отправляем в общую галерею задачи, не называя автора (user_id в адресе
+    выдавал бы, чьё решение смотрят, тем, кто имени видеть не должен)."""
+    question = get_object_or_404(Question, quiz_id=quiz_id, ege_number=ege_number)
+    return redirect('quizzes:solutions', question_id=question.id)
 
 
 @login_required
@@ -1176,6 +1039,10 @@ def quiz_detail_view(request, quiz_id):
     textbook_url, back_label, after_finish_url = textbook_link_for_quiz(quiz)
     back_url = textbook_url or reverse('textbook:home')
     back_label = back_label or 'Вернуться в учебник'
+    # «Решения других» – только у практикума блока: в самопроверке щёлкают
+    # варианты ответа, делиться там нечем.
+    from textbook.models import Section
+    show_solutions = Section.objects.filter(practicum_quiz=quiz).exists()
 
     # Check assignment/availability
     eff_settings = get_effective_quiz_settings(request.user, quiz)
@@ -1247,6 +1114,7 @@ def quiz_detail_view(request, quiz_id):
             'end_date': end_date,
             'is_admin': request.user.is_superuser,
             'read_only': True,
+            'show_solutions': show_solutions,
             'tasks_json': '[]',
             'last_submissions_json': '{}',
             'total_points': sum(q.points for q in all_questions),
@@ -1357,9 +1225,17 @@ def quiz_detail_view(request, quiz_id):
                             all_tests_passed = False
                             break
 
+                    language = _language(request.POST.get(f'language_{question.id}'))
+                    program = None
                     if all_tests_passed:
+                        program, compile_error = compile_code(user_input, language)
+                        if compile_error:
+                            all_tests_passed = False
+                            error_log = compile_error
+
+                    if program is not None:
                         for test_case in test_cases:
-                            output, error, _, _ = run_code_in_docker(user_input, test_case.input_data, extra_files)
+                            output, error, _, _ = run_code_in_docker(program, test_case.input_data, extra_files, language)
 
                             if error:
                                 all_tests_passed = False
@@ -1465,16 +1341,19 @@ def quiz_detail_view(request, quiz_id):
                 'status': sub.status,
                 'is_correct': sub.is_correct,
                 'code': sub.code,
+                'language': sub.language,
                 'cpu_time_ms': sub.cpu_time_ms,
                 'memory_kb': sub.memory_kb,
             }
-        # Лучшие метрики из всех правильных submissions
+        # Лучшие метрики из всех правильных submissions – на языке последней
+        # отправки: рекорд C++ навсегда перекрыл бы любую оптимизацию на Python.
+        language = sub.language if sub else 'python'
         best_cpu_sub = CodeSubmission.objects.filter(
-            user=request.user, quiz=quiz, question=q,
+            user=request.user, quiz=quiz, question=q, language=language,
             is_correct=True, cpu_time_ms__isnull=False,
         ).order_by('cpu_time_ms').first()
         best_mem_sub = CodeSubmission.objects.filter(
-            user=request.user, quiz=quiz, question=q,
+            user=request.user, quiz=quiz, question=q, language=language,
             is_correct=True, memory_kb__isnull=False,
         ).order_by('memory_kb').first()
         if best_cpu_sub or best_mem_sub:
@@ -1534,6 +1413,7 @@ def quiz_detail_view(request, quiz_id):
         'tasks_json': js_json(tasks_data),
         'last_submissions_json': js_json(last_submissions),
         'total_points': sum(q.points for q in all_questions),
+        'show_solutions': show_solutions,
     })
 
 @login_required
@@ -1779,8 +1659,10 @@ def submit_code_view(request, quiz_id, question_id):
     try:
         data = json.loads(request.body)
         code = data.get('code', '').strip()
+        language = _language(data.get('language'))
     except json.JSONDecodeError:
         code = request.POST.get('code', '').strip()
+        language = _language(request.POST.get('language'))
 
     if not code:
         return JsonResponse({'error': 'Код не может быть пустым'}, status=400)
@@ -1806,6 +1688,7 @@ def submit_code_view(request, quiz_id, question_id):
         quiz=quiz,
         question=question,
         code=code,
+        language=language,
         status='pending'
     )
 
@@ -1943,6 +1826,7 @@ def finish_quiz_view(request, quiz_id):
     user_answers_to_create = []
 
     answers_data = data.get('answers', {})
+    languages = data.get('languages', {})  # {question_id: 'python' | 'cpp'}
 
     # Process each question
     for question in questions_to_process:
@@ -2009,6 +1893,7 @@ def finish_quiz_view(request, quiz_id):
                         quiz=quiz,
                         question=question,
                         code=user_input,
+                        language=_language(languages.get(str(question.id))),
                         status='pending'
                     )
                     try:

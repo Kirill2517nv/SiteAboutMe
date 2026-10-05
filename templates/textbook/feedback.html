@@ -83,17 +83,13 @@
                 <summary class="flex items-center gap-4 px-5 py-3 cursor-pointer">
                     <span class="text-xl font-bold tabular-nums {% if a.avg < 3 %}text-red-600{% elif a.avg < 4 %}text-amber-600{% else %}text-green-600{% endif %}">{{ a.avg|floatformat:1 }}★</span>
                     <a href="{{ a.get_absolute_url }}" class="font-medium text-gray-900 dark:text-white hover:underline">{{ a.title }}</a>
-                    <span class="ml-auto text-xs text-gray-500 dark:text-slate-400 whitespace-nowrap">{{ a.n }} оцен{{ a.n|plural:"ка,ки,ок" }}{% if a.commented %} · {{ a.commented|length }} коммент{{ a.commented|length|plural:"арий,ария,ариев" }}{% endif %}</span>
+                    <span class="ml-auto text-xs text-gray-500 dark:text-slate-400 whitespace-nowrap">{{ a.n }} оцен{{ a.n|plural:"ка,ки,ок" }}{% if a.n_commented %} · {{ a.n_commented }} коммент{{ a.n_commented|plural:"арий,ария,ариев" }}{% endif %}</span>
                 </summary>
-                {% if a.commented %}
                 <ul class="px-5 pb-4 space-y-2 text-sm">
-                    {% for r in a.commented %}
-                    <li><span class="font-semibold tabular-nums">{{ r.stars }}★</span> <span class="text-gray-700 dark:text-slate-300">{{ r.comment }}</span> <span class="text-xs text-gray-400">– {{ r.user|surname_first }}</span></li>
+                    {% for r in a.rated %}
+                    <li><span class="font-semibold tabular-nums">{{ r.stars }}★</span> <span class="text-gray-900 dark:text-white">{{ r.user|surname_first }}</span>{% if r.comment %} <span class="text-gray-700 dark:text-slate-300">– {{ r.comment }}</span>{% endif %} <span class="text-xs text-gray-400">{{ r.updated_at|date:"d.m.Y" }}</span></li>
                     {% endfor %}
                 </ul>
-                {% else %}
-                <p class="px-5 pb-4 text-sm text-gray-400">Без комментариев.</p>
-                {% endif %}
             </details>
             {% empty %}
             <p class="text-sm text-gray-500 dark:text-slate-400">Оценок пока нет.</p>

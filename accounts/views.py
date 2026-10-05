@@ -1,15 +1,17 @@
+from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.contrib.auth.models import User
 from django.core.exceptions import PermissionDenied
 from django.db.models import Count, Prefetch
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.views import generic
 from django import forms
 
 from quizzes.models import UserResult
 from textbook.services import profile_textbook_stats
 
-from .models import Profile, StudentGroup
+from .models import Notification, Profile, StudentGroup
 
 
 class AlumniForm(forms.ModelForm):
@@ -91,7 +93,7 @@ class ProfileView(LoginRequiredMixin, generic.TemplateView):
             raise PermissionDenied
         profile, _ = Profile.objects.get_or_create(user=request.user)
 
-        # Формы на странице три, различаем по полю: у карточки нет файлов.
+        # Форм на странице четыре, различаем по полю: у аватара – файл, у остальных – свои поля.
         if 'last_name' in request.POST or 'first_name' in request.POST:
             name_form = NameForm(request.POST, user=request.user)
             if not name_form.fields:
@@ -100,6 +102,13 @@ class ProfileView(LoginRequiredMixin, generic.TemplateView):
                 name_form.save()
                 return redirect('accounts:profile')
             return self.render_to_response(self.get_context_data(name_form=name_form))
+
+        if 'solution_name_visibility' in request.POST:
+            value = request.POST['solution_name_visibility']
+            if value in dict(Profile.NAME_VISIBILITY_CHOICES):
+                profile.solution_name_visibility = value
+                profile.save(update_fields=['solution_name_visibility'])
+            return redirect('accounts:profile')
 
         if 'alumni_about' in request.POST:
             alumni_form = AlumniForm(request.POST, instance=profile)
@@ -143,6 +152,7 @@ class ProfileView(LoginRequiredMixin, generic.TemplateView):
             # все – на textbook:suggestions.
             'suggestions': list(user.suggestions.select_related('article')[:8]),
             'suggestions_total': user.suggestions.count(),
+            'name_visibility_options': Profile.NAME_VISIBILITY_OPTIONS,
         })
         if is_own and 'name_form' not in context:
             name_form = NameForm(user=user)
@@ -190,3 +200,24 @@ class AlumniView(UserPassesTestMixin, generic.ListView):
             for group in groups:
                 group.is_first = group.graduation_year == first_year
         return groups
+
+
+@login_required
+def notifications_view(request):
+    """
+    Уведомления ученика. Открыл страницу – значит прочитал: непрочитанные
+    подсвечены в этот раз и гаснут к следующему, колокольчик обнуляется.
+    """
+    items = list(request.user.notifications.all()[:100])
+    unread = [n.pk for n in items if n.read_at is None]
+    if unread:
+        Notification.objects.filter(pk__in=unread).update(read_at=timezone.now())
+    # Новые – на виду, прочитанные – под «Прочитанные (N)»: колокольчик ведёт
+    # за новым, и старое не должно отодвигать его вниз страницы.
+    sections = [
+        (label,
+         [n for n in items if n.kind == kind and n.read_at is None],
+         [n for n in items if n.kind == kind and n.read_at is not None])
+        for kind, label in Notification.KIND_CHOICES
+    ]
+    return render(request, 'accounts/notifications.html', {'sections': sections})

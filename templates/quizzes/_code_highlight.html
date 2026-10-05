@@ -1,0 +1,14 @@
+{% comment %}
+Подсветка кода ученика – одна на страницы, где код только читают: архив
+решённого, «Решения других», разборы учителя. Блоку нужен класс
+language-python / language-cpp (CodeSubmission.language); без него hljs
+угадывает язык сам и на коротком C++ промахивается.
+
+Те же highlight.js и тема, что у практикума и статей. Фон и отступы задаёт
+<pre> страницы, поэтому у темы они сняты – иначе внутри тёмного блока
+появлялась вторая рамка.
+{% endcomment %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+<style>pre code.hljs { padding: 0; background: transparent; }</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script>hljs.highlightAll();</script>

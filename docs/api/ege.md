@@ -233,40 +233,75 @@ sequenceDiagram
 
 ---
 
-### POST `/ege/<id>/task/<num>/upload-attachment/` – Загрузить решение
+### Решения других – `/quizzes/`
 
-**View:** `ege_upload_attachment_view`
+Галерея решений висит на задаче (`Question`), а не на ответе: одна задача – одна
+галерея, откуда бы ученик её ни решал. Маршруты – `quizzes/urls.py`, вьюхи –
+`quizzes/views_solutions.py`, правила доступа и подписи – `quizzes/solutions.py`.
+Старый адрес `/ege/<id>/task/<num>/solution/<user_id>/` (`ege_solution_detail_view`)
+остался редиректом на галерею задачи: `user_id` в адресе выдавал бы автора тем,
+кому имени видеть не положено. Прежние `ege_upload_attachment_view` и
+`ege_toggle_like_view` заменены четырьмя маршрутами ниже.
+
+---
+
+### GET `/quizzes/question/<question_id>/solutions/` – Галерея задачи
+
+**View:** `views_solutions.solutions_view`
+**Template:** `quizzes/solutions.html`
+
+Открывается тому, кто сам верно решил задачу (полный балл), и суперпользователю:
+чужая работа – награда, а не подсказка (`solutions.can_view`). Карточка на автора:
+код – последняя верная отправка и рекорды по CPU и памяти, плюс разбор
+(комментарий, картинка, файл), лайки и подпись автора (`solutions.name_visible`).
+Скрытое учителем ученик не видит (своё – видит с пометкой). Сортировка – `?sort=`
+(`likes` по умолчанию, `cpu`, `memory`; у текстовых задач только `likes`).
+
+---
+
+### POST `/quizzes/question/<question_id>/solutions/mine/` – Своё решение
+
+**View:** `views_solutions.my_solution_view`
 **Content-Type:** `multipart/form-data`
 
-Загружает файл или изображение решения. Создаёт/обновляет `SolutionAttachment`.
+Своя запись `SharedSolution` – одна на пару (автор, задача). Доступна по решённой
+задаче, иначе – сообщение и редирект в галерею.
 
 | Поле | Тип | Описание |
 |------|-----|----------|
-| `file` | File | Файл решения (опционально) |
-| `image` | File | Скриншот решения (опционально) |
-| `comment` | string | Комментарий к решению |
+| `name_visibility` | string | `''` – как в профиле, иначе `anon`, `class`, `all` |
+| `comment` | string | Разбор |
+| `file` | File | Файл, до 20 МБ (`txt`, `csv`, `ods`, `odt`, `xlsx`, `doc`, `docx`, `pdf`, `py`, `cpp`) |
+| `image` | File | Картинка, до 5 МБ (`jpg`, `jpeg`, `png`, `gif`, `webp`) |
+
+Поля `remove_file` / `remove_image` убирают вложение.
 
 ---
 
-### GET `/ege/<id>/task/<num>/solution/<user_id>/` – Просмотр решения
+### POST `/quizzes/solution/<solution_id>/like/` – Лайк
 
-**View:** `ege_solution_detail_view`
-
-Просмотр решения конкретного ученика. Доступно автору и staff.
-
----
-
-### POST `/ege/solutions/<answer_id>/like/` – Лайк
-
-**View:** `ege_toggle_like_view`
+**View:** `views_solutions.like_view`
 **Content-Type:** `application/json`
 
-Toggle лайка на решение. Повторный запрос убирает лайк.
+Toggle лайка на `SharedSolution`. Лайкать можно то, что видно: своё решение –
+403, нерешённая задача – 403, скрытое учителем – 404. Повторный запрос убирает
+лайк.
 
 **Ответ:**
 ```json
-{"liked": true, "total_likes": 5}
+{"liked": true, "like_count": 5}
 ```
+
+---
+
+### POST `/quizzes/solution/<solution_id>/moderate/` – Модерация
+
+**View:** `views_solutions.moderate_view`
+**Доступ:** только суперпользователь
+
+Учитель переключает `field=hidden` (скрыть решение целиком) или
+`field=notes_hidden` (код виден, комментарий, картинка и файл – нет) и
+возвращается в галерею задачи.
 
 
 ---

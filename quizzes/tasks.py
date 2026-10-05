@@ -14,7 +14,7 @@ def check_code_task(self, submission_id):
     """
     from .ege_scoring import grade, is_partial_task, outputs_match
     from .models import CodeSubmission, TestCase
-    from .utils import run_code_in_docker
+    from .utils import compile_code, run_code_in_docker
 
     try:
         submission = CodeSubmission.objects.select_related('question', 'user', 'quiz').get(id=submission_id)
@@ -56,7 +56,14 @@ def check_code_task(self, submission_id):
                     files_ok = False
                     break
 
+            program = None
             if files_ok:
+                program, compile_error = compile_code(code, submission.language)
+                if compile_error:
+                    error_log = compile_error
+                    score = 0
+
+            if program is not None:
                 # Задача засчитана, только если пройдены ВСЕ тесты: первый же
                 # провал прекращает проверку и попадает в сообщение об ошибке.
                 # Исключение – задания 26 и 27: неверный ответ там ещё может
@@ -65,7 +72,8 @@ def check_code_task(self, submission_id):
                 partial = is_partial_task(question)
                 all_tests_passed = True
                 for i, test_case in enumerate(test_cases, 1):
-                    output, error, cpu_time_ms, memory_kb = run_code_in_docker(code, test_case.input_data, extra_files)
+                    output, error, cpu_time_ms, memory_kb = run_code_in_docker(
+                        program, test_case.input_data, extra_files, submission.language)
 
                     if error:
                         all_tests_passed = False

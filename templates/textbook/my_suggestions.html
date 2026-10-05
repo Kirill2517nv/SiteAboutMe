@@ -14,13 +14,23 @@
         <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-6">
             {% if is_own %}Мои предложения к статьям{% else %}Предложения к статьям – {{ owner|surname_first }}{% endif %}
         </h1>
-        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
-            {% if suggestions %}
-            {% include 'textbook/_suggestion_list.html' %}
-            {% else %}
-            <p class="px-6 py-6 text-sm text-gray-500 dark:text-slate-400">Предложений пока нет. Нажмите ✎ у блока любой статьи, чтобы предложить правку.</p>
-            {% endif %}
-        </div>
+        {# Вкладки – как на /textbook/feedback/; адреса собирает вьюха, чтобы учитель не терял ?user= #}
+        <nav class="flex flex-wrap gap-2 mb-4">
+            {% for key, label, n, href in status_tabs %}
+            <a href="{{ href }}"
+               class="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors
+                      {% if status == key %}bg-brand-600 text-white{% else %}bg-white dark:bg-slate-800 text-gray-600 dark:text-slate-300 border border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700{% endif %}">
+                {{ label }} <span class="tabular-nums opacity-70">{{ n }}</span>
+            </a>
+            {% endfor %}
+        </nav>
+        {% if suggestions %}
+        {% include 'textbook/_suggestion_list.html' %}
+        {% elif status == 'all' %}
+        <p class="px-6 py-6 rounded-xl bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 text-sm text-gray-500 dark:text-slate-400">Предложений пока нет. Нажмите ✎ у блока любой статьи, чтобы предложить правку.</p>
+        {% else %}
+        <p class="px-6 py-6 rounded-xl bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 text-sm text-gray-500 dark:text-slate-400">Здесь пусто.</p>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

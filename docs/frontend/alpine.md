@@ -326,7 +326,7 @@ flowchart TD
 | `ege_result.html` | `egeResult()` | Опрос страницы, пока есть непроверенные посылки |
 | `ege_solved.html`, `ege_student_mistakes.html`, `ege_bank.html` | `{ open }` | Раскрытие карточки задания |
 | `ege_student_mistakes.html`, `ege_practice.html` | `{ peek }` | Взгляд на правильный ответ (только для учителя) |
-| `ege_solution_detail.html` | `{ viewMode }` | Переключение решения с лучшим cpu / лучшей памятью |
+| `solutions.html` | `{ liked, count, busy }` | Кнопка лайка в галерее «Решения других» |
 | `ege_class.html`, `_ege_progress.html` | объект подсказки | Один `data-tip`-тултип на блок таблицы |
 | `spetskurs/_simulation_frame.html` | `simulationFrame()` | Кадр WASM-симуляции: тема, перезапуск, полный экран |
 | `textbook/textbook_home.html` | `{ open }` | Раскрытие группы блоков |

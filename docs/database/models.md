@@ -72,6 +72,7 @@ classDiagram
 | `avatar` | ImageField | Аватар, `avatars/`, blank |
 | `alumni_place` | CharField(200) | Вуз выпускника, blank |
 | `alumni_about` | TextField | О себе, blank |
+| `solution_name_visibility` | CharField(5) | Кто видит имя под решениями: `anon` (по умолчанию), `class`, `all` |
 
 **Свойство:** `is_alumni` – у ученика есть класс с проставленным годом выпуска.
 Карточку выпускника заполняет сам ученик; имя и аватар на `/alumni/` показываются
@@ -688,33 +689,42 @@ Postgres после пересоздания вопросов сидами от�
 **Constraint:** `unique_together = [session, question]`
 **Indexes:** `[session, order]`, `[question, is_correct]`, `[answered_at]`
 
-### SolutionAttachment
+### SharedSolution
 
-Прикрепление файла/изображения к решению задачи.
+Решение автора в «Решениях других» – одна запись на пару (автор, задача). Сам код
+здесь не хранится: он берётся из `CodeSubmission` (или `UserAnswer` синхронного
+практикума) – последняя верная отправка и рекорды. Запись создаётся лениво, когда
+галерея впервые показывает автора.
 
 | Поле | Тип | Описание |
 |------|-----|----------|
-| `user` | ForeignKey(User) | Автор, CASCADE |
-| `quiz` | ForeignKey(Quiz) | Тест, CASCADE |
-| `question` | ForeignKey(Question) | Вопрос, CASCADE |
-| `file` | FileField | Файл решения, blank |
-| `comment` | TextField | Комментарий, blank |
-| `image` | ImageField | Изображение решения, blank |
+| `user` | ForeignKey(User) | Автор, CASCADE, related_name=`shared_solutions` |
+| `question` | ForeignKey(Question) | Задача, CASCADE, related_name=`shared_solutions` |
+| `name_visibility` | CharField(5) | Подпись: `''` – как в профиле, иначе `anon`, `class`, `all` |
+| `comment` | TextField | Разбор, blank |
+| `file` | FileField | Файл решения, blank, null |
+| `image` | ImageField | Изображение решения, blank, null |
+| `hidden` | BooleanField | Решение скрыто учителем |
+| `notes_hidden` | BooleanField | Разбор скрыт учителем, код виден |
 | `created_at` | DateTimeField | auto_now_add |
 
-**Constraint:** `unique_together = [user, quiz, question]`
+**Свойства:** `quiz` – вариант задачи (для `upload_to`), `has_notes` – есть ли
+разбор, `get_filename` – имя файла.
+
+**Constraint:** `UniqueConstraint(fields=['user', 'question'], name='unique_shared_solution')`
 
 ### SolutionLike
 
-Лайк на решение другого ученика.
+Лайк решения другого ученика. Висит на `SharedSolution`, а не на отправке:
+переписав код, ученик не теряет набранные лайки.
 
 | Поле | Тип | Описание |
 |------|-----|----------|
 | `user` | ForeignKey(User) | Кто лайкнул, CASCADE, related_name=`solution_likes` |
-| `answer` | ForeignKey(UserAnswer) | Ответ, CASCADE, related_name=`likes` |
+| `solution` | ForeignKey(SharedSolution) | Решение, CASCADE, related_name=`likes` |
 | `created_at` | DateTimeField | auto_now_add |
 
-**Constraint:** `UniqueConstraint(fields=['user', 'answer'], name='unique_solution_like')`
+**Constraint:** `UniqueConstraint(fields=['user', 'solution'], name='unique_solution_like_v2')`
 
 ### HintChoice
 

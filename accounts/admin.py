@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import User
-from .models import StudentGroup, Profile
+from .models import Notification, StudentGroup, Profile
 
 class ProfileInline(admin.StackedInline):
     model = Profile
@@ -26,3 +26,13 @@ admin.site.unregister(User)
 admin.site.register(User, UserAdmin)
 
 admin.site.register(StudentGroup, StudentGroupAdmin)
+
+
+@admin.register(Notification)
+class NotificationAdmin(admin.ModelAdmin):
+    """Только просмотр: уведомления пишут сами действия учителя."""
+    list_display = ('user', 'text', 'created_at', 'read_at')
+    list_filter = ('read_at',)
+    search_fields = ('user__last_name', 'user__username', 'text')
+    list_select_related = ('user',)
+    readonly_fields = ('user', 'text', 'url', 'created_at', 'read_at')

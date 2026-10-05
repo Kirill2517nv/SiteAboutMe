@@ -7,7 +7,7 @@ from django import forms
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth.models import User
 from django.core.validators import FileExtensionValidator
-from django.db.models import Avg, Count, Prefetch
+from django.db.models import Avg, Count, Prefetch, Q
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -147,11 +147,30 @@ def my_suggestions_view(request):
     owner = request.user
     if request.user.is_superuser and request.GET.get('user', '').isdigit():
         owner = get_object_or_404(User, pk=request.GET['user'])
+    # Вкладки по статусу, как на /textbook/feedback/ – но по умолчанию «Все»:
+    # ссылки из уведомлений (#sN) ведут без ?status=, и правка обязана найтись.
+    status = request.GET.get('status')
+    if status not in STATUS_FILTERS:
+        status = 'all'
+    counts = dict(owner.suggestions.order_by().values_list('status').annotate(n=Count('id')))
+    # Адрес вкладки собирается здесь: учителю на чужом списке нужно сохранить ?user=.
+    user_param = f'&user={owner.pk}' if owner != request.user else ''
+    tabs = [
+        (key, label, counts.get(key, 0) if key != 'all' else sum(counts.values()), f'?status={key}{user_param}')
+        for key, label in (('new', 'На рассмотрении'), ('accepted', 'Принято'),
+                           ('rejected', 'Отклонено'), ('all', 'Все'))
+    ]
+    qs = owner.suggestions.select_related('article')
+    if status != 'all':
+        qs = qs.filter(status=status)
     return render(request, 'textbook/my_suggestions.html', {
         'owner': owner,
         'is_own': owner == request.user,
-        # ponytail: без пагинации – у одного автора правок десятки, не тысячи.
-        'suggestions': owner.suggestions.select_related('article'),
+        'status': status,
+        'status_tabs': tabs,
+        # ponytail: без пагинации – вкладки режут список, и у одного автора
+        # правок десятки, не тысячи; Paginator – если «Все» станет длинным.
+        'suggestions': qs,
     })
 
 
@@ -189,12 +208,14 @@ def feedback_view(request):
         # и 200 строк хватает; Paginator – когда архив «всех» станет длинным.
         context['suggestions'] = qs[:PAGE_LIMIT]
     else:
-        commented = (ArticleRating.objects.exclude(comment='')
-                     .select_related('user').order_by('stars', '-updated_at'))
+        rated = ArticleRating.objects.select_related('user').order_by('stars', '-updated_at')
         context['articles'] = (
-            Article.objects.annotate(avg=Avg('ratings__stars'), n=Count('ratings'))
+            Article.objects.annotate(
+                avg=Avg('ratings__stars'), n=Count('ratings'),
+                n_commented=Count('ratings', filter=~Q(ratings__comment='')),
+            )
             .filter(n__gt=0).order_by('avg', '-n')
-            .prefetch_related(Prefetch('ratings', queryset=commented, to_attr='commented'))
+            .prefetch_related(Prefetch('ratings', queryset=rated, to_attr='rated'))
         )
     return render(request, 'textbook/feedback.html', context)
 
@@ -203,12 +224,24 @@ def feedback_view(request):
 @require_POST
 def suggestion_update_view(request, pk):
     """Статус и ответ автору. Возвращает на ту же вкладку и к той же карточке."""
-    suggestion = get_object_or_404(Suggestion, pk=pk)
+    suggestion = get_object_or_404(Suggestion.objects.select_related('article'), pk=pk)
+    old_status, old_reply = suggestion.status, suggestion.reply
     status = request.POST.get('status')
     if status in dict(Suggestion.STATUS_CHOICES):
         suggestion.status = status
     suggestion.reply = request.POST.get('reply', '').strip()[:2000]
     suggestion.save(update_fields=['status', 'reply'])
+
+    # Колокольчик автору – только когда ответ новый: решение по правке или
+    # другой текст ответа. Повторное «Сохранить» без изменений не звенит.
+    decided = suggestion.status != old_status and suggestion.status != 'new'
+    if decided or (suggestion.reply and suggestion.reply != old_reply):
+        from accounts.models import notify
+        verdict = {'accepted': 'принято', 'rejected': 'отклонено'}.get(suggestion.status, 'есть ответ')
+        text = f'Ваше предложение к статье «{suggestion.article.title}»: {verdict}'
+        notify(suggestion.user, 'suggestion', f'{text} – «{suggestion.reply}»' if suggestion.reply else text,
+               f"{reverse('textbook:suggestions')}#s{suggestion.pk}",
+               suggestion.status if suggestion.status in ('accepted', 'rejected') else 'pending')
 
     back = request.POST.get('filter')
     if back not in STATUS_FILTERS:

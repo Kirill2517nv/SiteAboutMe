@@ -1,0 +1,26 @@
+/* Тема редактора для C++ – цвета Dark+ из Visual Studio Code.
+   Классы токенов – из режима text/x-cpp-vs (static/js/code-lang.js). */
+.cm-s-vscode-dark.CodeMirror { background: #1e1e1e; color: #d4d4d4; }
+.cm-s-vscode-dark .CodeMirror-gutters { background: #1e1e1e; }
+.cm-s-vscode-dark .CodeMirror-linenumber { color: #858585; }
+.cm-s-vscode-dark .CodeMirror-cursor { border-left-color: #aeafad; }
+.cm-s-vscode-dark div.CodeMirror-selected,
+.cm-s-vscode-dark.CodeMirror-focused div.CodeMirror-selected { background: #264f78; }
+.cm-s-vscode-dark .CodeMirror-line::selection,
+.cm-s-vscode-dark .CodeMirror-line > span::selection,
+.cm-s-vscode-dark .CodeMirror-line > span > span::selection { background: #264f78; }
+.cm-s-vscode-dark .CodeMirror-matchingbracket { color: #d4d4d4 !important; outline: 1px solid #888; }
+
+.cm-s-vscode-dark .cm-keyword { color: #569cd6; }
+.cm-s-vscode-dark .cm-keyword.cm-control { color: #c586c0; }
+.cm-s-vscode-dark .cm-type { color: #569cd6; }
+.cm-s-vscode-dark .cm-atom { color: #569cd6; }
+.cm-s-vscode-dark .cm-builtin { color: #4ec9b0; }
+.cm-s-vscode-dark .cm-def,
+.cm-s-vscode-dark .cm-function { color: #dcdcaa; }
+.cm-s-vscode-dark .cm-variable { color: #9cdcfe; }
+.cm-s-vscode-dark .cm-number { color: #b5cea8; }
+.cm-s-vscode-dark .cm-string { color: #ce9178; }
+.cm-s-vscode-dark .cm-comment { color: #6a9955; }
+.cm-s-vscode-dark .cm-meta { color: #c586c0; }
+.cm-s-vscode-dark .cm-operator { color: #d4d4d4; }

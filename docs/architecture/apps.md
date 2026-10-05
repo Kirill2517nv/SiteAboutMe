@@ -119,7 +119,7 @@ graph TD
 | Async код | Celery → Docker → WebSocket pipeline |
 | Тренажёр ЕГЭ | Сессии тренировки и экзамена, прогноз балла, статистика класса |
 | Подсказки | Подсказка открывается после трёх неудач, перед дедлайном блока или рубильником учителя; выбор ученика видит учитель |
-| Лайки | Toggle-лайки на решения учеников |
+| Решения других | Галерея решения задачи: подпись автора, разбор, лайки |
 
 **Модели**
 
@@ -128,7 +128,7 @@ graph TD
 | Ядро тестов | `Quiz`, `Question`, `Choice`, `TestCase`, `QuizAssignment`, `UserResult`, `UserAnswer` |
 | Материалы вопроса | `QuestionImage`, `QuestionFile` |
 | Выполнение кода | `CodeSubmission` |
-| Решения учеников | `SolutionAttachment`, `SolutionLike` |
+| Решения других | `SharedSolution`, `SolutionLike` |
 | Подсказки | `HintChoice` |
 | Варианты ЕГЭ | `ExamTaskProgress` |
 | Тренажёр | `PracticeSession`, `PracticeItem` |
@@ -151,7 +151,7 @@ graph TD
 
 **Management commands:** `load_quiz`, `load_ege`, `ege_pools`, `retag_ege`, `mark_exam_pool`, `recalc_ege_difficulty`
 
-**Endpoints:** 10 (`quizzes/urls.py`) + 25 (`quizzes/urls_ege.py`)
+**Endpoints:** 14 (`quizzes/urls.py`) + 25 (`quizzes/urls_ege.py`)
 **WebSocket:** 1 consumer (`QuizConsumer`)
 **JS:** `quiz-async.js`, `ege-timer.js`
 
@@ -174,7 +174,7 @@ graph LR
     subgraph EGE["Тренажёр ЕГЭ"]
         SESSION[PracticeSession + PracticeItem]
         PROGRESS[ExamTaskProgress]
-        SOLUTION[SolutionAttachment + SolutionLike]
+        SOLUTION[SharedSolution + SolutionLike]
     end
 
     Core --> CodeExec

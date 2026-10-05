@@ -45,6 +45,22 @@ class StudentGroup(models.Model):
         return f"{self.name} (выпуск {self.graduation_year})" if self.graduation_year else self.name
 
 class Profile(models.Model):
+    # Кто видит имя ученика под его решениями в «Решениях других». Само решение
+    # видно всем, кто решил задачу, – прячется только подпись. Переопределяется
+    # у отдельного решения (quizzes.SharedSolution.name_visibility).
+    NAME_VISIBILITY_CHOICES = [
+        ('anon', 'Никому – подписывать «Ученик №…»'),
+        ('class', 'Только моему классу'),
+        ('all', 'Всем'),
+    ]
+    # Те же значения для плиток выбора – (значение, значок, заголовок, подпись).
+    # Один список на профиль и галерею: подписи не расходятся.
+    NAME_VISIBILITY_OPTIONS = [
+        ('anon', '🕶️', 'Никто', 'Вместо имени – «Ученик №…»'),
+        ('class', '👥', 'Мой класс', 'Одноклассники видят имя, остальные – «Ученик №…»'),
+        ('all', '🌍', 'Все', 'Имя видят все ученики сайта'),
+    ]
+
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile', verbose_name="Пользователь")
     group = models.ForeignKey(StudentGroup, on_delete=models.SET_NULL, null=True, blank=True, verbose_name="Класс", related_name='students')
     is_ege = models.BooleanField(default=False, verbose_name="Сдаёт ЕГЭ")
@@ -57,6 +73,10 @@ class Profile(models.Model):
         max_length=200, blank=True, verbose_name="Вуз",
     )
     alumni_about = models.TextField(blank=True, verbose_name="О себе")
+    solution_name_visibility = models.CharField(
+        max_length=5, choices=NAME_VISIBILITY_CHOICES, default='anon',
+        verbose_name="Имя под решениями",
+    )
 
     class Meta:
         verbose_name = "Профиль ученика"
@@ -68,3 +88,50 @@ class Profile(models.Model):
 
     def __str__(self):
         return f"Профиль: {self.user.username}"
+
+
+class Notification(models.Model):
+    """
+    Уведомление ученику: учитель ответил – на разбор в «Решениях других» или на
+    правку к статье. Колокольчик в шапке считает непрочитанные, страница
+    /accounts/notifications/ отмечает их прочитанными при открытии.
+
+    Одна модель на все поводы: текст и ссылку собирает тот, кто уведомляет,
+    – иначе каждый новый повод заводил бы свой счётчик в шапке.
+    """
+    # Раздел на странице уведомлений. Порядок здесь – порядок разделов там.
+    KIND_CHOICES = [
+        ('suggestion', 'Ваши правки к статьям'),
+        ('solution', 'Ваши комментарии к задачам'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications', verbose_name="Кому")
+    # Цвет плашки: зелёная – принято, красная – отклонено, жёлтая – ответ без решения.
+    STATUS_CHOICES = [
+        ('accepted', 'Принято'),
+        ('rejected', 'Отклонено'),
+        ('pending', 'На рассмотрении'),
+    ]
+
+    kind = models.CharField(max_length=20, choices=KIND_CHOICES, verbose_name="Раздел")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending', verbose_name="Решение")
+    text = models.CharField(max_length=300, verbose_name="Текст")
+    url = models.CharField(max_length=300, blank=True, verbose_name="Ссылка")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создано")
+    read_at = models.DateTimeField(null=True, blank=True, verbose_name="Прочитано")
+
+    class Meta:
+        verbose_name = "Уведомление"
+        verbose_name_plural = "Уведомления"
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['user', 'read_at'])]
+
+    def __str__(self):
+        return f"{self.user.username}: {self.text}"
+
+
+def notify(user, kind, text, url='', status='pending'):
+    """Уведомить ученика. Учителю не пишем: ответы даёт он сам."""
+    if user.is_superuser:
+        return None
+    return Notification.objects.create(user=user, kind=kind, status=status, text=text[:300], url=url)
