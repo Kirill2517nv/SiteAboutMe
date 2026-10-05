@@ -544,6 +544,8 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
     34%, 86%  { transform: translateX(40px); }
     94%, 100% { transform: translateX(0); }
   }
+  /* Окно кода тёмное в обеих темах – тёмный курсор на нём пропадает. */
+  .ilang .iflip__cursor { color: #f8fafc; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .8)); }
   .ilang__opt {
     position: relative; width: 40px; height: 14px; text-align: center;
     font-size: 9px; font-weight: 700; line-height: 14px; color: #cbd5e1;
@@ -828,12 +830,20 @@ calc() от --cmap-node-h и --cmap-row-gap: поменяли высоту ка�
             </div>
           </div>
         </div>
-        <div class="text-sm font-semibold text-gray-900 dark:text-white mb-1">Решили – посмотрите, как решили другие</div>
+        <div class="text-sm font-semibold text-gray-900 dark:text-white mb-1">После решения задачи можете посмотреть, как её решали другие</div>
         <p class="text-sm leading-relaxed text-gray-500 dark:text-slate-400">
-          После верного решения откройте «Решения других»: код одноклассников, их рекорды
-          по скорости и памяти и разборы. Понравилось – ставьте лайк. Ваше имя видят,
-          только если вы сами так выбрали в профиле, иначе вы «Ученик №…».
-          «Показать ответ» доступа не открывает.
+          Чужие решения задачи открываются, когда вы сами решили её верно. Тогда появляется
+          кнопка «Решения других»:
+        </p>
+        <ul class="mt-1.5 mb-1.5 space-y-1 text-sm leading-relaxed text-gray-500 dark:text-slate-400 list-disc pl-5">
+          <li><b class="font-semibold text-gray-700 dark:text-slate-300">Тренажёр ЕГЭ</b> – на карточке задания «Решённые задачи», кнопка под каждой задачей;</li>
+          <li><b class="font-semibold text-gray-700 dark:text-slate-300">Практикум учебника</b> – у решённой задачи, над её условием, рядом с отметкой «Решена»;</li>
+          <li><b class="font-semibold text-gray-700 dark:text-slate-300">Вариант ЕГЭ</b> – зелёная галочка у задачи в таблице результатов.</li>
+        </ul>
+        <p class="text-sm leading-relaxed text-gray-500 dark:text-slate-400">
+          Там код одноклассников, их рекорды по скорости и памяти и разборы. Понравилось –
+          ставьте лайк. Ваше имя видят, только если вы сами так выбрали в профиле,
+          иначе вы «Ученик №…».
         </p>
       </div>
     </div>
