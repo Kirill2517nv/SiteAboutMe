@@ -40,6 +40,10 @@ CONTAINER_SECURITY = {
     "pids_limit": CONTAINER_PIDS_LIMIT,
     "cap_drop": ["ALL"],
     "security_opt": ["no-new-privileges"],
+    # Вес в борьбе за CPU (по умолчанию 1024). На свободном сервере проверка идёт
+    # с той же скоростью, а в пике ядро уступается gunicorn: на нагрузочном тесте
+    # 2026-10-05 шесть контейнеров при равном весе растягивали вход до 55 с.
+    "cpu_shares": 256,
 }
 
 # Runner-скрипт: замер CPU-времени и памяти решения через resource.getrusage

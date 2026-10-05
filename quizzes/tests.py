@@ -2826,6 +2826,8 @@ class SandboxLimitsTests(SimpleTestCase):
         self.assertEqual(CONTAINER_SECURITY['cap_drop'], ['ALL'])
         self.assertIn('no-new-privileges', CONTAINER_SECURITY['security_opt'])
         self.assertGreater(CONTAINER_SECURITY['pids_limit'], 0)
+        # Песочница уступает CPU сайту – иначе в пик проверок тормозят страницы.
+        self.assertLess(CONTAINER_SECURITY['cpu_shares'], 1024)
         # Каталог, созданный ключом working_dir, принадлежит root с правами
         # 755 – nobody не создаст в нём файл. Права 1777 есть только у /tmp.
         self.assertEqual(CONTAINER_WORKDIR, '/tmp')
