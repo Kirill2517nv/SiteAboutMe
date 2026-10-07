@@ -1,6 +1,6 @@
 # API и маршруты – Обзор
 
-Проект – **8 приложений**, **72 HTTP endpoint'а** и **1 WebSocket-маршрут**
+Проект – **6 приложений**, **68 HTTP endpoint'ов** и **1 WebSocket-маршрут**
 (сверх этого – `/admin/`, 8 стандартных auth-маршрутов Django и раздача media
 в режиме `DEBUG`). `quizzes` монтируется дважды: обычные тесты на `/quizzes/`,
 тренажёр ЕГЭ – на `/ege/` (`quizzes/urls_ege.py`).
@@ -20,7 +20,6 @@ graph LR
     QUIZ["/quizzes/"] --> QUIZ_V["quizzes.urls"]
     EGE["/ege/"] --> EGE_V["quizzes.urls_ege"]
     PAGES["/pages/"] --> PAGES_V["pages.urls"]
-    LESS["/lessons/"] --> LESS_V["lessons.urls"]
     SPETS["/spetskurs/"] --> SPETS_V["spetskurs.urls"]
     GAMES["/games/"] --> GAMES_V["games.urls"]
     TB["/textbook/"] --> TB_V["textbook.urls"]
@@ -37,13 +36,9 @@ graph LR
 | `/quizzes/` | `quizzes.urls` | quizzes |
 | `/ege/` | `quizzes.urls_ege` | ege |
 | `/pages/` | `pages.urls` | pages |
-| `/lessons/` | `lessons.urls` | lessons |
 | `/spetskurs/` | `spetskurs.urls` | spetskurs |
 | `/games/` | `games.urls` | games |
 | `/textbook/` | `textbook.urls` | textbook |
-
-В режиме `DEBUG` дополнительно подключается `re_path(r'^media/(?P<path>.*)$')` с
-показом `index.html` для каталогов – это нужно SPA-презентациям Slidev.
 
 ---
 
@@ -56,10 +51,7 @@ graph LR
 | GET | `/` | pages | Карта курса с прогрессом |
 | GET | `/about/` | pages | О проекте |
 | GET | `/pages/changelog/` | pages | История версий из `CHANGELOG.md` |
-| GET | `/lessons/` | lessons | Список уроков |
-| GET | `/lessons/<id>/` | lessons | Детали урока |
-| GET | `/lessons/<id>/file/<attachment_id>/` | lessons | Скачать файл урока |
-| GET | `/lessons/<id>/presentation-pdf/` | lessons | Скачать PDF презентации |
+| GET/POST | `/accounts/join/` | accounts | Заявка в класс по коду |
 | GET | `/ege/` | ege | Хаб тренажёра (гостю – демо-прогресс) |
 | GET | `/ege/task/<number>/` | ege | Карточка задания |
 | GET | `/textbook/` | textbook | Главная учебника |
@@ -84,6 +76,7 @@ graph LR
 | GET | `/quizzes/question-file/<id>/download/` | quizzes | Скачать файл вопроса |
 | POST | `/quizzes/<id>/question/<id>/submit/` | quizzes | Отправить код |
 | GET | `/quizzes/submission/<id>/status/` | quizzes | Статус проверки кода |
+| POST | `/quizzes/submission/<id>/stop/` | quizzes | «Остановить» проверку своей отправки |
 | POST | `/quizzes/<id>/finish/` | quizzes | Завершить тест |
 | GET/POST | `/quizzes/question/<id>/hint/` | quizzes | Подсказка к задаче |
 | POST | `/quizzes/question/<id>/check/` | quizzes | Вердикт по текстовому ответу |
@@ -126,9 +119,11 @@ graph LR
 |-------|-----|------------|----------|
 | GET | `/alumni/` | accounts | `is_superuser` (`UserPassesTestMixin`) |
 | GET | `/quizzes/<id>/stats/` | quizzes | `is_superuser` |
+| GET | `/quizzes/<id>/similar/` | quizzes | `is_superuser` |
 | GET | `/quizzes/<id>/stats/<user_id>/` | quizzes | `is_superuser` |
 | GET | `/quizzes/attempt/<id>/` | quizzes | `is_superuser` |
 | GET | `/ege/class/` | ege | `is_superuser` |
+| GET | `/ege/task/<number>/similar/` | ege | `is_superuser` |
 | GET | `/ege/student/<user_id>/mistakes/` | ege | `is_superuser` |
 | GET | `/ege/<id>/results/student/<user_id>/` | ege | `is_superuser` |
 | GET | `/textbook/section/<slug>/stats/` | textbook | `is_superuser` |

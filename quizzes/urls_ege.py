@@ -1,5 +1,5 @@
 from django.urls import path
-from . import views, views_practice
+from . import views, views_practice, views_similarity
 
 app_name = 'ege'
 
@@ -18,6 +18,7 @@ urlpatterns = [
          name='ege_classroom_toggle'),
     path('task/<int:number>/solved/', views_practice.ege_solved_view, name='ege_solved'),
     path('task/<int:number>/bank/', views_practice.ege_bank_view, name='ege_bank'),
+    path('task/<int:number>/similar/', views_similarity.ege_similar_view, name='ege_similar'),
     path('task/<int:number>/students/', views_practice.ege_task_students_view,
          name='ege_task_students'),
     path('task/<int:number>/students/<int:user_id>/', views_practice.ege_task_student_view,

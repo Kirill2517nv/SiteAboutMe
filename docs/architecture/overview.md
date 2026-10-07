@@ -21,7 +21,6 @@ graph TB
 
     subgraph Apps["Приложения"]
         PAG[pages\nКонтентные страницы]
-        LES[lessons\nРазделы, уроки]
         ACC[accounts\nПрофили, классы]
         QUI[quizzes\nТесты, тренажёр ЕГЭ]
         TXT[textbook\nУчебник, теория, прогресс]
@@ -55,7 +54,7 @@ graph TB
     ASGI --> REDIS
 ```
 
-Все семь приложений перечислены в `INSTALLED_APPS` (`config/settings.py`): `pages`, `lessons`, `accounts`, `quizzes`, `spetskurs`, `games`, `textbook` – в этом порядке они и подключены. Маршруты верхнего уровня собирает `config/urls.py`; у каждого приложения свой `urls.py`, а у тренажёра ЕГЭ – отдельный `quizzes/urls_ege.py` на префиксе `/ege/`.
+Все шесть приложений перечислены в `INSTALLED_APPS` (`config/settings.py`): `pages`, `accounts`, `quizzes`, `spetskurs`, `games`, `textbook` – в этом порядке они и подключены. Маршруты верхнего уровня собирает `config/urls.py`; у каждого приложения свой `urls.py`, а у тренажёра ЕГЭ – отдельный `quizzes/urls_ege.py` на префиксе `/ege/`.
 
 ---
 
@@ -99,11 +98,9 @@ graph TB
 
 ## Ключевые паттерны
 
-### Content Block Pattern
+### ArticleBlock
 
-`ContentBlock` (pages) и `LessonBlock` (lessons) используют одинаковую структуру – самодостаточная модель с полным набором стилизации (шрифты, цвета, позиционирование, кроп изображений). Позволяет создавать страницы без написания HTML.
-
-Рядом живёт `ArticleBlock` (textbook) – блок другого рода: типизированный (`text`, `code`, `image`, `video`, `formula`, `widget`) и без стилевых полей. Типографику статьи задаёт вёрстка, а не поля блока, поэтому одна и та же модель обслуживает уроки, теорию ЕГЭ и спецкурс, а собирается из seed-команд. Стилевые поля остались только у `LessonBlock`, где редактор собирает урок из блоков вручную.
+`ArticleBlock` (textbook) – блок другого рода: типизированный (`text`, `code`, `image`, `video`, `formula`, `widget`) и без стилевых полей. Типографику статьи задаёт вёрстка, а не поля блока, поэтому одна и та же модель обслуживает уроки, теорию ЕГЭ и спецкурс, а собирается из seed-команд.
 
 ### Assignment Cascade
 

@@ -16,15 +16,12 @@ def check_code_task(self, submission_id):
     from .models import CodeSubmission, TestCase
     from .utils import compile_code, run_code_in_docker
 
-    try:
-        submission = CodeSubmission.objects.select_related('question', 'user', 'quiz').get(id=submission_id)
-    except CodeSubmission.DoesNotExist:
-        return {'error': 'Submission not found'}
-
-    # Update status to running
-    submission.status = 'running'
-    submission.celery_task_id = self.request.id
-    submission.save(update_fields=['status', 'celery_task_id'])
+    # Берём только ждущую: «Остановить» закрывает отправку прямо в очереди
+    # (submission_stop_view), и такую проверять уже не надо.
+    if not CodeSubmission.objects.filter(id=submission_id, status='pending').update(
+            status='running', celery_task_id=self.request.id):
+        return {'submission_id': submission_id, 'status': 'skipped'}
+    submission = CodeSubmission.objects.select_related('question', 'user', 'quiz').get(id=submission_id)
 
     # Send WebSocket notification - running
     send_ws_notification(submission, 'running')
@@ -58,7 +55,7 @@ def check_code_task(self, submission_id):
 
             program = None
             if files_ok:
-                program, compile_error = compile_code(code, submission.language)
+                program, compile_error = compile_code(code, submission.language, submission_id)
                 if compile_error:
                     error_log = compile_error
                     score = 0
@@ -73,7 +70,7 @@ def check_code_task(self, submission_id):
                 all_tests_passed = True
                 for i, test_case in enumerate(test_cases, 1):
                     output, error, cpu_time_ms, memory_kb = run_code_in_docker(
-                        program, test_case.input_data, extra_files, submission.language)
+                        program, test_case.input_data, extra_files, submission.language, submission_id)
 
                     if error:
                         all_tests_passed = False

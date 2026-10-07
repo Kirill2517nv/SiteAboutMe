@@ -176,7 +176,6 @@ sudo certbot renew --dry-run
 | `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT` | Подключение к PostgreSQL |
 | `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND` | Redis для Celery; по умолчанию `redis://localhost:6379/0` |
 | `REDIS_HOST`, `REDIS_PORT` | Redis для Channel Layer (Channels); по умолчанию `localhost:6379` |
-| `USE_X_ACCEL_REDIRECT` | `True` на production: media отдаёт Nginx по `X-Accel-Redirect` |
 | `YANDEX_METRIKA_ID` | Номер счётчика Яндекс.Метрики. Задаётся только на production: пусто – счётчик не выводится |
 
 `ALLOWED_HOSTS` из `.env` не читается – список хостов задан прямо в `config/settings.py`.

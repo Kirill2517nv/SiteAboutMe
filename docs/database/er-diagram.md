@@ -1,12 +1,11 @@
 # ER-диаграммы
 
-Модели проекта разбиты на 7 доменов. Всего **41 модель** + стандартная модель `User` из Django.
+Модели проекта разбиты на 6 доменов. Всего **38 моделей** + стандартная модель `User` из Django.
 
 | Домен | Моделей | Что описывает |
 |-------|---------|---------------|
 | accounts | 2 | Пользователи, классы, выпускники |
-| pages | 5 | Контентные блоки главной и страница «Обо мне» |
-| lessons | 4 | Разделы, уроки, вложения, блоки урока |
+| pages | 4 | Профиль автора и страница «Обо мне» |
 | quizzes | 16 | Тесты, варианты ЕГЭ, банк задач, сессии тренировки |
 | textbook | 7 | Учебник: блоки, статьи, теория ЕГЭ, прогресс чтения |
 | spetskurs | 3 | Задачи курса численного моделирования, темы проектов |
@@ -54,23 +53,10 @@ erDiagram
 
 ---
 
-## Pages – Контент главной и about-страницы
+## Pages – Страница «Обо мне»
 
 ```mermaid
 erDiagram
-    ContentBlock {
-        int id PK
-        string page "home | about"
-        string block_type "text | image | text_image"
-        string title
-        text content
-        image image
-        string link_url
-        int order
-        string layout "vertical | horizontal | horizontal-reverse"
-        string card_bg "CSS цвет фона"
-    }
-
     AuthorProfile {
         int id PK
         string full_name
@@ -118,67 +104,10 @@ erDiagram
     }
 ```
 
-!!! note "Content Block Pattern"
-    `ContentBlock` – самодостаточная модель без связей. Каждый блок содержит полный набор параметров стилизации: шрифты, цвета, позиционирование, кроп изображений. Аналогичная структура используется в `LessonBlock`.
-
-    Остальные модели домена – страница «Обо мне» (`/about/`): профиль автора и три
-    его коллекции. Связей между ними нет: страница собирается из всех активных
-    (`is_visible`) записей каждого типа.
-
----
-
-## Lessons – Разделы и уроки
-
-```mermaid
-erDiagram
-    Section ||--o{ Lesson : "contains"
-    Lesson ||--o{ LessonAttachment : "attached"
-    Lesson ||--o{ LessonBlock : "has"
-
-    Section {
-        int id PK
-        string title
-        int order
-    }
-
-    Lesson {
-        int id PK
-        int section_id FK "FK → Section, nullable, SET_NULL"
-        string title
-        text description
-        image preview_image
-        string preview_description
-        url video_url
-        string presentation_url "Путь к Slidev-презентации"
-        string presentation_title
-        file presentation_pdf
-    }
-
-    LessonAttachment {
-        int id PK
-        int lesson_id FK "FK → Lesson"
-        file file
-        string title
-        int order
-    }
-
-    LessonBlock {
-        int id PK
-        int lesson_id FK "FK → Lesson"
-        string block_type "text | image | text_image"
-        string title
-        text content
-        image image
-        int order
-        string layout
-        string card_bg
-    }
-```
-
-!!! warning "Два разных `Section`"
-    `lessons.Section` – раздел уроков, у него есть только `title` и `order`.
-    `textbook.Section` – тематический блок учебника со статьями, практикумом и
-    дедлайном. Это разные модели разных приложений с одинаковым именем.
+!!! note "Страница «Обо мне»"
+    Домен – страница «Обо мне» (`/about/`): профиль автора и три его коллекции.
+    Связей между ними нет: страница собирается из всех активных (`is_visible`)
+    записей каждого типа.
 
 ---
 
@@ -705,9 +634,6 @@ erDiagram
 |-------|-----|----------|----------|
 | User → Profile | OneToOne | CASCADE | Расширение пользователя |
 | Profile → StudentGroup | FK | SET_NULL | Класс ученика |
-| Lesson → Section | FK | SET_NULL | Раздел урока |
-| LessonAttachment → Lesson | FK | CASCADE | Файлы-вложения урока |
-| LessonBlock → Lesson | FK | CASCADE | Блоки контента урока |
 | Question → Quiz | FK | CASCADE | Вопросы теста |
 | QuizAssignment → Quiz | FK | CASCADE | Назначение теста |
 | QuizAssignment → StudentGroup | FK | CASCADE | Назначение группе |

@@ -1,9 +1,51 @@
 from django.contrib import admin
+from django.db.models import Count, Q
 from django.http import HttpResponseRedirect
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
-from .models import Quiz, Question, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, QuestionImage, QuestionFile, ExamTaskProgress, SharedSolution, SolutionLike, CodeSubmission, HintChoice, PracticeSession, PracticeItem
+from .models import Quiz, Question, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, QuestionImage, QuestionFile, ExamTaskProgress, SharedSolution, SolutionLike, CodeSubmission, PracticeSession, PracticeItem
 from .forms import BulkQuizAssignmentForm
+
+
+class QuizRoleFilter(admin.SimpleListFilter):
+    """Чем тест служит на сайте. В списке «Тестов» 85 из 126 – самопроверки и
+    практикумы учебника, и без этого фильтра контрольную среди них не найти.
+    `prefix` – путь до теста от модели списка ('' у Quiz, 'quiz__' у моделей с FK на тест)."""
+
+    title = 'роль теста'
+    parameter_name = 'role'
+    prefix = ''
+
+    def lookups(self, request, model_admin):
+        return (
+            ('standard', 'Контрольная'),
+            ('practicum', 'Практикум блока'),
+            ('selfcheck', 'Самопроверка статьи'),
+            ('bank', 'Банк ЕГЭ'),
+            ('exam', 'Вариант ЕГЭ'),
+        )
+
+    def queryset(self, request, queryset):
+        from textbook.models import Section
+        p = self.prefix
+        # У Section.practicum_quiz related_name='+', обратного пути нет – подзапрос
+        practicum = {f'{p}id__in': Section.objects.exclude(practicum_quiz=None)
+                     .values('practicum_quiz')}
+        value = self.value()
+        if value == 'practicum':
+            return queryset.filter(**practicum)
+        if value == 'selfcheck':
+            return queryset.filter(**{f'{p}is_self_check': True}).exclude(**practicum)
+        if value == 'standard':
+            return queryset.filter(**{f'{p}quiz_type': 'standard',
+                                      f'{p}is_self_check': False}).exclude(**practicum)
+        if value in ('bank', 'exam'):
+            return queryset.filter(**{f'{p}quiz_type': value})
+        return queryset
+
+
+class RelatedQuizRoleFilter(QuizRoleFilter):
+    prefix = 'quiz__'
 
 class ChoiceInline(admin.TabularInline):
     model = Choice
@@ -26,10 +68,13 @@ class QuestionAdmin(admin.ModelAdmin):
                     'exam_only', 'classroom_only')
     # ege_number в фильтрах – чтобы при смене кодификатора можно было увидеть все
     # задачи снятой темы разом. Массовая переразметка – manage.py retag_ege.
-    list_filter = ('quiz', 'question_type', 'ege_number', 'difficulty',
+    # Фильтра по самому тесту нет: их 126, сайдбар превращался в простыню.
+    # Тест ищется поиском по названию.
+    list_filter = (RelatedQuizRoleFilter, 'question_type', 'ege_number', 'difficulty',
                    'exam_only', 'classroom_only')
     list_editable = ('exam_only', 'classroom_only')
-    search_fields = ('title', 'text', 'external_id')
+    list_select_related = ('quiz',)
+    search_fields = ('title', 'text', 'external_id', 'quiz__title')
     inlines = [ChoiceInline, TestCaseInline, QuestionImageInline, QuestionFileInline]
     fieldsets = (
         (None, {
@@ -83,12 +128,13 @@ class QuizAssignmentInline(admin.TabularInline):
 
 class QuizAdmin(admin.ModelAdmin):
     list_display = ('title', 'quiz_type', 'is_public', 'slug')
-    list_filter = ('quiz_type', 'is_public')
+    list_filter = (QuizRoleFilter, 'is_public')
     inlines = [QuestionInline, QuizAssignmentInline]
     search_fields = ['title']
     fieldsets = (
         (None, {
-            'fields': ('title', 'description', 'max_attempts', 'start_date', 'end_date')
+            'fields': ('title', 'description', 'max_attempts', 'start_date', 'end_date',
+                       'is_self_check')
         }),
         ('ЕГЭ', {
             'fields': ('quiz_type', 'exam_mode', 'is_public', 'slug'),
@@ -155,13 +201,16 @@ class UserAnswerInline(admin.TabularInline):
 
 class UserResultAdmin(admin.ModelAdmin):
     list_display = ('user', 'quiz', 'score', 'date_completed', 'duration')
-    list_filter = ('quiz', 'date_completed', 'user')
+    # Ученик и тест – через поиск: фильтры по ним были списками на сотню строк
+    list_filter = (RelatedQuizRoleFilter, 'date_completed')
+    list_select_related = ('user', 'quiz')
     search_fields = ('user__last_name', 'user__first_name', 'user__username', 'quiz__title')
     inlines = [UserAnswerInline]
 
 class QuizAssignmentAdmin(admin.ModelAdmin):
     list_display = ('quiz', 'group', 'get_user_display', 'start_date', 'end_date', 'max_attempts')
-    list_filter = ('quiz', 'group')
+    list_filter = (('quiz', admin.RelatedOnlyFieldListFilter), 'group')
+    list_select_related = ('quiz', 'group', 'user')
     search_fields = ('quiz__title', 'user__last_name', 'user__first_name', 'user__username', 'group__name')
     autocomplete_fields = ['user', 'group', 'quiz']
 
@@ -174,7 +223,7 @@ class QuizAssignmentAdmin(admin.ModelAdmin):
 
 class ExamTaskProgressAdmin(admin.ModelAdmin):
     list_display = ('user', 'quiz', 'question', 'is_solved', 'attempts_to_solve', 'time_spent_seconds')
-    list_filter = ('is_solved', 'quiz')
+    list_filter = ('is_solved', ('quiz', admin.RelatedOnlyFieldListFilter))
     search_fields = ('user__last_name', 'user__first_name', 'user__username')
     list_select_related = ('user', 'quiz', 'question')
     readonly_fields = ('is_solved', 'first_solved_at')
@@ -203,7 +252,7 @@ class SharedSolutionAdmin(admin.ModelAdmin):
 
 class CodeSubmissionAdmin(admin.ModelAdmin):
     list_display = ('user', 'question', 'quiz', 'status', 'is_correct', 'cpu_time_ms', 'memory_kb', 'created_at')
-    list_filter = ('status', 'is_correct', 'quiz')
+    list_filter = ('status', 'is_correct', 'language', RelatedQuizRoleFilter)
     search_fields = ('user__last_name', 'user__first_name', 'user__username')
     list_select_related = ('user', 'quiz', 'question')
     readonly_fields = ('cpu_time_ms', 'memory_kb')
@@ -233,26 +282,22 @@ class PracticeSessionAdmin(admin.ModelAdmin):
     readonly_fields = ('created_at',)
     inlines = [PracticeItemInline]
 
+    def get_queryset(self, request):
+        # Три счётчика одним запросом – раньше колонка читала задачи на каждую строку
+        return super().get_queryset(request).annotate(
+            _total=Count('items'),
+            _answered=Count('items', filter=Q(items__answered_at__isnull=False)),
+            _correct=Count('items', filter=Q(items__answered_at__isnull=False,
+                                             items__is_correct=True)),
+        )
+
     @admin.display(description='Решено')
     def solved_display(self, obj):
-        items = obj.items.all()
-        answered = [item for item in items if item.answered_at]
-        correct = [item for item in answered if item.is_correct]
-        return f'{len(correct)} / {len(answered)} из {len(items)}'
+        return f'{obj._correct} / {obj._answered} из {obj._total}'
 
 
 admin.site.register(ExamTaskProgress, ExamTaskProgressAdmin)
 admin.site.register(SharedSolution, SharedSolutionAdmin)
 admin.site.register(CodeSubmission, CodeSubmissionAdmin)
 admin.site.register(SolutionLike, SolutionLikeAdmin)
-
-@admin.register(HintChoice)
-class HintChoiceAdmin(admin.ModelAdmin):
-    """Только чтение: что ученик выбрал, когда ему предложили подсказку."""
-    list_display = ('user', 'question', 'accepted', 'decided_at')
-    list_filter = ('accepted', 'question__quiz')
-    search_fields = ('user__username', 'user__last_name', 'question__title')
-    readonly_fields = ('user', 'question', 'accepted', 'offered_at', 'decided_at')
-
-    def has_add_permission(self, request):
-        return False
+# HintChoice в админке нет: журнал только для чтения, руками его не открывали.

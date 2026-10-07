@@ -1,7 +1,9 @@
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.contrib.auth.models import User
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied, ValidationError
+from django.db import transaction
 from django.db.models import Count, Prefetch
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -161,7 +163,8 @@ class ProfileView(LoginRequiredMixin, generic.TemplateView):
         # Учителю — переключение между учениками прямо из профиля.
         if self.request.user.is_superuser:
             context['students'] = (
-                User.objects.filter(is_superuser=False)
+                # is_active – заявки по коду класса учеником ещё не стали
+                User.objects.filter(is_superuser=False, is_active=True)
                 .select_related('profile__group')
                 .order_by('profile__group__name', 'last_name', 'username')
             )
@@ -200,6 +203,79 @@ class AlumniView(UserPassesTestMixin, generic.ListView):
             for group in groups:
                 group.is_first = group.graduation_year == first_year
         return groups
+
+
+class LoginForm(AuthenticationForm):
+    """Вход, который отличает заявку по коду класса от неверного пароля.
+
+    Стандартный ModelBackend отбрасывает неактивного пользователя до проверки
+    пароля, и ученик с заявкой видел бы «неверный пароль». Бэкенд не меняем
+    (AllowAllUsersModelBackend оставил бы живыми сессии выключенных), а здесь
+    сами проверяем пароль неактивного – и только тогда говорим, в чём дело."""
+
+    error_messages = {
+        **AuthenticationForm.error_messages,
+        'invalid_login': 'Неверный логин или пароль. Попробуйте снова.',
+        'inactive': 'Учётная запись отключена – обратитесь к учителю.',
+        'pending': 'Заявка ждёт подтверждения учителя. Как только он её примет, '
+                   'вход откроется с этим же логином и паролем.',
+    }
+
+    def clean(self):
+        try:
+            return super().clean()
+        except ValidationError:
+            user = User.objects.filter(username=self.cleaned_data.get('username'),
+                                       is_active=False).select_related('profile').first()
+            if user and user.check_password(self.cleaned_data.get('password') or ''):
+                pending = getattr(getattr(user, 'profile', None), 'join_group_id', None)
+                code = 'pending' if pending else 'inactive'
+                raise ValidationError(self.error_messages[code], code=code)
+            raise
+
+
+class JoinForm(UserCreationForm):
+    """Заявка по коду класса: ученик заводит себя сам, учитель принимает."""
+
+    code = forms.CharField(label='Код класса', max_length=20)
+
+    class Meta(UserCreationForm.Meta):
+        fields = ('code', 'last_name', 'first_name', 'username')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Учитель узнаёт ученика в списке заявок по ФИО – без него заявку не принять
+        self.fields['last_name'].required = True
+        self.fields['first_name'].required = True
+        self.group = None
+
+    def clean_code(self):
+        self.group = StudentGroup.by_join_code(self.cleaned_data['code'])
+        if self.group is None:
+            raise ValidationError('Код не подошёл. Проверьте его или спросите у учителя: '
+                                  'у кода есть срок действия.')
+        return self.cleaned_data['code']
+
+    @transaction.atomic
+    def save(self):
+        user = super().save(commit=False)
+        user.is_active = False
+        user.save()
+        Profile.objects.create(user=user, join_group=self.group)
+        return user
+
+
+def join_view(request):
+    """/accounts/join/ – регистрация по коду класса. Вход откроется после «Принять»
+    в админке (раздел «Заявки в классы»)."""
+    if request.user.is_authenticated:
+        return redirect('home')
+    form = JoinForm(request.POST or None)
+    if request.method == 'POST' and form.is_valid():
+        user = form.save()
+        return render(request, 'accounts/join.html', {'done': True, 'group': form.group,
+                                                      'username': user.username})
+    return render(request, 'accounts/join.html', {'form': form})
 
 
 @login_required

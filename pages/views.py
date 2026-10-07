@@ -2,7 +2,6 @@ import re
 from pathlib import Path
 from django.shortcuts import render
 from django.conf import settings
-from .models import ContentBlock
 
 
 def parse_changelog():
@@ -186,7 +185,6 @@ def about_page_view(request):
     education = events.filter(event_type='education')
     publications = events.filter(event_type='publication')
     conferences = events.filter(event_type='conference')
-    blocks = ContentBlock.objects.filter(page='about').order_by('order')
     return render(request, 'about.html', {
         'profile': profile,
         'photos': photos,
@@ -194,6 +192,5 @@ def about_page_view(request):
         'education': education,
         'publications': publications,
         'conferences': conferences,
-        'blocks': blocks,
         'page_type': 'about',
     })

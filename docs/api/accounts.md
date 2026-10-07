@@ -87,6 +87,25 @@ QuerySet – `StudentGroup` с заполненным `graduation_year`, уче�
 
 ---
 
+### GET/POST `/accounts/join/` – Заявка в класс по коду
+
+**View:** `join_view` · **Form:** `JoinForm` (`UserCreationForm` + код)
+**Auth:** не нужна; вошедшего редиректит на главную
+**Template:** `accounts/join.html`
+
+Ученик вводит код класса, ФИО, логин и пароль и получает `is_active=False`,
+класс заявки – в `Profile.join_group` (не в `group`: его читают все отчёты).
+Код – 8 символов без похожих (`StudentGroup.issue_join_code`, живёт
+`JOIN_CODE_DAYS` дней; регистр, пробелы и дефисы не важны), просроченный и
+неверный неразличимы. Учитель принимает в админке «Заявки в классы» –
+`accept_join()`, единственное место, где заявка становится учеником.
+
+Вход (`/accounts/login/`) перекрыт в `config/urls.py` формой `LoginForm`:
+`ModelBackend` отбрасывает неактивного до пароля, поэтому форма сама проверяет
+пароль неактивного и при верном говорит «заявка ждёт учителя».
+
+---
+
 ## Django Auth URLs
 
 Стандартные маршруты из `django.contrib.auth.urls` (8 штук под `/accounts/`):

@@ -3,7 +3,6 @@ from django.contrib import admin
 from .models import (
     Article,
     ArticleBlock,
-    ArticleProgress,
     ArticleQuiz,
     ArticleRating,
     EgeTask,
@@ -102,12 +101,8 @@ class ArticleAdmin(admin.ModelAdmin):
     )
 
 
-@admin.register(ArticleProgress)
-class ArticleProgressAdmin(admin.ModelAdmin):
-    list_display = ('user', 'article', 'status', 'first_opened_at', 'read_at', 'mastered_at')
-    list_filter = ('status',)
-    search_fields = ('user__username', 'article__title')
-    readonly_fields = ('first_opened_at', 'updated_at')
+# ArticleProgress в админке нет: прогресс чтения смотрят в отчёте по блоку
+# (/textbook/section/<slug>/stats/), руками его не правили ни разу.
 
 
 @admin.register(ArticleRating)

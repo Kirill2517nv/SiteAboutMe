@@ -9,7 +9,7 @@ graph TB
     NGINX -->|"HTTP → socket"| GUNICORN[Gunicorn\nsite.service]
     NGINX -->|"WS /ws/ → socket"| DAPHNE[Daphne\ndaphne.service]
     NGINX -->|"static/"| STATIC[Static Files\ncollectstatic]
-    NGINX -->|"media/"| MEDIA[Media Files\nX-Accel-Redirect]
+    NGINX -->|"media/"| MEDIA[Media Files]
 
     GUNICORN --> DJANGO[Django\nWSGI]
     DAPHNE --> CHANNELS[Django Channels\nASGI]
@@ -101,13 +101,8 @@ graph TB
 
 ```
 Клиент → Nginx (:443, /media/*)
-       → Django View (проверка доступа)
-       → X-Accel-Redirect → Nginx
        → Прямая отдача из /home/admin/site/media/
 ```
-
-!!! info "X-Accel-Redirect"
-    Django проверяет права доступа, затем отправляет Nginx заголовок `X-Accel-Redirect` с внутренним путём к файлу. Nginx отдаёт файл напрямую, минуя Python – эффективнее `FileResponse`.
 
 ---
 
@@ -118,7 +113,6 @@ graph TB
 ├── config/              # Django settings, urls, wsgi, asgi
 ├── accounts/            # App: пользователи
 ├── pages/               # App: контент-страницы
-├── lessons/             # App: уроки
 ├── quizzes/             # App: тесты и тренажёр ЕГЭ
 ├── textbook/            # App: учебник (материал, теория ЕГЭ, спецкурс)
 ├── spetskurs/           # App: курс численного моделирования
@@ -128,7 +122,6 @@ graph TB
 │   └── spetskurs/       # Собранные WASM-симуляции (в git не хранятся)
 ├── staticfiles/         # collectstatic output
 ├── media/               # MEDIA_ROOT: загруженные файлы
-│   ├── lessons/         # media/lessons/{урок}/ – файлы уроков и картинки блоков
 │   ├── ege/             # Медиа банков и вариантов ЕГЭ
 │   ├── textbook/        # Картинки статей учебника
 │   ├── spetskurs/       # Иллюстрации разборов спецкурса

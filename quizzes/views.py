@@ -17,8 +17,9 @@ import json
 import mimetypes
 import re
 from urllib.parse import quote
-from .utils import compile_code, js_json, run_code_in_docker
-from .tasks import check_code_task
+from .utils import STOPPED_MESSAGE, compile_code, js_json, run_code_in_docker, stop_submission
+from .tasks import (check_code_task, send_ws_notification, update_exam_progress_from_submission,
+                    update_practice_item_from_submission, update_user_answer_from_submission)
 
 # Константы ЕГЭ переехали в ege_constants.py – их делят между собой views,
 # ege_practice, ege_stats и accounts. Импорт оставлен здесь, чтобы старые
@@ -223,7 +224,8 @@ def build_ege_results_matrix(quiz):
 def _student_list():
     """Ученики для панели учителя – тот же список и порядок, что в профиле."""
     return (
-        User.objects.filter(is_superuser=False)
+        # is_active – заявки по коду класса учеником ещё не стали
+        User.objects.filter(is_superuser=False, is_active=True)
         .select_related('profile__group')
         .order_by('profile__group__name', 'last_name', 'username')
     )
@@ -1739,6 +1741,31 @@ def submission_status_view(request, submission_id):
         'created_at': submission.created_at.isoformat(),
         'completed_at': submission.completed_at.isoformat() if submission.completed_at else None,
     })
+
+
+@login_required
+@require_POST
+def submission_stop_view(request, submission_id):
+    """
+    «Остановить» – обрывает проверку, не дожидаясь таймаута контейнера.
+    Остановленная отправка – обычная неверная попытка, как и таймаут: иначе
+    кнопка стала бы способом снять неудачную отправку до вердикта.
+    """
+    submission = get_object_or_404(CodeSubmission, id=submission_id, user=request.user)
+
+    # Ещё в очереди – контейнера нет, закрываем сами; check_code_task её не возьмёт.
+    if CodeSubmission.objects.filter(id=submission.id, status='pending').update(
+            status='failed', is_correct=False, score=0,
+            error_log=STOPPED_MESSAGE, completed_at=timezone.now()):
+        submission.refresh_from_db()
+        update_user_answer_from_submission(submission)
+        update_exam_progress_from_submission(submission)
+        update_practice_item_from_submission(submission)
+        send_ws_notification(submission, 'completed')
+    elif submission.status == 'running':
+        stop_submission(submission.id)
+
+    return JsonResponse({'ok': True})
 
 
 @login_required

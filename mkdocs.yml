@@ -59,7 +59,6 @@ nav:
     - "Обзор": api/overview.md
     - "Accounts": api/accounts.md
     - "Pages": api/pages.md
-    - "Lessons": api/lessons.md
     - "Quizzes": api/quizzes.md
     - "EGE": api/ege.md
     - "Textbook": api/textbook.md
@@ -78,8 +77,6 @@ nav:
     - "Ревизия блока": textbook-block-revision.md
   - "Спецкурс":
     - "Выкладка симуляций": spetskurs-deploy.md
-  - "Уроки":
-    - "Slidev-презентации": slidev-guide.md
   - "Фронтенд":
     - "Обзор": frontend/overview.md
     - "WebSocket": frontend/websocket.md

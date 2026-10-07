@@ -265,7 +265,34 @@ def _docker_client():
     return client
 
 
-def compile_code(code, language='python'):
+# Кнопка «Остановить»: бесконечный цикл иначе держит ученика до CONTAINER_TIMEOUT.
+# Контейнеры отправки помечены её id, stop_submission() убивает их, а проверка
+# узнаёт остановку по коду выхода самого контейнера: `docker kill` даёт 137,
+# истёкший `sleep` – 0, нехватка памяти убивает процесс exec, а не контейнер.
+# exec_run во всех трёх случаях возвращает 137, поэтому смотрим именно State.
+STOPPED_MESSAGE = "Проверка остановлена: вы нажали «Остановить»."
+
+
+def _labels(submission_id):
+    return {'submission': str(submission_id)} if submission_id else {}
+
+
+def _killed(container):
+    container.reload()
+    return container.attrs['State']['ExitCode'] == 137
+
+
+def stop_submission(submission_id):
+    """Убивает контейнеры отправки; проверка сама закончится с STOPPED_MESSAGE."""
+    try:
+        client = _docker_client()
+        for container in client.containers.list(filters={'label': f'submission={submission_id}'}):
+            container.kill()
+    except (DockerException, APIError):
+        pass  # контейнер уже снесён – проверка и так закончилась
+
+
+def compile_code(code, language='python', submission_id=None):
     """
     Готовит программу к запуску: (программа, ошибка).
 
@@ -290,6 +317,7 @@ def compile_code(code, language='python'):
             CPP_IMAGE,
             command=f"sleep {CPP_COMPILE_TIMEOUT + 10}",
             detach=True,
+            labels=_labels(submission_id),
             mem_limit=CPP_COMPILE_MEM_LIMIT,
             cpu_quota=CONTAINER_CPU_QUOTA,
             working_dir=CONTAINER_WORKDIR,
@@ -299,6 +327,8 @@ def compile_code(code, language='python'):
         result = container.exec_run(f"timeout {CPP_COMPILE_TIMEOUT} {CPP_COMPILE_CMD}", demux=True)
         raw_stdout, raw_stderr = result.output
         if result.exit_code != 0:
+            if result.exit_code == 137 and _killed(container):
+                return None, STOPPED_MESSAGE
             if result.exit_code in (124, 137):
                 return None, "Ошибка компиляции: превышено время или память компилятора."
             log = truncate_output((raw_stdout or b'') + (raw_stderr or b''))
@@ -320,7 +350,7 @@ def compile_code(code, language='python'):
                 pass
 
 
-def run_code_in_docker(code, input_data, extra_files=None, language='python'):
+def run_code_in_docker(code, input_data, extra_files=None, language='python', submission_id=None):
     """
     Запускает программу в Docker-контейнере через раннер.
     code: исходник Python или бинарник C++ из compile_code().
@@ -340,6 +370,7 @@ def run_code_in_docker(code, input_data, extra_files=None, language='python'):
             CPP_IMAGE if language == 'cpp' else "python:3.11-slim",
             command=f"sleep {CONTAINER_TIMEOUT}",
             detach=True,
+            labels=_labels(submission_id),
             mem_limit=CONTAINER_MEM_LIMIT,
             cpu_quota=CONTAINER_CPU_QUOTA,
             working_dir=CONTAINER_WORKDIR,
@@ -381,6 +412,8 @@ def run_code_in_docker(code, input_data, extra_files=None, language='python'):
 
         if exit_code != 0:
             if exit_code == 137:
+                if _killed(container):
+                    return None, STOPPED_MESSAGE, cpu_time_ms, memory_kb
                 return None, "Превышен лимит времени или памяти.", cpu_time_ms, memory_kb
             # Ошибка — stderr без маркеров runner.py (чистый вывод ошибки)
             error_output = re.sub(r'__CPU_TIME_MS__:[\d.]+\n?', '', stderr_text)

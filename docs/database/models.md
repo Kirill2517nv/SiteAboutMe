@@ -1,6 +1,6 @@
 # Модели
 
-Детальное описание всех **41 модели** проекта с диаграммами классов и пояснениями
+Детальное описание всех **38 моделей** проекта с диаграммами классов и пояснениями
 (плюс стандартная `User` из Django).
 
 ---
@@ -80,24 +80,10 @@ classDiagram
 
 ---
 
-## pages – Контентные блоки и «Обо мне»
+## pages – Страница «Обо мне»
 
 ```mermaid
 classDiagram
-    class ContentBlock {
-        +int id
-        +str page
-        +str block_type
-        +str title
-        +text content
-        +image image
-        +str link_url
-        +int order
-        +str layout
-        +styling fields...
-        +__str__() str
-    }
-
     class AuthorProfile {
         +int id
         +str full_name
@@ -145,37 +131,6 @@ classDiagram
         +bool is_visible
     }
 ```
-
-### ContentBlock
-
-Универсальный блок контента для главной и about-страницы. Полностью самодостаточная модель – все параметры отображения хранятся в БД.
-
-| Поле | Тип | Описание |
-|------|-----|----------|
-| `page` | CharField(20) | `home` или `about` |
-| `block_type` | CharField(20) | `text`, `image`, `text_image` |
-| `title` | CharField(200) | Заголовок блока |
-| `content` | TextField | Текстовое содержание, blank |
-| `image` | ImageField | Загружается в `content/`, nullable |
-| `link_url` | CharField(200) | Ссылка, blank |
-| `order` | PositiveIntegerField | Порядок на странице |
-| `layout` | CharField(20) | `vertical`, `horizontal`, `horizontal-reverse` |
-
-**Поля стилизации:**
-
-| Группа | Поля |
-|--------|------|
-| Позиционирование текста | `text_pos_x`, `text_pos_y` |
-| Позиционирование изображения | `image_pos_x`, `image_pos_y`, `image_align`, `image_position_x`, `image_position_y` |
-| Размеры изображения | `image_width`, `image_height` |
-| Кроп изображения | `image_crop_x`, `image_crop_y`, `image_crop_width`, `image_crop_height`, `image_natural_width`, `image_natural_height` |
-| CSS изображения | `image_object_fit`, `image_border_radius`, `image_opacity` |
-| Шрифты заголовка | `title_font_size`, `title_font_family`, `title_color` |
-| Шрифты контента | `content_font_size`, `content_font_family`, `content_color` |
-| Выравнивание | `text_align` |
-| Фон | `card_bg` |
-
-**Meta:** `ordering = ['page', 'order']`
 
 ### AuthorProfile
 
@@ -240,121 +195,6 @@ classDiagram
 | `is_visible` | BooleanField | Отображать, default=True |
 
 **Meta:** `ordering = ['-year', 'order']`
-
----
-
-## lessons – Уроки
-
-```mermaid
-classDiagram
-    class Section {
-        +int id
-        +str title
-        +int order
-    }
-
-    class Lesson {
-        +int id
-        +Section section [FK, nullable]
-        +str title
-        +text description
-        +image preview_image
-        +str preview_description
-        +url video_url
-        +str presentation_url
-        +str presentation_title
-        +file presentation_pdf
-    }
-
-    class LessonAttachment {
-        +int id
-        +Lesson lesson [FK]
-        +file file
-        +str title
-        +int order
-        +display_title() str
-        +extension() str
-    }
-
-    class LessonBlock {
-        +int id
-        +Lesson lesson [FK]
-        +str block_type
-        +str title
-        +text content
-        +image image
-        +int order
-        +styling fields...
-    }
-
-    Section "1" -- "*" Lesson : contains
-    Lesson "1" -- "*" LessonAttachment : has
-    Lesson "1" -- "*" LessonBlock : has
-```
-
-### Section
-
-Раздел – группирует уроки. Не путать с `textbook.Section`: это блок учебного
-материала со статьями, практикумом и дедлайном.
-
-| Поле | Тип | Описание |
-|------|-----|----------|
-| `title` | CharField(200) | Название раздела |
-| `order` | PositiveIntegerField | Порядок отображения, default=0 |
-
-**Meta:** `ordering = ['order', 'title']`
-
-### Lesson
-
-Урок с файлами, презентацией, превью и видео.
-
-| Поле | Тип | Описание |
-|------|-----|----------|
-| `section` | ForeignKey(Section) | Раздел, SET_NULL, nullable |
-| `title` | CharField(200) | Название урока |
-| `description` | TextField | Описание, blank |
-| `preview_image` | ImageField | Превью в `lessons/<title>/`, blank |
-| `preview_description` | CharField(200) | Краткое описание для карточки, blank |
-| `video_url` | URLField | Ссылка на видео, blank |
-| `presentation_url` | CharField(300) | Путь к собранной Slidev-презентации, blank |
-| `presentation_title` | CharField(200) | Название презентации для отображения, blank |
-| `presentation_pdf` | FileField | PDF-версия презентации в `lessons/<title>/`, blank |
-
-### LessonAttachment
-
-Файловое вложение к уроку (задания, примеры, материалы).
-
-| Поле | Тип | Описание |
-|------|-----|----------|
-| `lesson` | ForeignKey(Lesson) | Урок, CASCADE, related_name=`attachments` |
-| `file` | FileField | Файл в `lessons/<title>/` |
-| `title` | CharField(200) | Название вложения, blank |
-| `order` | PositiveIntegerField | Порядок отображения, default=0 |
-
-**Properties:**
-- `display_title` – название или имя файла, если `title` не задан
-- `extension` – расширение файла в нижнем регистре (например, `pdf`, `odt`)
-
-**Meta:** `ordering = ['order']`
-
-**Upload path:** `lessons/{safe_title}/{filename}` – все файлы урока хранятся в единой директории `media/lessons/{название_урока}/`.
-
-### LessonBlock
-
-Блок контента урока. Структура стилизации идентична `ContentBlock`.
-
-| Поле | Тип | Описание |
-|------|-----|----------|
-| `lesson` | ForeignKey(Lesson) | Урок, CASCADE, related_name=`blocks` |
-| `block_type` | CharField | `text`, `image`, `text_image` |
-| `title` | CharField(200) | Заголовок блока, blank |
-| `content` | TextField | Текст блока, blank |
-| `image` | ImageField | Изображение, blank |
-| `order` | PositiveIntegerField | Порядок, default=0 |
-| `layout` | CharField | `vertical`, `horizontal`, `horizontal-reverse` |
-| + все поля стилизации | – | Аналогично `ContentBlock` |
-
-**Meta:** `ordering = ['order']`
 
 ---
 
@@ -871,8 +711,7 @@ classDiagram
 
 ### Section
 
-Тематический блок учебного материала (21 блок плана). Не путать с
-`lessons.Section` – там раздел уроков и никаких статей.
+Тематический блок учебного материала (21 блок плана).
 
 | Поле | Тип | Описание |
 |------|-----|----------|

@@ -458,6 +458,11 @@ Alpine ищет данные вверх по дереву, поэтому кно
                                 Проверяю...
                             </span>
                         </button>
+                        <button type="button" x-show="codeStatuses[{{ question.id }}] === 'pending' || codeStatuses[{{ question.id }}] === 'running'" x-cloak
+                                @click="codeChecker.stopSubmission({{ question.id }})"
+                                class="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors">
+                            Остановить
+                        </button>
                     </div>
 
                     <!-- Code status -->

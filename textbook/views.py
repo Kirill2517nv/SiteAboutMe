@@ -452,7 +452,7 @@ def section_stats_view(request, slug):
                            'rows': rows_for(students)})
 
     # select_related('profile') — в таблице у каждого ученика показывается аватар
-    ungrouped = (User.objects.filter(profile__group__isnull=True, is_superuser=False)
+    ungrouped = (User.objects.filter(profile__group__isnull=True, is_superuser=False, is_active=True)
                  .select_related('profile'))
     if ungrouped:
         groups.append({'key': 'none', 'name': 'Без группы',

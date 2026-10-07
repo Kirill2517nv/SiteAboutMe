@@ -51,7 +51,7 @@
                             <span class="w-7 h-7 rounded-lg bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300 text-sm font-semibold flex items-center justify-center flex-shrink-0">{{ group.section.order }}</span>
                             <span class="flex-1 text-base font-semibold text-gray-900 dark:text-white">{{ group.section.title }}</span>
 
-                            {% if group.deadline %}
+                            {% if group.deadline and user.is_authenticated %}
                             <span class="shrink-0 px-3 py-1.5 rounded-lg text-center {% if group.is_closed %}bg-red-100{% else %}bg-gray-100 dark:bg-slate-700{% endif %}">
                                 <span class="block text-xs uppercase tracking-wide {% if group.is_closed %}text-red-700{% else %}text-gray-500 dark:text-slate-400{% endif %}">Дедлайн</span>
                                 <span class="block text-sm font-semibold whitespace-nowrap {% if group.is_closed %}text-red-700{% else %}text-gray-900 dark:text-white{% endif %}">

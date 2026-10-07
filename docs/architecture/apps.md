@@ -1,12 +1,11 @@
 # Приложения
 
-Проект состоит из 7 Django-приложений. Каждое имеет стандартную структуру: `models.py`, `views.py`, `urls.py`, `admin.py`, `forms.py`.
+Проект состоит из 6 Django-приложений. Каждое имеет стандартную структуру: `models.py`, `views.py`, `urls.py`, `admin.py`, `forms.py`.
 
 | Приложение | Моделей | Назначение |
 |-----------|---------|-----------|
 | `accounts` | 2 | Пользователи, классы, выпускники |
-| `pages` | 5 | Главная, «Обо мне», changelog |
-| `lessons` | 4 | Старые уроки с файлами и презентациями |
+| `pages` | 4 | Главная, «Обо мне», changelog |
 | `quizzes` | 16 | Тесты и тренажёр ЕГЭ |
 | `textbook` | 7 | Учебник, теория ЕГЭ, спецкурс |
 | `spetskurs` | 3 | Задачи курса численного моделирования, темы проектов |
@@ -23,8 +22,7 @@ graph TD
     QUI[quizzes\nQuiz, Question, ЕГЭ]
     TXT[textbook\nArticle, EgeTask, Section]
     SPK[spetskurs\nCourseTask, ProjectTopic]
-    PAG[pages\nContentBlock, AuthorProfile]
-    LES[lessons\nSection, Lesson]
+    PAG[pages\nAuthorProfile, AuthorPhoto]
     GAM[games\nСвоя игра]
 
     AUTH --> ACC
@@ -38,7 +36,6 @@ graph TD
 
     style PAG fill:#e8f5e9
     style ACC fill:#e3f2fd
-    style LES fill:#fff3e0
     style QUI fill:#fce4ec
     style TXT fill:#f3e5f5
     style SPK fill:#e0f7fa
@@ -50,9 +47,8 @@ graph TD
 - **textbook** зависит от `quizzes` (`Section.practicum_quiz`, `ArticleQuiz.quiz`) и от `accounts` (классы в отчёте учителя); связь с quizzes двусторонняя, поэтому импорты внутри функций, а не на уровне модуля
 - **textbook ↔ spetskurs**: `Article.course_task` ссылается на `spetskurs.CourseTask` строкой (иначе приложения импортировали бы друг друга по кругу), а `spetskurs.views` читает `textbook.Article` – одна модель статьи на весь сайт
 - **pages** зависит от `accounts` и `textbook.services` (карта курса на главной)
-- **lessons** – независимое приложение, живёт отдельно от учебника
 - **games** зависит только от `django.contrib.auth`
-- **pages** и **lessons** разделяют Content Block Pattern (идентичная структура полей); `textbook.ArticleBlock` – блок другого рода (см. `architecture/overview.md`)
+- `textbook.ArticleBlock` – блок другого рода (см. `architecture/overview.md`)
 
 ---
 
@@ -77,34 +73,15 @@ graph TD
 
 ## pages – Контентные страницы
 
-**Моделей:** 5 (`ContentBlock`, `AuthorProfile`, `AuthorPhoto`, `AuthorVideo`, `AuthorEvent`)
+**Моделей:** 4 (`AuthorProfile`, `AuthorPhoto`, `AuthorVideo`, `AuthorEvent`)
 
 | Функция | Описание |
 |---------|----------|
-| Главная | Карта курса из `textbook.services.course_map` плюс блоки `ContentBlock` с полной стилизацией |
+| Главная | Карта курса из `textbook.services.course_map` |
 | Обо мне | `AuthorProfile` с фотографиями, видео и событиями (`AuthorPhoto` / `AuthorVideo` / `AuthorEvent`) |
 | Changelog | `parse_changelog` разбирает `CHANGELOG.md` в список версий |
 
 **Endpoints:** 3 (`/`, `/about/`, `/pages/changelog/`) – первые два подключены в `config/urls.py`
-
----
-
-## lessons – Уроки
-
-**Моделей:** 4 (`Section`, `Lesson`, `LessonAttachment`, `LessonBlock`)
-
-| Функция | Описание |
-|---------|----------|
-| Разделы | Группировка уроков по темам |
-| Уроки | Превью, видео, Slidev-презентация |
-| Вложения | Множественные файлы к уроку (LessonAttachment) |
-| Блоки | Контент урока с настройками шрифтов, цветов и кропа (аналогично ContentBlock) |
-| Скачивание | FileResponse с RFC 5987 + Nginx X-Accel-Redirect |
-| Презентации | Slidev SPA в `media/lessons/{title}/presentation/`, PDF-экспорт |
-
-**Endpoints:** 4 (список, детали, скачивание вложения, скачивание PDF презентации)
-
-**Upload paths:** все файлы урока хранятся в единой иерархии `media/lessons/{safe_title}/`
 
 ---
 

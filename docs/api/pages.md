@@ -2,8 +2,7 @@
 
 Приложение `pages` обслуживает главную, about-страницу и историю версий. Две
 первые подключены прямо в `config/urls.py` (`/` и `/about/`), третья –
-в `pages/urls.py` (`/pages/changelog/`). Контент-блоки управляются через Django
-Admin.
+в `pages/urls.py` (`/pages/changelog/`).
 
 ---
 
@@ -62,7 +61,7 @@ Admin.
 **Template:** `about.html`
 
 Загружает автора (`AuthorProfile` с `is_active=True` – берётся первый) и его
-медиа, делит события на три группы и добавляет контент-блоки.
+медиа, делит события на три группы.
 
 **Контекст:**
 
@@ -74,5 +73,4 @@ Admin.
 | `education` | `AuthorEvent(event_type='education')` |
 | `publications` | `AuthorEvent(event_type='publication')` |
 | `conferences` | `AuthorEvent(event_type='conference')` |
-| `blocks` | QuerySet `ContentBlock` с `page='about'`, по `order` |
 | `page_type` | `'about'` |

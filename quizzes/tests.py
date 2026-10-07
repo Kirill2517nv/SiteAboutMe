@@ -2863,6 +2863,60 @@ class SandboxLimitsTests(SimpleTestCase):
         self.assertEqual(compile_code('print(1)', 'python'), ('print(1)', None))
 
 
+class SubmissionStopTests(TestCase):
+    """«Остановить»: проверка обрывается сразу и считается неверной попыткой."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user('stop-student', password='pwd')
+        self.quiz = Quiz.objects.create(title='Вариант', quiz_type='exam',
+                                        slug='var-stop', is_public=True, exam_mode='practice')
+        self.question = Question.objects.create(quiz=self.quiz, text='цикл', question_type='code',
+                                                ege_number=17, points=1)
+        self.client.force_login(self.user)
+
+    def _sub(self, status):
+        return CodeSubmission.objects.create(user=self.user, quiz=self.quiz, question=self.question,
+                                             code='while True: pass', status=status)
+
+    def _stop(self, sub):
+        from unittest import mock
+        with mock.patch('quizzes.views.stop_submission') as kill:
+            resp = self.client.post(f'/quizzes/submission/{sub.pk}/stop/')
+        sub.refresh_from_db()
+        return resp, kill
+
+    def test_queued_submission_closes_at_once_and_the_task_skips_it(self):
+        from .tasks import check_code_task
+        from .utils import STOPPED_MESSAGE
+
+        sub = self._sub('pending')
+        self._stop(sub)
+        self.assertEqual((sub.status, sub.is_correct, sub.error_log), ('failed', False, STOPPED_MESSAGE))
+        # Воркер взял задачу позже – проверять уже нечего, вердикт не перезаписан.
+        self.assertEqual(check_code_task.run(sub.pk)['status'], 'skipped')
+        sub.refresh_from_db()
+        self.assertEqual(sub.error_log, STOPPED_MESSAGE)
+
+    def test_running_submission_kills_its_containers(self):
+        sub = self._sub('running')
+        _, kill = self._stop(sub)
+        kill.assert_called_once_with(sub.pk)
+        self.assertEqual(sub.status, 'running')  # вердикт напишет сама проверка
+
+    def test_finished_submission_is_left_alone(self):
+        sub = self._sub('success')
+        _, kill = self._stop(sub)
+        kill.assert_not_called()
+        self.assertEqual(sub.status, 'success')
+
+    def test_foreign_submission_is_404(self):
+        sub = self._sub('running')
+        self.client.force_login(get_user_model().objects.create_user('other', password='pwd'))
+        resp, kill = self._stop(sub)
+        self.assertEqual(resp.status_code, 404)
+        kill.assert_not_called()
+
+
 class CodeLanguageTests(TestCase):
     """Язык решения выбирает ученик; по умолчанию – Python."""
 
@@ -3553,3 +3607,158 @@ class SolutionModerationTests(TestCase):
         self.client.force_login(user)
         self.client.post(f'/quizzes/solution/{self._solution().pk}/review/', {'action': 'approve'})
         self.assertEqual(self._solution().review_status, 'pending')
+
+
+class SimilarityTests(TestCase):
+    """
+    «Похожие решения»: что считается копией, что каноном, кому видна страница.
+
+    Код решений – настоящие школьные задачи: имена переменных и оформление
+    меняются, идея нет.
+    """
+
+    ORIGINAL = (
+        'n = int(input())\n'
+        'total = 0\n'
+        'for a in range(1, n + 1):\n'
+        '    for b in range(a, n + 1):\n'
+        '        if (a * b) % 7 == 0 and a != b:\n'
+        '            total += a + b\n'
+        'print(total)\n'
+    )
+    RENAMED = (
+        '# моё решение\n'
+        'N=int(input())\n'
+        's=0\n'
+        'for x in range(1,N+1):\n'
+        '    for y in range(x,N+1):\n'
+        '        if (x*y)%7==0 and x!=y:\n'
+        '            s+=x+y\n'
+        'print(s)\n'
+    )
+    OTHER = (
+        'from itertools import combinations\n'
+        'n = int(input())\n'
+        'pairs = [p for p in combinations(range(1, n + 1), 2) if p[0] * p[1] % 7 == 0]\n'
+        'print(sum(map(sum, pairs)))\n'
+    )
+
+    def setUp(self):
+        from accounts.models import Profile, StudentGroup
+
+        User = get_user_model()
+        self.group = StudentGroup.objects.create(name='10А')
+        self.users = []
+        for i in range(8):
+            user = User.objects.create_user(f's{i}', password='pwd', last_name=f'Ученик{i}')
+            Profile.objects.create(user=user, group=self.group)
+            self.users.append(user)
+        self.teacher = User.objects.create_superuser('teacher', password='pwd')
+        self.quiz = Quiz.objects.create(title='Банк 5', quiz_type='bank', slug='bank-5', is_public=True)
+        self.question = Question.objects.create(
+            quiz=self.quiz, text='задача', question_type='code', ege_number=5, external_id='kp-1')
+
+    def _solve(self, user, code, minutes_ago=0):
+        sub = CodeSubmission.objects.create(
+            user=user, quiz=self.quiz, question=self.question, code=code, status='success', is_correct=True)
+        CodeSubmission.objects.filter(pk=sub.pk).update(
+            created_at=timezone.now() - timedelta(minutes=minutes_ago))
+        return sub
+
+    def _score(self, a, b, language='python'):
+        from .similarity import grams, similarity, tokens
+        return similarity(set(grams(tokens(a, language))), set(grams(tokens(b, language))))
+
+    def test_renaming_and_formatting_do_not_hide_a_copy(self):
+        self.assertEqual(self._score(self.ORIGINAL, self.RENAMED), 1.0)
+
+    def test_different_idea_is_not_similar(self):
+        from .similarity import SHOW_FROM
+        self.assertLess(self._score(self.ORIGINAL, self.OTHER), SHOW_FROM)
+
+    def test_cpp_copy_is_found(self):
+        a = ('#include <iostream>\nint main(){ long long n,s=0; std::cin>>n; '
+             'for(int i=1;i<=n;i++) if(i%7==0) s+=i; std::cout<<s; }')
+        b = ('#include <bits/stdc++.h>\n// copy\nint main(){\n long long k,t=0;\n std::cin>>k;\n'
+             ' for(int j=1;j<=k;j++)\n  if(j%7==0) t+=j;\n std::cout<<t;\n}')
+        self.assertEqual(self._score(a, b, 'cpp'), 1.0)
+
+    def test_pair_of_classmates(self):
+        from .similarity import question_pairs
+        self._solve(self.users[0], self.ORIGINAL, minutes_ago=5)
+        self._solve(self.users[1], self.RENAMED)
+        self._solve(self.users[2], self.OTHER)
+        [pair] = question_pairs(self.question)
+        self.assertEqual({pair['a']['user'], pair['b']['user']}, {self.users[0], self.users[1]})
+        self.assertTrue(pair['same_group'] and pair['identical'])
+
+    def test_first_correct_solution_is_compared(self):
+        """Переписал после галереи «Решения других» – это учёба, пары нет."""
+        from .similarity import question_pairs
+        self._solve(self.users[0], self.ORIGINAL, minutes_ago=60)
+        self._solve(self.users[1], self.OTHER, minutes_ago=30)
+        self._solve(self.users[1], self.RENAMED)
+        self.assertEqual(question_pairs(self.question), [])
+
+    def test_canon_is_discounted_but_a_ring_of_copies_is_not(self):
+        from .similarity import question_pairs
+        body = 'from itertools import product\nfor w in product("abc", repeat=4):\n    s = "".join(w)\n'
+        tails = ['    if s.count("a") == 2: k += 1\n', '    print(s) if s[0] != s[-1] else None\n',
+                 '    c = c + (s > "b")\n', '    lst.append(s[::-1])\n',
+                 '    if "ab" in s and "ca" not in s: q -= 2\n']
+        for user, tail in zip(self.users, tails):
+            self._solve(user, 'k = 0\n' + body + tail)
+        self.assertEqual(question_pairs(self.question), [], 'общий канон не делает пары')
+        # Трое сдали одну и ту же программу – их всё равно видно, хотя
+        # одинаковых решений у задачи теперь больше всего.
+        for user in self.users[5:8]:
+            self._solve(user, self.ORIGINAL)
+        pairs = question_pairs(self.question)
+        self.assertEqual(len(pairs), 3)
+        self.assertTrue(all(p['identical'] for p in pairs))
+
+    def test_page_is_for_the_teacher_only(self):
+        self._solve(self.users[0], self.ORIGINAL)
+        self._solve(self.users[1], self.RENAMED)
+        urls = ['/ege/task/5/similar/?group=all', f'/quizzes/{self.quiz.pk}/similar/?group=all']
+
+        self.client.force_login(self.users[0])
+        for url in urls:
+            self.assertEqual(self.client.get(url).status_code, 403, url)
+
+        self.client.force_login(self.teacher)
+        for url in urls:
+            html = self.client.get(url).content.decode()
+            self.assertIn('Ученик1', html)
+            self.assertIn('тот же код', html)
+
+
+class AdminCleanupTests(TestCase):
+    """Фильтр «Роль теста» и то, что каждый список админки открывается."""
+
+    def setUp(self):
+        from textbook.models import Section
+        User = get_user_model()
+        self.admin = User.objects.create_superuser('boss', 'b@x.ru', 'pw')
+        self.client.force_login(self.admin)
+        self.quizzes = {
+            'standard': Quiz.objects.create(title='Контрольная-А'),
+            'selfcheck': Quiz.objects.create(title='Самопроверка-Б', is_self_check=True),
+            'practicum': Quiz.objects.create(title='Практикум-В', is_self_check=True),
+            'bank': Quiz.objects.create(title='Банк-Г', quiz_type='bank'),
+            'exam': Quiz.objects.create(title='Вариант-Д', quiz_type='exam'),
+        }
+        Section.objects.create(title='Блок', slug='blok', practicum_quiz=self.quizzes['practicum'])
+
+    def test_role_filter_picks_exactly_its_quizzes(self):
+        for role, quiz in self.quizzes.items():
+            html = self.client.get(f'/admin/quizzes/quiz/?role={role}').content.decode()
+            for other in self.quizzes.values():
+                (self.assertIn if other == quiz else self.assertNotIn)(other.title, html, role)
+
+    def test_every_changelist_opens(self):
+        from django.contrib import admin
+        for model in admin.site._registry:
+            url = f'/admin/{model._meta.app_label}/{model._meta.model_name}/'
+            self.assertEqual(self.client.get(url).status_code, 200, url)
+        self.assertEqual(self.client.get('/admin/quizzes/question/?role=practicum').status_code, 200)

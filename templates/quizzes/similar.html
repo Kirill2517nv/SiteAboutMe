@@ -1,0 +1,78 @@
+{% extends 'base.html' %}
+{% load profile_tags %}
+
+{% block title %}{{ title }}{% endblock title %}
+
+{% block content %}
+{% comment %}
+Похожие решения: пары, чей код совпадает сильнее порога (similarity.SHOW_FROM).
+Сигнал «посмотрите и поговорите», а не вердикт – отсюда слова «похоже»,
+а не «списал». Подсвечены строки, которые попали в общие фрагменты.
+{% endcomment %}
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+    <a href="{{ back_url }}"
+       class="inline-flex items-center gap-1 text-sm text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200 mb-4">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+        </svg>
+        {{ back_label }}
+    </a>
+
+    <div class="mb-6">
+        <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">{{ title }}</h1>
+        <p class="text-base text-gray-500 dark:text-slate-400 mt-1">
+            Сравнивается первое верное решение каждого ученика с решениями других учеников.
+            Имена переменных и оформление не в счёт, фрагменты, которые пишет больше половины решивших, – тоже.
+            Это повод посмотреть код и спросить, а не доказательство.
+        </p>
+    </div>
+
+    {% include 'quizzes/_ege_group_tabs.html' %}
+
+    {% for block in blocks %}
+    <section class="mb-8">
+        <div class="flex items-baseline gap-3 mb-3">
+            <h2 class="text-base font-bold text-gray-900 dark:text-white">{{ block.question.get_title }}</h2>
+            <span class="text-xs text-gray-400 dark:text-slate-500">#{{ block.question.id }} · {{ block.question.quiz.title }}</span>
+            <div class="flex-1 h-px bg-gray-200 dark:bg-slate-700"></div>
+        </div>
+
+        <div class="space-y-2">
+        {% for p in block.pairs %}
+            <details class="group rounded-xl border border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800">
+                <summary class="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 cursor-pointer text-sm">
+                    <span class="inline-block w-12 text-center px-2 py-0.5 rounded-md text-xs font-bold
+                        {% if p.score >= 90 %}bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300{% elif p.score >= 75 %}bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300{% else %}bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-slate-300{% endif %}">
+                        {{ p.score }}%
+                    </span>
+                    <span class="font-medium text-gray-900 dark:text-white">{{ p.a.user|surname_first }}</span>
+                    <span class="text-gray-400">↔</span>
+                    <span class="font-medium text-gray-900 dark:text-white">{{ p.b.user|surname_first }}</span>
+                    <span class="flex flex-wrap gap-1.5">
+                        {% if p.a.language == 'cpp' %}<span class="px-2 py-0.5 rounded-md text-xs bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300">C++</span>{% endif %}
+                        {% if p.identical %}<span class="px-2 py-0.5 rounded-md text-xs bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300">тот же код</span>{% endif %}
+                        {% if p.same_group %}<span class="px-2 py-0.5 rounded-md text-xs bg-brand-50 dark:bg-slate-700 text-brand-700 dark:text-brand-300">один класс</span>{% endif %}
+                        {% if p.gap is not None %}<span class="px-2 py-0.5 rounded-md text-xs bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300">между отправками {% if p.gap.total_seconds < 60 %}меньше минуты{% else %}{{ p.gap|duration_display }}{% endif %}</span>{% endif %}
+                    </span>
+                </summary>
+
+                <div class="grid md:grid-cols-2 gap-3 px-4 pb-4">
+                    {% for side in p.sides %}
+                    <div class="min-w-0">
+                        <div class="text-xs text-gray-500 dark:text-slate-400 mb-1">{{ side.label }}</div>
+                        <pre class="overflow-x-auto rounded-lg bg-gray-50 dark:bg-slate-900 text-xs leading-5 py-2"><code>{% for line in side.lines %}<span class="block px-3 {% if line.hit %}bg-amber-100 dark:bg-amber-900/40{% endif %}"><span class="inline-block w-6 select-none text-gray-400">{{ line.n }}</span>{{ line.text }}</span>{% endfor %}</code></pre>
+                    </div>
+                    {% endfor %}
+                </div>
+            </details>
+        {% endfor %}
+        </div>
+    </section>
+    {% empty %}
+    <p class="text-base text-gray-500 dark:text-slate-400">
+        Похожих решений нет – проверено задач с кодом: {{ checked }}.
+    </p>
+    {% endfor %}
+</div>
+{% endblock content %}

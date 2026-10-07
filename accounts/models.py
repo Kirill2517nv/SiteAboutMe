@@ -1,5 +1,9 @@
-from django.db import models
+import secrets
+from datetime import timedelta
+
+from django.db import models, transaction
 from django.contrib.auth.models import User
+from django.utils import timezone
 
 class StudentGroup(models.Model):
     name = models.CharField(max_length=50, verbose_name="Название группы (класса)")
@@ -27,6 +31,24 @@ class StudentGroup(models.Model):
         help_text="Снято – вкладки класса нет на страницах статистики учителя "
                   "(учебник, ЕГЭ). Для классов, с которыми сейчас не работаете.",
     )
+    is_ege_class = models.BooleanField(
+        default=False, verbose_name="Класс подготовки к ЕГЭ",
+        help_text="Принятые по коду ученики этого класса сразу получают «Сдаёт ЕГЭ». "
+                  "Читается только в момент принятия – уже принятых не трогает.",
+    )
+    # Код класса: по нему ученик подаёт заявку на /accounts/join/. Заявка ничего
+    # не даёт до «Принять» в админке, поэтому утёкший код безопасен – срок и
+    # перевыпуск нужны, чтобы не разбирать лишние заявки.
+    join_code = models.CharField(
+        max_length=8, blank=True, default='', db_index=True, verbose_name="Код класса",
+    )
+    join_code_until = models.DateTimeField(
+        null=True, blank=True, verbose_name="Код действует до",
+    )
+
+    # Без похожих символов (0/O, 1/I/L): код диктуют голосом и пишут на доске
+    JOIN_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
+    JOIN_CODE_DAYS = 7
 
     class Meta:
         verbose_name = "Учебный класс"
@@ -36,6 +58,30 @@ class StudentGroup(models.Model):
     def in_stats_groups(cls):
         """Классы, которые учитель видит в статистике. Выпуск на это не влияет."""
         return cls.objects.filter(in_stats=True)
+
+    @staticmethod
+    def normalize_code(code):
+        """Код, как его набрал ученик: регистр, пробелы и дефисы не важны."""
+        return ''.join(ch for ch in (code or '').upper() if ch.isalnum())
+
+    @classmethod
+    def by_join_code(cls, code):
+        """Класс по живому коду или None – просроченный и неверный неразличимы."""
+        code = cls.normalize_code(code)
+        if not code:
+            return None
+        return cls.objects.filter(join_code=code, join_code_until__gt=timezone.now()).first()
+
+    def issue_join_code(self):
+        """Новый код на JOIN_CODE_DAYS дней. Старый перестаёт работать сразу."""
+        self.join_code = ''.join(secrets.choice(self.JOIN_CODE_ALPHABET) for _ in range(8))
+        self.join_code_until = timezone.now() + timedelta(days=self.JOIN_CODE_DAYS)
+        self.save(update_fields=['join_code', 'join_code_until'])
+
+    def close_join_code(self):
+        self.join_code = ''
+        self.join_code_until = None
+        self.save(update_fields=['join_code', 'join_code_until'])
 
     @property
     def is_archived(self):
@@ -77,6 +123,12 @@ class Profile(models.Model):
         max_length=5, choices=NAME_VISIBILITY_CHOICES, default='anon',
         verbose_name="Имя под решениями",
     )
+    # Заявка по коду класса. Класс лежит здесь, а не в group, пока учитель не
+    # принял: group читают все отчёты, и заявка в них не попадает без фильтров.
+    join_group = models.ForeignKey(
+        StudentGroup, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='applicants', verbose_name="Заявка в класс",
+    )
 
     class Meta:
         verbose_name = "Профиль ученика"
@@ -88,6 +140,33 @@ class Profile(models.Model):
 
     def __str__(self):
         return f"Профиль: {self.user.username}"
+
+
+class JoinRequest(User):
+    """Заявка по коду класса – тот же User, свой раздел в админке."""
+
+    class Meta:
+        proxy = True
+        verbose_name = "Заявка в класс"
+        verbose_name_plural = "Заявки в классы"
+
+    @classmethod
+    def pending(cls):
+        return cls.objects.filter(is_active=False, profile__join_group__isnull=False)
+
+
+@transaction.atomic
+def accept_join(user, ege=False):
+    """Принять заявку: ученик входит в класс и может войти на сайт.
+    «Сдаёт ЕГЭ» ставится по флагу класса или по решению учителя."""
+    profile = user.profile
+    group = profile.join_group
+    profile.group = group
+    profile.join_group = None
+    profile.is_ege = profile.is_ege or ege or group.is_ege_class
+    profile.save(update_fields=['group', 'join_group', 'is_ege'])
+    user.is_active = True
+    user.save(update_fields=['is_active'])
 
 
 class Notification(models.Model):

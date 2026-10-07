@@ -49,7 +49,6 @@ INSTALLED_APPS = [
     'django.contrib.sitemaps',
     'channels',
     'pages',
-    'lessons',
     'accounts',
     'quizzes',
     'spetskurs',
@@ -85,6 +84,7 @@ TEMPLATES = [
                 'textbook.context_processors.feedback_badge',
                 'quizzes.context_processors.review_badge',
                 'accounts.context_processors.notifications_badge',
+                'accounts.context_processors.join_badge',
             ],
         },
     },
@@ -157,10 +157,6 @@ STORAGES = {
 # Media files (Uploads)
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
-
-# If True, download endpoints will use Nginx X-Accel-Redirect to stream files.
-# Enable on production behind Nginx with an internal location mapping to MEDIA_ROOT.
-USE_X_ACCEL_REDIRECT = os.getenv('USE_X_ACCEL_REDIRECT', 'False') == 'True'
 
 # Номер счётчика Яндекс.Метрики. Пусто – счётчик не выводится: задаётся только
 # в .env прода, чтобы заходы с localhost не попадали в статистику.

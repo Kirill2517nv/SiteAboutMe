@@ -1,14 +1,5 @@
 from django.contrib import admin
-from .models import ContentBlock, AuthorProfile, AuthorPhoto, AuthorVideo, AuthorEvent
-
-
-@admin.register(ContentBlock)
-class ContentBlockAdmin(admin.ModelAdmin):
-    list_display = ('page', 'block_type', 'title', 'order')
-    list_filter = ('page', 'block_type')
-    list_editable = ('order',)
-    search_fields = ('title', 'content')
-    ordering = ('page', 'order')
+from .models import AuthorProfile, AuthorPhoto, AuthorVideo, AuthorEvent
 
 
 @admin.register(AuthorProfile)

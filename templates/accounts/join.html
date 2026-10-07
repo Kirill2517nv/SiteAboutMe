@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+
+{% block title %}Заявка в класс{% endblock title %}
+
+{% block content %}
+<div class="min-h-[60vh] flex items-center justify-center px-4 py-12">
+    <div class="w-full max-w-md">
+        <div class="bg-white rounded-2xl shadow-xl p-8">
+            {% if done %}
+            <div class="text-center">
+                <div class="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
+                    <svg class="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                </div>
+                <h2 class="text-2xl font-bold text-gray-900">Заявка отправлена</h2>
+                <p class="text-gray-600 mt-3">
+                    Класс «{{ group.name }}». Учитель проверит заявку, и после этого
+                    можно будет войти с логином <span class="font-medium text-gray-900">{{ username }}</span>
+                    и паролем, который вы только что придумали.
+                </p>
+                <p class="text-gray-500 text-sm mt-4">Запишите пароль: почты у сайта нет, и восстановить его может только учитель.</p>
+                <a href="{% url 'login' %}" class="inline-block mt-6 text-brand-600 hover:text-brand-700 font-medium">На страницу входа</a>
+            </div>
+            {% else %}
+            <div class="text-center mb-8">
+                <h2 class="text-2xl font-bold text-gray-900">Заявка в класс</h2>
+                <p class="text-gray-500 mt-1">Код класса даёт учитель. Вход откроется, когда он примет заявку.</p>
+            </div>
+
+            <form method="post" class="space-y-5" novalidate>
+                {% csrf_token %}
+                {% for field in form %}
+                <div>
+                    <label for="{{ field.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">{{ field.label }}</label>
+                    <input type="{% if 'password' in field.name %}password{% else %}text{% endif %}"
+                           name="{{ field.html_name }}" id="{{ field.id_for_label }}"
+                           {% if 'password' not in field.name %}value="{{ field.value|default_if_none:'' }}"{% endif %}
+                           autocomplete="{% if field.name == 'username' %}username{% elif 'password' in field.name %}new-password{% elif field.name == 'last_name' %}family-name{% elif field.name == 'first_name' %}given-name{% else %}off{% endif %}"
+                           class="w-full px-4 py-3 border {% if field.errors %}border-red-400{% else %}border-gray-300{% endif %} rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors{% if field.name == 'code' %} uppercase tracking-widest{% endif %}">
+                    {% for error in field.errors %}<p class="text-red-600 text-sm mt-1">{{ error }}</p>{% endfor %}
+                    {% if field.name == 'username' and not field.errors %}<p class="text-gray-500 text-xs mt-1">Буквы, цифры и знаки @ . + - _, без пробелов – этим логином вы будете входить</p>{% endif %}
+                </div>
+                {% endfor %}
+                <button type="submit" class="w-full bg-brand-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 transition-colors">
+                    Отправить заявку
+                </button>
+            </form>
+            <p class="mt-6 text-center text-gray-500 text-sm">
+                Уже есть аккаунт? <a href="{% url 'login' %}" class="text-brand-600 hover:text-brand-700 font-medium">Войти</a>
+            </p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock content %}

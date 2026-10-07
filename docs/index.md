@@ -12,7 +12,7 @@
 | **Database** | PostgreSQL, psycopg2-binary |
 | **Async** | Celery 5.3.6, Redis 5.0.1 |
 | **WebSocket** | Django Channels 4.0, Daphne 4.1 |
-| **Frontend** | Tailwind CSS (сборка npm), Alpine.js, CodeMirror 5, MathJax, Slidev |
+| **Frontend** | Tailwind CSS (сборка npm), Alpine.js, CodeMirror 5, MathJax |
 | **Контейнеры** | Docker (песочница для кода) |
 | **Сервер** | Ubuntu 24.04, Nginx, Gunicorn, Daphne |
 | **SSL** | Let's Encrypt (Certbot) |
@@ -22,11 +22,8 @@
 ```mermaid
 graph LR
     A[accounts] -->|User, Profile| Q[quizzes]
-    A -->|User| L[lessons]
     A -->|User| T[textbook]
     A -->|User| G[games]
-    P[pages] -.->|ContentBlock| L
-    L -->|Section, Lesson| Q
     T -->|Article, ArticleQuiz| Q
     Q -->|Celery| R[Redis]
     Q -->|WebSocket| D[Daphne]
@@ -39,14 +36,13 @@ graph LR
 | Приложение | Описание | Моделей |
 |-----------|----------|---------|
 | **accounts** | Авторизация, профили, группы студентов, выпускники | 2 |
-| **pages** | Главная и «Обо мне»: блоки контента, профиль автора | 5 |
-| **lessons** | Разделы, уроки, вложения, Slidev-презентации | 4 |
+| **pages** | Главная и «Обо мне»: профиль автора | 4 |
 | **quizzes** | Тесты, вопросы, выполнение кода, тренажёр ЕГЭ | 16 |
 | **textbook** | Учебник: статьи, теория ЕГЭ, практикум, спецкурс | 7 |
 | **spetskurs** | Курс численного моделирования: задачи с WASM-симуляцией, темы проектов; теория – на моделях учебника | 3 |
 | **games** | «Своя игра»: вопросы учеников, модерация, игровые паки | 6 |
 
-Всего 43 модели (плюс стандартная `User` из Django).
+Всего 38 моделей (плюс стандартная `User` из Django).
 
 ## Быстрый старт
 
@@ -103,7 +99,6 @@ Site/
 │   └── wsgi.py
 ├── accounts/           # Auth, profiles, groups, alumni
 ├── pages/              # Home page, «Обо мне», changelog
-├── lessons/            # Sections, lessons, files, Slidev
 ├── textbook/           # Учебник: статьи, теория ЕГЭ, практикум, спецкурс
 ├── quizzes/            # Core app: quizzes, code exec, тренажёр ЕГЭ
 │   ├── consumers.py    # WebSocket consumers
@@ -128,10 +123,9 @@ Site/
 
 - **[Архитектура](architecture/overview.md)** – общая архитектура, слои, зависимости между приложениями
 - **[База данных](database/er-diagram.md)** – ER-диаграммы и [описание моделей](database/models.md)
-- **[API и маршруты](api/overview.md)** – все URL endpoints: [accounts](api/accounts.md), [pages](api/pages.md), [lessons](api/lessons.md), [quizzes](api/quizzes.md), [EGE](api/ege.md), [учебник](api/textbook.md), [спецкурс](api/spetskurs.md), [игры](api/games.md)
+- **[API и маршруты](api/overview.md)** – все URL endpoints: [accounts](api/accounts.md), [pages](api/pages.md), [quizzes](api/quizzes.md), [EGE](api/ege.md), [учебник](api/textbook.md), [спецкурс](api/spetskurs.md), [игры](api/games.md)
 - **[Бизнес-логика](flows/quiz-flow.md)** – потоки данных, [выполнение кода](flows/code-execution.md), [тренажёр ЕГЭ](flows/ege-trainer.md), [формат банка задач](ege-bank-format.md) и [его выкатка](ege-bank-deploy.md)
 - **[Учебник](textbook-structure.md)** – структура курса, [правила написания урока](textbook-lesson-brief.md), [ревизия блока](textbook-block-revision.md)
 - **[Спецкурс](spetskurs-deploy.md)** – выкладка симуляций
-- **[Уроки](slidev-guide.md)** – Slidev-презентации
 - **[Фронтенд](frontend/overview.md)** – JS, [WebSocket](frontend/websocket.md), [Alpine.js](frontend/alpine.md)
 - **[Инфраструктура](infra/server.md)** – сервер, [деплой](infra/deployment.md), [сервисы](infra/services.md)

@@ -44,7 +44,7 @@ Reverse proxy + отдача статических и media файлов.
 | `/` | HTTP запросы | → Gunicorn (Unix socket) |
 | `/ws/` | WebSocket | → Daphne (Unix socket) |
 | `/static/` | Статические файлы | Прямая отдача |
-| `/media/` | Media файлы | X-Accel-Redirect |
+| `/media/` | Media файлы | Прямая отдача |
 
 ### WASM MIME-тип
 

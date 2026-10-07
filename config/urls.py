@@ -19,18 +19,20 @@ from django.contrib.sitemaps.views import sitemap
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
-from accounts.views import AlumniView
+from django.contrib.auth.views import LoginView
+from accounts.views import AlumniView, LoginForm
 from pages.sitemaps import SITEMAPS
 from pages.views import home_page_view, about_page_view
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    # Вход со своей формой – раньше стандартных урлов, имя 'login' то же
+    path('accounts/login/', LoginView.as_view(authentication_form=LoginForm), name='login'),
     path('accounts/', include('django.contrib.auth.urls')),
     path('accounts/', include('accounts.urls')),
     path('quizzes/', include('quizzes.urls')),
     path('ege/', include('quizzes.urls_ege')),
     path('pages/', include('pages.urls')),
-    path('lessons/', include('lessons.urls')),
     path('spetskurs/', include('spetskurs.urls')),
     path('games/', include('games.urls')),
     path('textbook/', include('textbook.urls')),
@@ -41,15 +43,4 @@ urlpatterns = [
 ]
 
 if settings.DEBUG:
-    import os
-    from django.views.static import serve as _static_serve
-
-    def _media_serve(request, path=''):
-        """Serve media with directory index.html fallback (dev only)."""
-        full = os.path.join(settings.MEDIA_ROOT, path)
-        if os.path.isdir(full) and os.path.isfile(os.path.join(full, 'index.html')):
-            path = path.rstrip('/') + '/index.html'
-        return _static_serve(request, path, document_root=settings.MEDIA_ROOT)
-
-    from django.urls import re_path
-    urlpatterns += [re_path(r'^media/(?P<path>.*)$', _media_serve)]
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

@@ -1,5 +1,7 @@
 from django.contrib import admin
-from .models import Category, Question, QuestionMedia, GamePack, GamePackCategory, GameSession
+from django.db.models import Count
+
+from .models import Category, Question, QuestionMedia, GamePack, GamePackCategory
 
 
 class QuestionMediaInline(admin.TabularInline):
@@ -68,14 +70,12 @@ class GamePackAdmin(admin.ModelAdmin):
     list_select_related = ('created_by',)
     inlines = [GamePackCategoryInline]
 
-    @admin.display(description='Тем')
+    def get_queryset(self, request):
+        return super().get_queryset(request).annotate(_categories=Count('pack_categories'))
+
+    @admin.display(description='Тем', ordering='_categories')
     def category_count(self, obj):
-        return obj.pack_categories.count()
+        return obj._categories
 
 
-@admin.register(GameSession)
-class GameSessionAdmin(admin.ModelAdmin):
-    list_display = ('id', 'game_pack', 'created_by', 'is_active', 'created_at', 'updated_at')
-    list_filter = ('is_active', 'game_pack')
-    list_select_related = ('game_pack', 'created_by')
-    readonly_fields = ('board_state', 'players', 'created_at', 'updated_at')
+# GameSession в админке нет: доска – сырой JSON, игру ведут со страницы пакета.

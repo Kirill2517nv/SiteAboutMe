@@ -171,6 +171,16 @@ class QuizCodeChecker {
         }
     }
 
+    // «Остановить»: вердикт («остановлено») придёт обычным submission_update.
+    async stopSubmission(questionId) {
+        const submissionId = this.pendingSubmissions.get(questionId);
+        if (!submissionId) return;
+        await fetch(`/quizzes/submission/${submissionId}/stop/`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': this.csrfToken },
+        }).catch(() => {});
+    }
+
     async checkSubmissionStatus(submissionId) {
         const url = `/quizzes/submission/${submissionId}/status/`;
 
