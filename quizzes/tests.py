@@ -1757,6 +1757,41 @@ class ClassroomToggleTests(TestCase):
         self.assertFalse(ege_practice.classroom_open(5))
 
 
+class CoveredToggleTests(TestCase):
+    """Пометка «разобрали на уроке» на карте /ege/ – только учителю."""
+
+    def setUp(self):
+        self.teacher = get_user_model().objects.create_superuser('teacher', password='pwd')
+        self.pupil = get_user_model().objects.create_user('pupil', password='pwd')
+        self.task = EgeTask.objects.create(number=5, title='Задание 5')
+
+    def test_teacher_toggles_and_sees_mark(self):
+        self.client.force_login(self.teacher)
+        self.client.post('/ege/task/5/covered/')
+        self.task.refresh_from_db()
+        self.assertTrue(self.task.covered)
+        self.assertContains(self.client.get('/ege/'), 'Снять отметку «разобрали»')
+
+        self.client.post('/ege/task/5/covered/')
+        self.task.refresh_from_db()
+        self.assertFalse(self.task.covered)
+
+    def test_pupil_cannot_toggle_nor_see(self):
+        self.task.covered = True
+        self.task.save(update_fields=['covered'])
+        self.client.force_login(self.pupil)
+        self.assertEqual(self.client.post('/ege/task/5/covered/').status_code, 403)
+        resp = self.client.get('/ege/')
+        self.assertNotContains(resp, 'covered/')
+        self.assertNotContains(resp, 'covered: true')
+
+    def test_fetch_gets_json_instead_of_redirect(self):
+        self.client.force_login(self.teacher)
+        resp = self.client.post('/ege/task/5/covered/', HTTP_ACCEPT='application/json')
+        self.assertEqual(resp.json(), {'covered': True})
+        self.assertContains(self.client.get('/ege/'), 'covered: true')
+
+
 class NoRepeatTests(TestCase):
     """
     Решённую задачу второй раз не выдаём.
@@ -3762,3 +3797,299 @@ class AdminCleanupTests(TestCase):
             url = f'/admin/{model._meta.app_label}/{model._meta.model_name}/'
             self.assertEqual(self.client.get(url).status_code, 200, url)
         self.assertEqual(self.client.get('/admin/quizzes/question/?role=practicum').status_code, 200)
+
+
+class CheckWorkTests(TestCase):
+    """
+    Срезовая работа: свежие задачи по пройденным номерам, по одной на номер.
+
+    До конца окна задачи среза не видны нигде, кроме самого среза; после –
+    это обычный банк. Ответы идут в экзаменационную статистику по номерам.
+    """
+
+    def setUp(self):
+        from accounts.models import Profile, StudentGroup
+
+        User = get_user_model()
+        group = StudentGroup.objects.create(name='10А')
+        self.pupil = User.objects.create_user('pupil', password='pwd')
+        Profile.objects.create(user=self.pupil, group=group)
+        self.outsider = User.objects.create_user('outsider', password='pwd')
+        Profile.objects.create(user=self.outsider)
+        self.teacher = User.objects.create_superuser('teacher', password='pwd')
+
+        bank = Quiz.objects.create(title='Банк 4', quiz_type='bank', slug='b4', is_public=True)
+        self.common = Question.objects.create(quiz=bank, text='старая', question_type='text',
+                                              correct_text_answer='1', ege_number=4)
+        now = timezone.now()
+        self.group = group
+        # Свои даты у среза не читаются: окно – только в назначении.
+        self.check = Quiz.objects.create(title='Срез 1', quiz_type='check', slug='check-1')
+        self.fresh = [
+            Question.objects.create(quiz=self.check, text=f'свежая 4-{i}', question_type='text',
+                                    correct_text_answer='44', ege_number=4)
+            for i in range(2)
+        ] + [Question.objects.create(quiz=self.check, text='свежая 7', question_type='text',
+                                     correct_text_answer='77', ege_number=7)]
+        self.window = QuizAssignment.objects.create(
+            quiz=self.check, group=group,
+            start_date=now - timedelta(hours=1), end_date=now + timedelta(hours=1),
+        )
+
+    def _release(self):
+        QuizAssignment.objects.filter(quiz=self.check).update(
+            end_date=timezone.now() - timedelta(minutes=1))
+
+    def _start(self, user):
+        self.client.force_login(user)
+        return self.client.post(f'/ege/checks/{self.check.pk}/start/')
+
+    def _write(self, answers):
+        """Начать срез, ответить {номер: ответ} и сдать."""
+        self._start(self.pupil)
+        session = PracticeSession.objects.get(user=self.pupil, check_quiz=self.check)
+        for item in session.items.select_related('question'):
+            self.client.post(
+                f'/ege/practice/{session.pk}/answer/',
+                data=json.dumps({'item_id': item.pk,
+                                 'answer': answers.get(item.question.ege_number, '0')}),
+                content_type='application/json',
+            )
+        self.client.post(f'/ege/practice/{session.pk}/finish/')
+        return session
+
+    def test_hidden_from_practice_until_window_closes(self):
+        fresh_ids = {q.id for q in self.fresh}
+        everything = ege_practice.bank_queryset(include_exam_only=True, include_classroom=True)
+        self.assertFalse(fresh_ids & set(everything.values_list('id', flat=True)))
+        self._release()
+        self.assertTrue(fresh_ids <= set(ege_practice.bank_queryset().values_list('id', flat=True)))
+
+    def test_one_question_per_number_one_attempt(self):
+        response = self._start(self.pupil)
+        session = PracticeSession.objects.get(user=self.pupil, check_quiz=self.check)
+        self.assertRedirects(response, f'/ege/practice/{session.pk}/',
+                             fetch_redirect_response=False)
+        self.assertEqual((session.kind, session.mode), ('check', 'exam'))
+        items = list(session.items.select_related('question'))
+        self.assertEqual(sorted(i.question.ege_number for i in items), [4, 7])
+        self.assertTrue(all(i.question.quiz_id == self.check.id for i in items))
+        # Повторный старт – в ту же попытку, второй не бывает.
+        self._start(self.pupil)
+        self.assertEqual(PracticeSession.objects.filter(check_quiz=self.check).count(), 1)
+
+    def test_start_refused_without_assignment_or_window(self):
+        self.assertEqual(self._start(self.outsider).status_code, 403)
+        self._release()
+        self.assertEqual(self._start(self.pupil).status_code, 403)
+
+    def test_deadline_is_minutes_but_not_past_window(self):
+        self.check.check_minutes = 30
+        self.check.save(update_fields=['check_minutes'])
+        session = ege_practice.build_check_session(self.pupil, self.check)
+        self.assertEqual(session.deadline, session.created_at + timedelta(minutes=30))
+        self.window.end_date = session.created_at + timedelta(minutes=10)
+        self.window.save(update_fields=['end_date'])
+        session = PracticeSession.objects.get(pk=session.pk)
+        self.assertEqual(session.deadline, self.window.end_date)
+        # Без своих минут – сумма нормативов номеров.
+        self.check.check_minutes = None
+        self.assertEqual(self.check.check_duration(),
+                         EGE_RECOMMENDED_TIME[4] + EGE_RECOMMENDED_TIME[7])
+
+    def test_counts_as_exam_in_forecast(self):
+        self._write({4: '44', 7: '0'})
+        modes = ege_stats.mode_rows(self.pupil)
+        self.assertEqual(modes[4]['exam']['accuracy'], 100)
+        self.assertEqual(modes[7]['exam']['accuracy'], 0)
+        self.assertEqual(ege_stats.predicted_score(self.pupil)['covered'], 2)
+        # Варианты срез не трогает.
+        self.assertFalse(ege_stats.variant_forecast(self.pupil)['has_data'])
+
+    def test_mistakes_appear_only_after_release(self):
+        self._write({4: '44', 7: '0'})
+        self.assertEqual(ege_practice.mistake_count(self.pupil), 0)
+        self._release()
+        self.assertEqual(ege_practice.mistake_count(self.pupil), 1)
+
+    def test_result_hides_answers_until_release(self):
+        session = self._write({4: '0', 7: '0'})
+        page = self.client.get(f'/ege/practice/{session.pk}/result/')
+        self.assertNotContains(page, '77')
+        self.assertContains(page, 'Верные ответы откроются')
+        self._release()
+        self.assertContains(self.client.get(f'/ege/practice/{session.pk}/result/'), '77')
+
+    def test_solutions_closed_until_release(self):
+        from .solutions import can_view
+
+        session = self._write({4: '44', 7: '77'})
+        question = session.items.first().question
+        self.assertFalse(can_view(self.pupil, question))
+        self._release()
+        self.assertTrue(can_view(self.pupil, Question.objects.get(pk=question.pk)))
+
+    def test_assignment_does_not_open_quiz_page_or_answer_check(self):
+        self.client.force_login(self.pupil)
+        self.assertEqual(self.client.get(f'/quizzes/{self.check.pk}/').status_code, 302)
+        response = self.client.post(f'/quizzes/question/{self.fresh[2].pk}/check/',
+                                    data=json.dumps({'answer': '77'}),
+                                    content_type='application/json')
+        self.assertEqual(response.status_code, 403)
+
+    def test_hub_banner_only_for_assigned(self):
+        self.client.force_login(self.pupil)
+        self.assertContains(self.client.get('/ege/'), f'/ege/checks/{self.check.pk}/start/')
+        self.client.force_login(self.outsider)
+        self.assertNotContains(self.client.get('/ege/'), 'Срез 1')
+
+    def test_teacher_report(self):
+        self._write({4: '44', 7: '0'})
+        self.client.force_login(self.teacher)
+        page = self.client.get(f'/ege/checks/{self.check.pk}/?group=all')
+        self.assertContains(page, '✓')
+        self.assertContains(page, '✗')
+        row = next(r for r in page.context['rows'] if r['user'] == self.pupil)
+        self.assertEqual(row['primary'], EGE_TASK_POINTS[4])
+        self.client.force_login(self.pupil)
+        self.assertEqual(self.client.get(f'/ege/checks/{self.check.pk}/').status_code, 403)
+
+    def test_release_waits_for_last_class_window(self):
+        from accounts.models import StudentGroup
+
+        later = QuizAssignment.objects.create(
+            quiz=self.check, group=StudentGroup.objects.create(name='10Б'),
+            start_date=timezone.now() + timedelta(days=2),
+            end_date=timezone.now() + timedelta(days=2, hours=1),
+        )
+        self.window.end_date = timezone.now() - timedelta(minutes=1)
+        self.window.save(update_fields=['end_date'])
+        # 10А дописал, 10Б пишет в четверг – задачи ещё не в банке.
+        self.assertFalse(self.check.check_released())
+        self.assertFalse(ege_practice.bank_queryset(4).filter(quiz=self.check).exists())
+        later.end_date = timezone.now() - timedelta(minutes=1)
+        later.save(update_fields=['end_date'])
+        self.assertTrue(self.check.check_released())
+        self.assertTrue(ege_practice.bank_queryset(4).filter(quiz=self.check).exists())
+
+    def test_unassigned_check_never_released(self):
+        self.window.delete()
+        self.assertFalse(self.check.check_released())
+        self.assertFalse(ege_practice.bank_queryset(4).filter(quiz=self.check).exists())
+
+    def test_invisible_without_dates(self):
+        # Назначения нет вовсе – срез нигде не виден и не стартует.
+        self.window.delete()
+        self.client.force_login(self.pupil)
+        self.assertNotContains(self.client.get('/ege/'), 'Срез 1')
+        self.assertEqual(self._start(self.pupil).status_code, 403)
+        # Назначение без дат (так его можно завести в админке) – тоже закрыт.
+        QuizAssignment.objects.create(quiz=self.check, group=self.group)
+        self.assertNotContains(self.client.get('/ege/'), 'Срез 1')
+        self.assertEqual(self._start(self.pupil).status_code, 403)
+        self.assertEqual(ege_practice.open_checks(self.pupil), [])
+
+    def test_check_file_only_for_who_got_the_task(self):
+        import shutil
+        import tempfile
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        media = tempfile.mkdtemp()
+        try:
+            with override_settings(MEDIA_ROOT=media):
+                qf = QuestionFile.objects.create(
+                    question=self.fresh[2], file=SimpleUploadedFile('data7.txt', b'1 2 3'))
+                url = f'/quizzes/question-file/{qf.pk}/download/'
+
+                def status():
+                    response = self.client.get(url)
+                    # FileResponse держит файл открытым; response.close() не
+                    # годится – он шлёт request_finished и рвёт соединение базы.
+                    if getattr(response, 'file_to_stream', None):
+                        response.file_to_stream.close()
+                    return response.status_code
+
+                self.client.force_login(self.outsider)
+                self.assertEqual(status(), 404)
+                self._start(self.pupil)  # №7 в пачке один – достаётся точно
+                self.assertEqual(status(), 200)
+                self._release()
+                self.client.force_login(self.outsider)
+                self.assertEqual(status(), 200)
+        finally:
+            shutil.rmtree(media, ignore_errors=True)
+
+    def test_assign_form_garbage_is_not_500(self):
+        self.client.force_login(self.teacher)
+        url = f'/ege/checks/{self.check.pk}/assign/'
+        self.assertEqual(self.client.post(url, {'action': 'remove', 'assignment': 'abc'}).status_code, 302)
+        self.assertEqual(self.client.post(url, {'action': 'minutes', 'minutes': '99999'}).status_code, 302)
+        self.check.refresh_from_db()
+        self.assertEqual(self.check.check_minutes, 235)
+        self.assertEqual(self.client.post(url, {'action': 'assign', 'group': 'x',
+                                                'start': 'вчера', 'end': '2026-13-45T99:99'}).status_code, 302)
+
+    def test_window_not_started_yet(self):
+        self.window.start_date = timezone.now() + timedelta(hours=1)
+        self.window.save(update_fields=['start_date'])
+        self.assertEqual(self._start(self.pupil).status_code, 403)
+        self.assertEqual(ege_practice.open_checks(self.pupil), [])
+
+    def test_teacher_assigns_class_window_on_site(self):
+        from accounts.models import StudentGroup
+
+        other = StudentGroup.objects.create(name='10Б')
+        self.client.force_login(self.teacher)
+        url = f'/ege/checks/{self.check.pk}/assign/'
+        self.client.post(url, {'action': 'assign', 'group': other.pk,
+                               'start': '2026-10-15T09:00', 'end': '2026-10-15T09:45'})
+        window = QuizAssignment.objects.get(quiz=self.check, group=other)
+        self.assertEqual(timezone.localtime(window.start_date).strftime('%d %H:%M'), '15 09:00')
+        # Конец раньше начала – не назначаем.
+        third = StudentGroup.objects.create(name='10В')
+        self.client.post(url, {'action': 'assign', 'group': third.pk,
+                               'start': '2026-10-15T10:00', 'end': '2026-10-15T09:00'})
+        self.assertFalse(QuizAssignment.objects.filter(group=third).exists())
+        self.client.post(url, {'action': 'minutes', 'minutes': '25'})
+        self.check.refresh_from_db()
+        self.assertEqual(self.check.check_duration(), 25)
+        self.client.post(url, {'action': 'remove', 'assignment': window.pk})
+        self.assertFalse(QuizAssignment.objects.filter(pk=window.pk).exists())
+        self.client.force_login(self.pupil)
+        self.assertEqual(self.client.post(url, {'action': 'minutes', 'minutes': '5'}).status_code, 403)
+
+    def test_teacher_sees_all_tasks_and_can_try_repeatedly(self):
+        self.client.force_login(self.teacher)
+        page = self.client.get(f'/ege/checks/{self.check.pk}/tasks/')
+        # Все задачи пачки, а не одна на номер, – с ответами учителю.
+        self.assertEqual([len(qs) for _, qs in page.context['blocks']], [2, 1])
+        self.assertContains(page, '44')
+        self.assertContains(page, '77')
+        self.client.force_login(self.pupil)
+        self.assertEqual(self.client.get(f'/ege/checks/{self.check.pk}/tasks/').status_code, 403)
+
+        self._start(self.teacher)
+        first = PracticeSession.objects.get(user=self.teacher, check_quiz=self.check)
+        self.client.post(f'/ege/practice/{first.pk}/finish/')
+        self._start(self.teacher)
+        self.assertEqual(PracticeSession.objects.filter(user=self.teacher).count(), 2)
+
+    def test_load_ege_refuses_question_already_in_bank(self):
+        import os
+        import tempfile
+        from django.core.management import CommandError, call_command
+
+        self.common.external_id = 'k-1'
+        self.common.save(update_fields=['external_id'])
+        data = {'quiz': {'title': 'Срез 2', 'quiz_type': 'check', 'slug': 'check-2'},
+                'questions': [{'text': 'т', 'question_type': 'text', 'ege_number': 4,
+                               'correct_text_answer': '1', 'external_id': 'k-1'}]}
+        with tempfile.NamedTemporaryFile('w', suffix='.json', delete=False,
+                                         encoding='utf-8') as f:
+            json.dump(data, f)
+        try:
+            with self.assertRaisesMessage(CommandError, 'для среза нужна новая'):
+                call_command('load_ege', f.name, stdout=open(os.devnull, 'w'))
+        finally:
+            os.unlink(f.name)
+        self.assertFalse(Quiz.objects.filter(slug='check-2').exists())

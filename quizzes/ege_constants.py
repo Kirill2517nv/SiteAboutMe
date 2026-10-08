@@ -54,7 +54,7 @@ EGE_CODE_TASKS = {2, 5, 6, 10, 13, 14, 16, 17, 19, 20, 21, 23, 24, 25, 26, 27}
 # и тематические подборки. Этот фильтр нужен статистике – иначе задачи, убранные
 # из выдачи командой retag_ege --archive, продолжали бы влиять на точность
 # и прогноз балла.
-EGE_QUIZ_TYPES = ('exam', 'bank')
+EGE_QUIZ_TYPES = ('exam', 'bank', 'check')
 
 # Откуда тренажёр берёт задачи: только банки, вариант в тренировку не попадает.
 #
@@ -65,6 +65,32 @@ EGE_QUIZ_TYPES = ('exam', 'bank')
 # меряют разное: первый – собранную работу целиком, вторая – проработку темы.
 # Поэтому наборы задач у них тоже разные.
 PRACTICE_QUIZ_TYPES = ('bank',)
+
+
+def practice_pool_q(prefix=''):
+    """
+    Задачи тренировочного пула: банки плюс срезы, чьё окно уже закрылось.
+
+    Задачи среза свежие, и до конца работы их не должен встретить никто – ни
+    на тренировке, ни в счётчиках. Когда закрылось последнее окно назначения
+    (у каждого класса своё), срез сам становится банком: ошибки уходят в
+    «Работу над ошибками», остальным – новые задачи. Срез без назначений или
+    с окном без конца не выходит никогда. SQL-двойник Quiz.check_released.
+
+    prefix – путь до задачи ('' у Question, 'question__' у PracticeItem).
+    Пишется вместо quiz__quiz_type__in=PRACTICE_QUIZ_TYPES: прямой фильтр по
+    типу просветил бы закрытые задачи или навсегда спрятал выпущенные.
+    """
+    from django.db.models import Exists, OuterRef, Q
+    from django.utils import timezone
+
+    from .models import QuizAssignment
+
+    assigned = QuizAssignment.objects.filter(quiz_id=OuterRef(f'{prefix}quiz_id'))
+    still_open = assigned.filter(Q(end_date__isnull=True) | Q(end_date__gt=timezone.now()))
+    return (Q(**{f'{prefix}quiz__quiz_type__in': PRACTICE_QUIZ_TYPES})
+            | (Q(**{f'{prefix}quiz__quiz_type': 'check'})
+               & Q(Exists(assigned)) & ~Q(Exists(still_open))))
 
 # Как называется связка на своей общей странице. Задания 19–21 – это одна тема
 # и одна теория на три вопроса, поэтому у страницы своё имя, а не заголовок

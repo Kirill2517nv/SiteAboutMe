@@ -11,6 +11,7 @@ from django.views.decorators.http import require_POST, require_GET
 from django.views.decorators.csrf import csrf_protect
 from .models import PracticeItem, Quiz, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, Question, CodeSubmission, QuestionFile, ExamTaskProgress, HintChoice, SharedSolution
 from accounts.models import StudentGroup
+from textbook.models import EgeTask
 import datetime
 import os
 import json
@@ -29,7 +30,7 @@ from .ege_constants import (  # noqa: F401
     EGE_MAX_PRIMARY, EGE_EXAM_MINUTES, EGE_CODE_TASKS,
     ege_time_color, test_score_for,
 )
-from .ege_constants import EXCLUDED_KINDS, PRACTICE_QUIZ_TYPES
+from .ege_constants import EXCLUDED_KINDS, practice_pool_q
 from .ege_scoring import grade as ege_grade
 
 
@@ -78,6 +79,12 @@ def get_effective_quiz_settings(user, quiz):
     based on user/group assignments.
     Returns None if no assignment found for this user (unless superuser).
     """
+    # Срез пишут только в тренажёре: назначение классу выбирает, кому он виден
+    # на хабе, но не открывает страницу теста, подсказку и проверку ответа –
+    # через них ученик увидел бы все задачи среза и вердикт посреди работы.
+    if quiz.quiz_type == 'check' and not user.is_superuser:
+        return None
+
     # Тесты-самопроверки учебника доступны любому авторизованному ученику
     # (доступ гейтится статьёй учебника, а не назначением на группу).
     if getattr(quiz, 'is_self_check', False) and user.is_authenticated:
@@ -121,7 +128,15 @@ def question_file_download_view(request, file_id):
     """
     Download a QuestionFile attachment with a stable filename across browsers/OS.
     """
-    qf = get_object_or_404(QuestionFile, id=file_id)
+    qf = get_object_or_404(QuestionFile.objects.select_related('question__quiz'), id=file_id)
+
+    # Файл задачи среза – часть условия: до выхода среза в банк его отдают
+    # только тому, кому задача досталась, иначе перебор file_id выдавал бы
+    # условия заранее.
+    if qf.question.quiz.quiz_type == 'check':
+        from .ege_practice import check_question_open
+        if not check_question_open(request.user, qf.question):
+            raise Http404('Файл задачи не найден')
 
     # Запись в базе может пережить сам файл: seed-команды учебника сносят
     # старый файл из хранилища, чтобы имя не разъехалось с условием, а Django
@@ -330,8 +345,8 @@ def ege_student_mistakes_view(request, user_id):
 
     items = (
         PracticeItem.objects
-        .filter(session__user=student, answered_at__isnull=False,
-                question__quiz__quiz_type__in=PRACTICE_QUIZ_TYPES)
+        .filter(session__user=student, answered_at__isnull=False)
+        .filter(practice_pool_q('question__'))
         .exclude(session__kind__in=EXCLUDED_KINDS)
         .exclude(carried=True)
         .select_related('question', 'submission', 'session')
@@ -416,6 +431,17 @@ def ege_list_view(request):
     # Панель учителя: список учеников для переключения и ссылка на таблицу класса.
     if request.user.is_superuser:
         context['students'] = _student_list()
+        # Пометка «разобрали на уроке» – только для учителя, ученик карту видит как прежде.
+        context['covered'] = set(EgeTask.objects.filter(covered=True).values_list('number', flat=True))
+
+    # Срезы: ученику – назначенные и открытые сейчас, учителю – последние
+    # срезы со ссылкой на отчёт. На чужом прогрессе (?student=) плашки нет:
+    # кнопка «Начать» запустила бы срез учителю.
+    if request.user.is_superuser:
+        context['teacher_checks'] = Quiz.objects.filter(quiz_type='check').order_by('-id')[:6]
+    elif request.user.is_authenticated:
+        from .ege_practice import open_checks
+        context['checks'] = open_checks(request.user)
 
     if target.is_authenticated:
         context['overview'] = ege_stats.overview(target)
@@ -1628,8 +1654,12 @@ def submit_code_view(request, quiz_id, question_id):
         return JsonResponse({'error': 'Дедлайн блока прошёл — решения больше не принимаются'},
                             status=403)
 
+    if quiz.quiz_type == 'check':
+        from .ege_practice import check_code_allowed
+        if not check_code_allowed(request.user, question):
+            return JsonResponse({'error': 'Срез не назначен'}, status=403)
     # Публичные ЕГЭ — пропускаем проверку назначения
-    if not quiz.is_public:
+    elif not quiz.is_public:
         eff_settings = get_effective_quiz_settings(request.user, quiz)
         if not eff_settings:
             return JsonResponse({'error': 'Тест не назначен'}, status=403)

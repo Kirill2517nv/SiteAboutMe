@@ -22,7 +22,11 @@ class Quiz(models.Model):
     # 'bank' – контейнер тематической подборки задач ЕГЭ, импортированной с kompege.
     # Целиком такой квиз никто не решает: из него сессии тренировки берут задачи по
     # ege_number. В списке вариантов не появляется – там фильтр quiz_type='exam'.
-    QUIZ_TYPE_CHOICES = [('standard', 'Стандартный'), ('exam', 'ЕГЭ'), ('bank', 'Банк задач ЕГЭ')]
+    # 'check' – срезовая работа: свежие задачи под проверку пройденных номеров.
+    # До end_date они видны только в самом срезе, после – уходят в общий банк
+    # (ege_constants.practice_pool_q): переносить ничего не нужно.
+    QUIZ_TYPE_CHOICES = [('standard', 'Стандартный'), ('exam', 'ЕГЭ'), ('bank', 'Банк задач ЕГЭ'),
+                         ('check', 'Срез ЕГЭ')]
     EXAM_MODE_CHOICES = [('exam', 'Экзамен'), ('practice', 'Тренировка')]
 
     title = models.CharField(max_length=200, verbose_name="Название теста")
@@ -38,6 +42,10 @@ class Quiz(models.Model):
 
     start_date = models.DateTimeField(null=True, blank=True, verbose_name="Начало доступа", help_text="Дата и время, с которого тест становится доступным")
     end_date = models.DateTimeField(null=True, blank=True, verbose_name="Конец доступа", help_text="Дата и время, после которого тест закрывается")
+    check_minutes = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name="Минут на срез",
+        help_text="Только для среза. Пусто – сумма нормативов ЕГЭ по номерам его задач.",
+    )
 
     class Meta:
         verbose_name = "Тест"
@@ -45,6 +53,45 @@ class Quiz(models.Model):
 
     def __str__(self):
         return self.title
+
+    def check_numbers(self):
+        """Номера заданий среза – по его задачам, отдельно их не хранить."""
+        return sorted(set(self.questions.exclude(ege_number=None)
+                          .values_list('ege_number', flat=True)))
+
+    def check_window(self, user):
+        """
+        Назначение среза ученику – его окно (start_date/end_date) или None.
+
+        Окно у среза одно на класс и живёт только в назначении: свои даты у
+        Quiz срез не читает. Личное назначение важнее классного – так
+        отсутствовавшему можно дать другой день.
+        """
+        own = self.assignments.filter(user=user).first()
+        if own:
+            return own
+        group_id = getattr(getattr(user, 'profile', None), 'group_id', None)
+        return self.assignments.filter(group_id=group_id).first() if group_id else None
+
+    def check_released(self):
+        """
+        Задачи среза ушли в банк: окна назначены и все закрылись.
+
+        Последнее окно, а не первое: иначе 10Б получил бы в тренировке задачи,
+        которые ему писать в четверг. Python-двойник practice_pool_q.
+        """
+        ends = list(self.assignments.values_list('end_date', flat=True))
+        now = timezone.now()
+        return bool(ends) and all(end and end <= now for end in ends)
+
+    def check_duration(self):
+        """Минуты на срез: заданные учителем или сумма нормативов его номеров."""
+        from .ege_constants import DEFAULT_TASK_MINUTES, EGE_RECOMMENDED_TIME
+
+        if self.check_minutes:
+            return self.check_minutes
+        return sum(EGE_RECOMMENDED_TIME.get(n, DEFAULT_TASK_MINUTES)
+                   for n in self.check_numbers()) or DEFAULT_TASK_MINUTES
 
 class QuizAssignment(models.Model):
     quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE, related_name='assignments', verbose_name="Тест")
@@ -419,6 +466,9 @@ class PracticeSession(models.Model):
         # Задача уже решена, ученик переписывает код ради времени и памяти.
         # Такая сессия не оценивается: она про качество решения, а не про знание.
         ('retry', 'Переписать решение'),
+        # Срезовая работа: по одной задаче на номер из пачки check_quiz,
+        # всегда режим экзамена. В статистику идёт как обычный экзамен.
+        ('check', 'Срез'),
     ]
     # study – проверка сразу после каждой задачи, можно ответить ещё раз,
     # exam – ответы сохраняются молча, разбор в конце сессии.
@@ -436,6 +486,11 @@ class PracticeSession(models.Model):
     difficulty = models.PositiveSmallIntegerField(
         null=True, blank=True, choices=Question.DIFFICULTY_CHOICES,
         verbose_name="Сложность", help_text="Пусто – любая."
+    )
+    check_quiz = models.ForeignKey(
+        Quiz, null=True, blank=True, on_delete=models.CASCADE,
+        related_name='check_sessions', verbose_name="Срез",
+        help_text="Только у сессии среза: из какой работы она взята.",
     )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Начата")
     finished_at = models.DateTimeField(null=True, blank=True, verbose_name="Завершена")
@@ -470,6 +525,14 @@ class PracticeSession(models.Model):
 
         if self.mode != 'exam':
             return None
+        if self.check_quiz_id:
+            # Срез: свои минуты, но не дольше окна – иначе начавший в последнюю
+            # минуту дописывал бы, когда задачи уже открыты в общем банке.
+            end = self.created_at + timedelta(minutes=self.check_quiz.check_duration())
+            window = self.check_quiz.check_window(self.user)
+            if window and window.end_date:
+                end = min(end, window.end_date)
+            return end
         return self.created_at + timedelta(minutes=EXAM_MINUTES)
 
     @property

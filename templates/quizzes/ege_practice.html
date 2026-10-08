@@ -89,7 +89,7 @@
             <div class="min-w-0">
                 <div class="flex items-center gap-2">
                     <h1 class="text-xl font-semibold text-gray-900 dark:text-white truncate">
-                        {% if session.ege_number %}Задание {{ session.ege_number }}{% else %}{{ session.get_kind_display }}{% endif %}
+                        {% if session.ege_number %}Задание {{ session.ege_number }}{% elif session.check_quiz %}Срез: {{ session.check_quiz.title }}{% else %}{{ session.get_kind_display }}{% endif %}
                     </h1>
                     {% if session.mode == 'exam' %}
                     <span class="shrink-0 px-2 py-0.5 text-xs font-medium rounded-full bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">

@@ -17,6 +17,7 @@ from django.core.management.base import BaseCommand
 from django.db.models import Min
 
 from quizzes.models import PracticeItem, Question
+from quizzes.ege_constants import EGE_QUIZ_TYPES
 
 DEFAULT_MIN_ATTEMPTS = 20
 
@@ -38,7 +39,10 @@ class Command(BaseCommand):
         # Первая попытка каждого ученика по каждой задаче.
         first_ids = (
             PracticeItem.objects
-            .filter(answered_at__isnull=False, question__quiz__quiz_type__in=('exam', 'bank'))
+            .filter(answered_at__isnull=False, question__quiz__quiz_type__in=EGE_QUIZ_TYPES)
+            # Учитель решает, зная ответ («Пройти как ученик» у среза), – его
+            # первая попытка завысила бы долю решивших.
+            .exclude(session__user__is_superuser=True)
             .values('question_id', 'session__user_id')
             .annotate(first_id=Min('id'))
             .values_list('first_id', flat=True)

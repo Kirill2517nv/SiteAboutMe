@@ -11,7 +11,8 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.core.exceptions import PermissionDenied
-from django.db.models import prefetch_related_objects
+from django.db import transaction
+from django.db.models import Q, prefetch_related_objects
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -24,7 +25,7 @@ from . import ege_practice, ege_stats
 from .ege_scoring import grade as ege_grade
 from .ege_constants import (
     EGE_QUIZ_TYPES, EGE_RECOMMENDED_TIME, EGE_TASK_POINTS, EXAM_MINUTES,
-    EXCLUDED_KINDS, PRACTICE_QUIZ_TYPES,
+    EXCLUDED_KINDS, practice_pool_q,
     LINKED_GROUP_TITLE, STUDY_MAX_SIZE, ege_time_color,
 )
 from .models import CodeSubmission, PracticeItem, PracticeSession, Question
@@ -168,6 +169,22 @@ def classroom_toggle_view(request, number):
     return redirect('ege:ege_task', number=number)
 
 
+@login_required
+@require_POST
+def covered_toggle_view(request, number):
+    """Учитель отмечает на карте /ege/, что тип задач уже разобран на уроке."""
+    if not request.user.is_superuser:
+        raise PermissionDenied('Отметку ставит учитель')
+
+    task = get_object_or_404(EgeTask, number=number)
+    task.covered = not task.covered
+    task.save(update_fields=['covered'])
+    # Карта шлёт fetch и перекрашивает карточку сама; без JS – обычный редирект.
+    if request.headers.get('Accept') == 'application/json':
+        return JsonResponse({'covered': task.covered})
+    return redirect('ege:ege_list')
+
+
 # Три корзины, по которым учитель раскладывает банк. Умолчание – 'study':
 # задача, не отмеченная ничем, идёт в обычную тренировку.
 BANK_POOLS = ('study', 'classroom', 'exam')
@@ -225,7 +242,7 @@ def ege_task_students_view(request, number):
         'current_group': current,
         # Тот же счёт банка, что в task_stats и в ячейках таблицы.
         'bank_size': Question.objects.filter(
-            quiz__quiz_type__in=PRACTICE_QUIZ_TYPES, ege_number=numbers[0],
+            practice_pool_q(), ege_number=numbers[0],
             classroom_only=False).count(),
     })
 
@@ -577,8 +594,13 @@ def ege_solved_view(request, number):
     items = (
         PracticeItem.objects
         .filter(session__user=request.user, is_correct=True,
-                question__ege_number=number,
-                question__quiz__quiz_type__in=EGE_QUIZ_TYPES)
+                question__ege_number=number)
+        # Банк и выпущенные срезы: задача идущего среза в архив не попадает –
+        # переписать её всё равно нельзя, код примут только из самого среза.
+        .filter(practice_pool_q('question__'))
+        # Экзамен пишет is_correct молча посреди сессии: без этого архив во
+        # второй вкладке выдавал бы исход экзамена до его конца.
+        .filter(Q(session__mode='study') | Q(session__finished_at__isnull=False))
         .select_related('question', 'submission')
         .prefetch_related('question__images', 'question__files')
         .order_by('question_id', '-answered_at')
@@ -886,6 +908,10 @@ def practice_result_view(request, pk):
     rows = []
     total_seconds = 0
     correct = 0
+    # Срез: пока окно идёт, верных ответов не показываем – у соседа по парте
+    # может быть та же задача. Свой исход ученик видит сразу.
+    hide_answers = (session.check_quiz_id and not request.user.is_superuser
+                    and not session.check_quiz.check_released())
 
     # Ссылки на теорию собираем одним запросом: в смешанной сессии задачи из
     # разных заданий, и запрос на строку дал бы N+1.
@@ -923,7 +949,7 @@ def practice_result_view(request, pk):
             'mm_ss': f'{minutes}:{secs:02d}' if seconds else '–',
             'color': ege_time_color(seconds, question.ege_number),
             'recommended_min': EGE_RECOMMENDED_TIME.get(question.ege_number or 0, 5),
-            'correct_answer': question.correct_text_answer or '',
+            'correct_answer': '' if hide_answers else (question.correct_text_answer or ''),
             'attempts': item.attempts,
             'gave_up': item.gave_up,
             'theory_slug': theory_slugs.get(question.ege_number),
@@ -939,6 +965,7 @@ def practice_result_view(request, pk):
 
     return render(request, 'quizzes/ege_practice_result.html', {
         'session': session,
+        'hide_answers': hide_answers,
         'rows': rows,
         'total': len(items),
         'answered': answered,
@@ -947,4 +974,227 @@ def practice_result_view(request, pk):
         'total_minutes': total_seconds // 60,
         'norm_minutes': norm_minutes,
         'avg_mm_ss': f'{avg_min}:{avg_sec:02d}' if avg_seconds else '–',
+    })
+
+
+# --- Срезовые работы ---------------------------------------------------------
+
+@login_required
+@require_POST
+def check_start_view(request, quiz_id):
+    """
+    Начать срез. Ученику попытка одна: повторное нажатие ведёт в уже начатую.
+
+    Учитель проходит срез сколько угодно раз – посмотреть, как задачи
+    выглядят у ученика. В отчёт его попытки не попадают: там только ученики.
+    Окно проверяется здесь же: кнопку на хабе видят те, кому можно, но POST
+    можно прислать и без кнопки.
+    """
+    from .models import Quiz
+
+    get_object_or_404(Quiz, id=quiz_id, quiz_type='check')
+    # Два «Начать» из двух вкладок одновременно дали бы две попытки с разными
+    # задачами: блокировка строки среза выстраивает их в очередь, и вторая
+    # уже видит первую.
+    with transaction.atomic():
+        quiz = Quiz.objects.select_for_update().get(id=quiz_id)
+        return _start_check(request, quiz)
+
+
+def _start_check(request, quiz):
+    existing = ege_practice.check_session(request.user, quiz)
+    if existing and not (request.user.is_superuser and existing.is_finished):
+        return redirect('ege:ege_practice', pk=existing.pk)
+
+    if not request.user.is_superuser:
+        window = quiz.check_window(request.user)
+        if window is None:
+            raise PermissionDenied('Срез не назначен')
+        if not ege_practice.window_open(window):
+            raise PermissionDenied('Срез сейчас закрыт')
+
+    # Экзамен один за раз – правило active_exam общее и для среза: иначе
+    # таймер темы шёл бы параллельно таймеру среза.
+    running = ege_practice.active_exam(request.user)
+    if running:
+        return redirect('ege:ege_practice', pk=running.pk)
+
+    session = ege_practice.build_check_session(request.user, quiz)
+    if session is None:
+        messages.error(request, 'В срезе нет задач.')
+        return redirect('ege:ege_list')
+    return redirect('ege:ege_practice', pk=session.pk)
+
+
+def _teacher_check(request, quiz_id):
+    from .models import Quiz
+
+    if not request.user.is_superuser:
+        raise PermissionDenied('Страница открыта учителю')
+    return get_object_or_404(Quiz, id=quiz_id, quiz_type='check')
+
+
+@login_required
+def ege_check_report_view(request, quiz_id):
+    """
+    Срез глазами учителя: назначение по классам и результаты.
+
+    Строка – ученик, столбец – номер задания: задачи у учеников разные (по
+    одной случайной на номер), поэтому столбец – номер, а не задача. Ячейка –
+    исход и время; первичный балл – по цене задачи в ЕГЭ, частичный 26/27 –
+    как в варианте.
+    """
+    from accounts.models import StudentGroup
+    from .views import _class_filter
+
+    quiz = _teacher_check(request, quiz_id)
+    numbers = quiz.check_numbers()
+
+    students, groups, loose, current = _class_filter(request)
+    students = list(students)
+    sessions = {}
+    # Первая попытка ученика – она и есть срез.
+    for s in (PracticeSession.objects.filter(check_quiz=quiz, user__in=students)
+              .order_by('created_at').prefetch_related('items__question')):
+        sessions.setdefault(s.user_id, s)
+
+    rows = []
+    for student in students:
+        session = sessions.get(student.id)
+        cells = {n: None for n in numbers}
+        primary = 0
+        if session:
+            for item in session.items.all():
+                q = item.question
+                if item.is_correct:
+                    # Цена – по таблице ЕГЭ, как и максимум под таблицей: у
+                    # импортированной задачи points бывает любым.
+                    got = EGE_TASK_POINTS.get(q.ege_number, 1)
+                    state = 'correct'
+                elif item.score:
+                    got = item.score
+                    state = 'partial'
+                else:
+                    got = 0
+                    state = 'wrong' if item.answered_at else 'skipped'
+                primary += got
+                minutes, secs = divmod(item.seconds, 60)
+                cells[q.ege_number] = {
+                    'state': state,
+                    'mm_ss': f'{minutes}:{secs:02d}' if item.seconds else '',
+                    'color': ege_time_color(item.seconds, q.ege_number),
+                }
+        rows.append({
+            'user': student,
+            'session': session,
+            'cells': [cells[n] for n in numbers],
+            'primary': primary,
+        })
+    # Сверху – кто сдал, по баллу; не писавшие – внизу по алфавиту.
+    rows.sort(key=lambda r: (r['session'] is None, -r['primary'],
+                             surname_first(r['user']).lower().replace('ё', 'е')))
+
+    now = timezone.now()
+    assignments = list(quiz.assignments.select_related('group', 'user')
+                       .order_by('start_date', 'end_date'))
+    for a in assignments:
+        a.state = ('open' if ege_practice.window_open(a, now)
+                   else 'done' if a.end_date and a.end_date <= now else 'soon')
+    assigned_groups = {a.group_id for a in assignments if a.group_id}
+
+    return render(request, 'quizzes/ege_check_report.html', {
+        'quiz': quiz,
+        'numbers': numbers,
+        'rows': rows,
+        'written': sum(1 for r in rows if r['session'] and r['session'].is_finished),
+        'max_primary': sum(EGE_TASK_POINTS[n] for n in numbers),
+        'released': quiz.check_released(),
+        'assignments': assignments,
+        'free_groups': StudentGroup.objects.exclude(id__in=assigned_groups).order_by('name'),
+        'groups': groups,
+        'has_loose': loose,
+        'current_group': current,
+    })
+
+
+def _local_datetime(value):
+    """Значение <input type="datetime-local"> во времени сайта или None."""
+    from django.utils.dateparse import parse_datetime
+
+    try:
+        parsed = parse_datetime(value or '')
+    except ValueError:
+        return None
+    if parsed is None:
+        return None
+    return timezone.make_aware(parsed) if timezone.is_naive(parsed) else parsed
+
+
+@login_required
+@require_POST
+def check_assign_view(request, quiz_id):
+    """
+    Назначение среза: класс и его окно, снятие назначения, минуты на работу.
+
+    Окно живёт только здесь, в QuizAssignment: у каждого класса свой день, а
+    задачи уходят в банк, когда закрылось последнее окно. Своих дат у среза
+    нет – две пары дат в двух местах и путали.
+    """
+    from accounts.models import StudentGroup
+    from .models import QuizAssignment
+
+    quiz = _teacher_check(request, quiz_id)
+    action = request.POST.get('action')
+    back = redirect('ege:ege_check_report', quiz_id=quiz.id)
+
+    if action == 'minutes':
+        value = request.POST.get('minutes', '').strip()
+        # Потолок – целый экзамен: число из формы ложится в SmallInteger.
+        quiz.check_minutes = min(int(value), 235) if value.isdigit() and int(value) > 0 else None
+        quiz.save(update_fields=['check_minutes'])
+        return back
+
+    if action == 'remove':
+        assignment = request.POST.get('assignment', '')
+        if assignment.isdigit():
+            QuizAssignment.objects.filter(quiz=quiz, id=assignment).delete()
+        return back
+
+    group_id = request.POST.get('group') or ''
+    group = StudentGroup.objects.filter(id=group_id).first() if group_id.isdigit() else None
+    start = _local_datetime(request.POST.get('start'))
+    end = _local_datetime(request.POST.get('end'))
+    if group is None or start is None or end is None:
+        messages.error(request, 'Нужны класс, начало и конец.')
+        return back
+    if end <= start:
+        messages.error(request, 'Конец окна раньше начала.')
+        return back
+    QuizAssignment.objects.update_or_create(
+        quiz=quiz, group=group, user=None,
+        defaults={'start_date': start, 'end_date': end},
+    )
+    messages.success(request, f'Срез назначен: {group.name}.')
+    return back
+
+
+@login_required
+def ege_check_tasks_view(request, quiz_id):
+    """
+    Все задачи среза с ответами – вычитать перед уроком.
+
+    Те же шаблоны условия и ответа, что в сессии и на странице банка: здесь
+    видно ровно то, что увидит ученик. Как это выглядит в самой сессии с
+    таймером, учитель смотрит кнопкой «Пройти как ученик».
+    """
+    quiz = _teacher_check(request, quiz_id)
+    questions = list(quiz.questions.exclude(ege_number=None)
+                     .prefetch_related('images', 'files', 'test_cases')
+                     .order_by('ege_number', 'group_order', 'id'))
+    by_number = {}
+    for q in questions:
+        by_number.setdefault(q.ege_number, []).append(q)
+    return render(request, 'quizzes/ege_check_tasks.html', {
+        'quiz': quiz,
+        'blocks': sorted(by_number.items()),
     })

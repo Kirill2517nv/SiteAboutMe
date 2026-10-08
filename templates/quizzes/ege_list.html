@@ -39,6 +39,8 @@
         {% endif %}
     </div>
 
+    {% include 'quizzes/_ege_checks.html' %}
+
     {% if user.is_authenticated and overview.score %}
     <!-- Сводка -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
@@ -200,8 +202,38 @@
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {% endif %}
+            {# Пометка учителя «разобрали на уроке»: кнопка – сосед ссылки, форма внутри <a> невалидна. #}
+            {% comment %}
+            Классы закраски стоят дважды: в class – для первой отрисовки до Alpine,
+            в :class – для переключения без перезагрузки (fetch, ответ JSON).
+            {% endcomment %}
+            <div class="relative" x-data="{ covered: {% if task.number in covered %}true{% else %}false{% endif %} }">
+            {% if user.is_superuser %}
+            <form method="post" action="{% url 'ege:ege_covered_toggle' task.number %}" class="absolute top-2 right-2 z-10"
+                  @submit.prevent="fetch($el.action, { method: 'POST', body: new FormData($el), headers: { Accept: 'application/json' } })
+                      .then(r => r.ok ? r.json() : Promise.reject()).then(d => covered = d.covered)">
+                {% csrf_token %}
+                <button type="submit" :title="covered ? 'Снять отметку «разобрали»' : 'Отметить: разобрали на уроке'"
+                        class="w-6 h-6 rounded-full flex items-center justify-center border transition-colors
+                        {% if task.number in covered %}bg-emerald-500 border-emerald-500 text-white hover:bg-emerald-600
+                        {% else %}border-gray-300 dark:border-slate-600 text-transparent hover:text-gray-400 hover:border-gray-400{% endif %}"
+                        :class="{
+                            'bg-emerald-500 border-emerald-500 text-white hover:bg-emerald-600': covered,
+                            'border-gray-300 dark:border-slate-600 text-transparent hover:text-gray-400 hover:border-gray-400': !covered }"
+                        title="{% if task.number in covered %}Снять отметку «разобрали»{% else %}Отметить: разобрали на уроке{% endif %}">
+                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/>
+                    </svg>
+                </button>
+            </form>
+            {% endif %}
             <a href="{% url 'ege:ege_task' task.page_number %}"
-               class="group bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 p-4 hover:border-brand-300 dark:hover:border-cyan-500 hover:shadow-md transition-all">
+               class="group block h-full rounded-xl border p-4 hover:border-brand-300 dark:hover:border-cyan-500 hover:shadow-md transition-all
+               {% if task.number in covered %}bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800
+               {% else %}bg-white dark:bg-slate-800 border-gray-100 dark:border-slate-700{% endif %}"
+               :class="{
+                   'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800': covered,
+                   'bg-white dark:bg-slate-800 border-gray-100 dark:border-slate-700': !covered }">
                 <div class="flex items-start gap-3">
                     {# Цвет – по последнему экзамену, как на карточке задания; без экзамена серый. #}
                     <span class="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center font-bold
@@ -213,7 +245,7 @@
                     </span>
 
                     <div class="min-w-0 flex-1">
-                        <div class="font-medium text-gray-900 dark:text-white text-sm leading-snug group-hover:text-brand-600 dark:group-hover:text-cyan-400 transition-colors">
+                        <div class="font-medium text-gray-900 dark:text-white text-sm leading-snug group-hover:text-brand-600 dark:group-hover:text-cyan-400 transition-colors {% if user.is_superuser %}pr-6{% endif %}">
                             {{ task.title }}
                         </div>
 
@@ -254,6 +286,7 @@
                     </div>
                 </div>
             </a>
+            </div>
             {% if task.linked_last %}
                 </div>
             </div>

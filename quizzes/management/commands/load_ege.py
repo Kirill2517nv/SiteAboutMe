@@ -18,7 +18,7 @@ from quizzes.models import (
 VALID_TYPES = {'choice', 'text', 'code'}
 VALID_EGE_NUMBERS = set(range(1, 28))
 VALID_DIFFICULTY = {1, 2, 3}
-VALID_QUIZ_TYPES = {'exam', 'bank'}
+VALID_QUIZ_TYPES = {'exam', 'bank', 'check'}
 
 # Парсер иногда теряет содержимое нижнего индекса: из «a₀» выходит «a0[sub:]»
 # – цифра осталась в строке, маркер пустой. Пустой [sub:] фильтр не ловит
@@ -160,10 +160,14 @@ class Command(BaseCommand):
         quiz_type = quiz_data.get('quiz_type', 'exam')
         if quiz_type not in VALID_QUIZ_TYPES:
             raise CommandError(
-                f'Поле quiz.quiz_type должно быть "exam" или "bank", получено "{quiz_type}"'
+                f'Поле quiz.quiz_type должно быть "exam", "bank" или "check", получено "{quiz_type}"'
             )
 
-        is_bank = quiz_type == 'bank'
+        is_check = quiz_type == 'check'
+        # Срез после своего окна становится банком (practice_pool_q) – и
+        # импортируется как банк: тот же явный slug, пополнение повторным
+        # прогоном, режим тренировки для проверки кода.
+        is_bank = quiz_type in ('bank', 'check')
 
         # У банка нет режима прохождения: его никто не решает целиком.
         if not is_bank and quiz_data.get('exam_mode') not in ('exam', 'practice'):
@@ -181,7 +185,7 @@ class Command(BaseCommand):
             raise CommandError('Для банка задач обязателен явный quiz.slug – по нему идёт пополнение')
 
         existing = Quiz.objects.filter(slug=slug).first() if slug else None
-        if existing and not (is_bank and existing.quiz_type == 'bank'):
+        if existing and not (is_bank and existing.quiz_type == quiz_type):
             raise CommandError(
                 f'Вариант с slug "{slug}" уже существует. '
                 f'Удалите существующий вариант или укажите другой slug в JSON.'
@@ -201,15 +205,20 @@ class Command(BaseCommand):
                     title=quiz_data['title'],
                     description=quiz_data.get('description', ''),
                     max_attempts=quiz_data.get('max_attempts', 0),
-                    start_date=quiz_data.get('start_date'),
-                    end_date=quiz_data.get('end_date'),
+                    # У среза окно – в назначении на сайте, по классу: свои
+                    # даты квиза он не читает, и хранить их – путать учителя.
+                    start_date=None if is_check else quiz_data.get('start_date'),
+                    end_date=None if is_check else quiz_data.get('end_date'),
+                    check_minutes=quiz_data.get('check_minutes'),
                     quiz_type=quiz_type,
                     # Банк помечается публичной тренировкой намеренно: так задачи
                     # проходят проверку доступа в submit_code_view без назначения
                     # на группу и допускают переотправку кода. В список вариантов
                     # он всё равно не попадёт – там фильтр по quiz_type='exam'.
                     exam_mode='practice' if is_bank else quiz_data['exam_mode'],
-                    is_public=True if is_bank else quiz_data.get('is_public', True),
+                    # Срез не публичный: код по его задачам принимает
+                    # ege_practice.check_code_allowed, а не флаг.
+                    is_public=(not is_check) if is_bank else quiz_data.get('is_public', True),
                     slug=slug,
                 )
 
@@ -280,8 +289,16 @@ class Command(BaseCommand):
                 if external_id:
                     found = Question.objects.filter(
                         external_id=external_id,
-                        quiz__quiz_type__in=('exam', 'bank'),
+                        quiz__quiz_type__in=('exam', 'bank', 'check'),
                     ).first()
+                    # Срез собирают из свежих задач. Найденная в банке или в
+                    # варианте задача не свежая, а молча обновить её значило бы
+                    # оставить срез без задачи – пусть учитель заменит её сам.
+                    if is_check and found and found.quiz_id != quiz.id:
+                        raise CommandError(
+                            f'Вопрос #{i}: задача {external_id} уже есть в «{found.quiz.title}» – '
+                            f'для среза нужна новая.'
+                        )
 
                 if found:
                     for key, value in fields.items():
@@ -342,7 +359,7 @@ class Command(BaseCommand):
                 elif q_type == 'code':
                     _create_test_cases(question, q_data)
 
-        label = 'Банк задач' if is_bank else 'Вариант ЕГЭ'
+        label = 'Срез' if is_check else 'Банк задач' if is_bank else 'Вариант ЕГЭ'
         summary = f'создано {stats["created"]}, обновлено {stats["updated"]}'
         if stats['locked']:
             summary += f', {stats["locked"]} обновлено без вложений (есть ответы учеников)'

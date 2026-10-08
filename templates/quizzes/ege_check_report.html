@@ -1,0 +1,189 @@
+{% extends 'base.html' %}
+{% load textbook_tags profile_tags %}
+
+{% block title %}{{ quiz.title }}: срез{% endblock title %}
+
+{% block content %}
+{% comment %}
+Срез глазами учителя: строка – ученик, столбец – номер задания. Задачи у
+учеников разные (по одной случайной на номер), поэтому столбец – номер, а не
+задача. Фамилия сдавшего ведёт на итог его попытки – с условием и ответами.
+Считает ege_check_report_view.
+{% endcomment %}
+<div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+    <a href="{% url 'ege:ege_list' %}"
+       class="inline-flex items-center gap-1 text-sm text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200 mb-4">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+        </svg>
+        Тренажёр
+    </a>
+
+    <div class="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+            <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">{{ quiz.title }}</h1>
+            <p class="text-base text-gray-500 dark:text-slate-400 mt-1">
+                Срез · задания {{ numbers|join:", " }} · {{ quiz.questions.count }} задач{{ quiz.questions.count|plural:"а,и," }} в пачке
+            </p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+            <a href="{% url 'ege:ege_check_tasks' quiz.id %}"
+               class="px-4 py-2 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-medium text-gray-700 dark:text-slate-200 hover:border-brand-400">
+                Задачи среза
+            </a>
+            {% comment %}
+            Учитель проходит срез как ученик: та же сессия, таймер и вид задач.
+            Попыток сколько угодно, в отчёт они не попадают.
+            {% endcomment %}
+            <form method="post" action="{% url 'ege:ege_check_start' quiz.id %}">
+                {% csrf_token %}
+                <button type="submit" class="px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700">
+                    Пройти как ученик
+                </button>
+            </form>
+        </div>
+    </div>
+
+    {% comment %}
+    Назначение. Окно у каждого класса своё и живёт только здесь – своих дат
+    у среза нет. Задачи уходят в общий банк, когда закрылось последнее окно.
+    {% endcomment %}
+    <section class="mb-8 rounded-xl border border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800 p-4">
+        <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-3">Назначение</h2>
+
+        {% if assignments %}
+        <ul class="divide-y divide-gray-100 dark:divide-slate-700 mb-4">
+            {% for a in assignments %}
+            <li class="flex flex-wrap items-center justify-between gap-3 py-2">
+                <div class="text-sm">
+                    <span class="font-medium text-gray-900 dark:text-white">{% if a.group %}{{ a.group.name }}{% else %}{{ a.user|surname_first }}{% endif %}</span>
+                    <span class="text-gray-500 dark:text-slate-400">
+                        · {{ a.start_date|date:"j E, H:i"|default:"сразу" }} – {{ a.end_date|date:"j E, H:i"|default:"без конца" }}
+                    </span>
+                    <span class="ml-1 px-2 py-0.5 rounded text-xs font-medium
+                        {% if a.state == 'open' %}bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300
+                        {% elif a.state == 'done' %}bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400
+                        {% else %}bg-brand-50 dark:bg-cyan-950/30 text-brand-700 dark:text-cyan-400{% endif %}">
+                        {% if a.state == 'open' %}идёт{% elif a.state == 'done' %}закончился{% else %}впереди{% endif %}
+                    </span>
+                </div>
+                <form method="post" action="{% url 'ege:ege_check_assign' quiz.id %}"
+                      onsubmit="return confirm('Снять назначение? Уже сданные работы останутся в отчёте.')">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="remove">
+                    <input type="hidden" name="assignment" value="{{ a.id }}">
+                    <button type="submit" class="text-sm text-red-600 dark:text-red-400 hover:underline">Снять</button>
+                </form>
+            </li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+
+        {% comment %}
+        Класс, который уже назначен, в списке не предлагается: его окно правят,
+        сняв назначение и назначив заново. Иначе одна форма молча переписала
+        бы день, который ученики уже знают.
+        {% endcomment %}
+        {% if free_groups %}
+        <form method="post" action="{% url 'ege:ege_check_assign' quiz.id %}"
+              class="flex flex-wrap items-end gap-3 text-sm">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="assign">
+            <label class="flex flex-col gap-1 text-gray-500 dark:text-slate-400">Класс
+                <select name="group" required
+                        class="px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white">
+                    {% for group in free_groups %}<option value="{{ group.id }}">{{ group.name }}</option>{% endfor %}
+                </select>
+            </label>
+            <label class="flex flex-col gap-1 text-gray-500 dark:text-slate-400">Начало
+                <input type="datetime-local" name="start" required
+                       class="px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white">
+            </label>
+            <label class="flex flex-col gap-1 text-gray-500 dark:text-slate-400">Конец
+                <input type="datetime-local" name="end" required
+                       class="px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white">
+            </label>
+            <button type="submit" class="px-4 py-2 rounded-lg bg-brand-600 text-white font-medium hover:bg-brand-700">Назначить</button>
+        </form>
+        {% endif %}
+
+        <form method="post" action="{% url 'ege:ege_check_assign' quiz.id %}"
+              class="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-gray-100 dark:border-slate-700 text-sm text-gray-500 dark:text-slate-400">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="minutes">
+            На работу
+            <input type="number" name="minutes" min="1" max="235" value="{{ quiz.check_minutes|default:'' }}" placeholder="{{ quiz.check_duration }}"
+                   class="w-20 px-2 py-1 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white">
+            мин{% if not quiz.check_minutes %} (сейчас по нормативу ЕГЭ){% endif %}
+            <button type="submit" class="px-3 py-1 rounded-lg border border-gray-200 dark:border-slate-600 hover:border-brand-400">Сохранить</button>
+        </form>
+
+        <p class="text-sm text-gray-500 dark:text-slate-400 mt-3">
+            {% if released %}Все окна закрылись: задачи среза теперь в общем банке, ошибки – в «Работе над ошибками».
+            {% else %}Пока не закрылось последнее окно, задачи среза не видны в тренировке, верные ответы и «Решения других» закрыты.{% endif %}
+            Сдали: {{ written }}.
+        </p>
+    </section>
+
+    {% include 'quizzes/_ege_group_tabs.html' %}
+
+    <div class="overflow-x-auto rounded-xl border border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-gray-100 dark:border-slate-700 text-left">
+                    <th class="px-4 py-3 font-medium text-gray-500 dark:text-slate-400">Ученик</th>
+                    {% for n in numbers %}
+                    <th class="px-3 py-3 font-medium text-gray-500 dark:text-slate-400 text-center">№ {{ n }}</th>
+                    {% endfor %}
+                    <th class="px-3 py-3 font-medium text-gray-500 dark:text-slate-400 text-center">Балл</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr class="border-b border-gray-50 dark:border-slate-700/50 last:border-0 hover:bg-gray-50 dark:hover:bg-slate-700/30">
+                    <td class="px-4 py-2.5">
+                        {% if row.session and row.session.is_finished %}
+                        <a href="{% url 'ege:ege_practice_result' row.session.pk %}"
+                           class="font-medium text-gray-900 dark:text-white hover:text-brand-600 dark:hover:text-cyan-400">{{ row.user|surname_first }}</a>
+                        {% else %}
+                        <span class="text-gray-700 dark:text-slate-300">{{ row.user|surname_first }}</span>
+                        {% endif %}
+                        <div class="text-xs text-gray-400">
+                            {% if not row.session %}не начинал{% elif not row.session.is_finished %}пишет сейчас{% else %}{{ row.session.finished_at|date:"j E, H:i" }}{% endif %}
+                        </div>
+                    </td>
+                    {% for cell in row.cells %}
+                    <td class="px-3 py-2.5 text-center">
+                        {% if not cell or not row.session.is_finished %}
+                        <span class="text-gray-300 dark:text-slate-600">–</span>
+                        {% else %}
+                        <span class="font-bold
+                            {% if cell.state == 'correct' %}text-emerald-600 dark:text-emerald-400
+                            {% elif cell.state == 'partial' %}text-amber-600 dark:text-amber-400
+                            {% elif cell.state == 'wrong' %}text-red-600 dark:text-red-400
+                            {% else %}text-gray-400{% endif %}">
+                            {% if cell.state == 'correct' %}✓{% elif cell.state == 'partial' %}½{% elif cell.state == 'wrong' %}✗{% else %}–{% endif %}
+                        </span>
+                        {% if cell.mm_ss %}
+                        <div class="text-xs tabular-nums
+                            {% if cell.color == 'green' %}text-emerald-600 dark:text-emerald-400
+                            {% elif cell.color == 'yellow' %}text-amber-600 dark:text-amber-400
+                            {% elif cell.color == 'red' %}text-red-600 dark:text-red-400
+                            {% else %}text-gray-400{% endif %}">{{ cell.mm_ss }}</div>
+                        {% endif %}
+                        {% endif %}
+                    </td>
+                    {% endfor %}
+                    <td class="px-3 py-2.5 text-center tabular-nums font-medium text-gray-900 dark:text-white">
+                        {% if row.session.is_finished %}{{ row.primary }}<span class="text-xs text-gray-400"> / {{ max_primary }}</span>{% else %}<span class="text-gray-300 dark:text-slate-600">–</span>{% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="99" class="px-4 py-6 text-center text-gray-400">В этом классе учеников нет</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock content %}

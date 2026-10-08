@@ -14,7 +14,7 @@ from django.db.models import (
 from .ege_constants import (  # noqa: F401
     CLASSROOM_POOL_SIZE, DEFAULT_EXAM_UNLOCK, DEFAULT_TASK_MINUTES,
     EGE_QUIZ_TYPES, EGE_RECOMMENDED_TIME, EXAM_MAX_SIZE, EXAM_MINUTES,
-    EXAM_POOL_SIZE, EXCLUDED_KINDS, PRACTICE_QUIZ_TYPES, STUDY_DEFAULT_SIZE,
+    EXAM_POOL_SIZE, EXCLUDED_KINDS, PRACTICE_QUIZ_TYPES, STUDY_DEFAULT_SIZE, practice_pool_q,
     STUDY_MAX_SIZE, STUDY_MINUTES,
 )
 from .models import PracticeItem, PracticeSession, Question
@@ -94,7 +94,7 @@ def bank_queryset(ege_number=None, difficulty=None, include_exam_only=False,
     ученик не встретил эти задачи на тренировке раньше, чем на контрольной.
     Классный набор – чтобы к уроку он пришёл, не прорешав его дома.
     """
-    qs = Question.objects.filter(quiz__quiz_type__in=PRACTICE_QUIZ_TYPES)
+    qs = Question.objects.filter(practice_pool_q())
     if not include_classroom:
         qs = qs.exclude(classroom_only=True)
     if not include_exam_only:
@@ -205,7 +205,7 @@ def mistake_count(user):
         Question.objects
         # Тот же источник, что у pick_mistake_questions: счётчик на кнопке
         # и содержимое сессии обязаны совпадать.
-        .filter(quiz__quiz_type__in=PRACTICE_QUIZ_TYPES)
+        .filter(practice_pool_q())
         .annotate(last_correct=_last_outcome_subquery(user))
         .filter(last_correct=False)
         .count()
@@ -225,7 +225,7 @@ def _seen_in_exams(user, ege_number):
 def classroom_queryset(ege_number):
     """Задачи, отложенные учителем на урок по этому заданию."""
     return Question.objects.filter(
-        quiz__quiz_type__in=PRACTICE_QUIZ_TYPES, ege_number=ege_number,
+        practice_pool_q(), ege_number=ege_number,
         classroom_only=True,
     )
 
@@ -350,7 +350,7 @@ def exam_pool_size(ege_number):
     """Сколько задач лежит в экзаменационном резерве этого задания."""
     return (
         Question.objects
-        .filter(quiz__quiz_type__in=PRACTICE_QUIZ_TYPES, ege_number=ege_number,
+        .filter(practice_pool_q(), ege_number=ege_number,
                 exam_only=True)
         .count()
     )
@@ -684,3 +684,117 @@ def available_counts(ege_number, user=None):
             counts[key] = row['n']
     counts['total'] = counts['base'] + counts['medium'] + counts['high']
     return counts
+
+
+# --- Срезовые работы ---------------------------------------------------------
+
+def window_open(window, now=None):
+    """Идёт ли окно назначения сейчас. Без конца окна срез не открывается."""
+    now = now or timezone.now()
+    return bool(window and window.end_date and now < window.end_date
+                and (window.start_date is None or window.start_date <= now))
+
+
+def check_session(user, quiz):
+    """Последняя попытка ученика по срезу или None."""
+    return (PracticeSession.objects.filter(user=user, check_quiz=quiz)
+            .order_by('-created_at').first())
+
+
+def open_checks(user):
+    """
+    Срезы, которые ученик может писать сейчас: [(срез, его окно, попытка)].
+
+    Окно – назначение (своё или классное, Quiz.check_window): у каждого
+    класса свой день. По попытке хаб решает, что на кнопке: «Начать»,
+    «Продолжить» или «Сдано».
+    """
+    from .models import Quiz, QuizAssignment
+
+    if not user.is_authenticated:
+        return []
+    group_id = getattr(getattr(user, 'profile', None), 'group_id', None)
+    now = timezone.now()
+    # Отбор открытых окон – в SQL: хаб открывают каждый день, а срезов за год
+    # набегают десятки, и check_window на каждый прошедший – лишний запрос.
+    # check_window ниже всё равно решает окончательно: личное назначение
+    # может закрыть ученику классное окно.
+    assigned = QuizAssignment.objects.filter(
+        Q(user=user) | Q(group_id=group_id, group__isnull=False),
+        Q(start_date__isnull=True) | Q(start_date__lte=now),
+        end_date__gt=now,
+    ).values('quiz_id')
+    result = []
+    for quiz in Quiz.objects.filter(quiz_type='check', id__in=assigned):
+        window = quiz.check_window(user)
+        if window_open(window, now):
+            result.append((quiz, window, check_session(user, quiz)))
+    result.sort(key=lambda row: row[1].end_date)
+    return result
+
+
+def pick_check_questions(quiz):
+    """
+    По одной случайной задаче среза на каждый номер.
+
+    Связка 19–21 закрывает свои номера целиком: выбрав задачу 19-го, отбор
+    получит 20-е и 21-е той же игры через expand_groups, а не чужой связки.
+    """
+    picked, covered = [], set()
+    pool = quiz.questions.exclude(ege_number=None)
+    for number in quiz.check_numbers():
+        if number in covered:
+            continue
+        question = pool.filter(ege_number=number).order_by('?').first()
+        if question is None:
+            continue
+        picked.append(question)
+        covered.add(number)
+        if question.group_id:
+            covered.update(pool.filter(group_id=question.group_id)
+                           .values_list('ege_number', flat=True))
+    return expand_groups(picked)
+
+
+def build_check_session(user, quiz):
+    """
+    Сессия среза: экзамен без замка порога и без выбора состава.
+
+    Порог открытия экзамена здесь ни при чём – срез назначает учитель, и тема
+    пройдена на уроке. Номера сессии не ставится: задачи разных заданий, а
+    статистика читает номер у каждой задачи, не у сессии.
+    """
+    questions = pick_check_questions(quiz)
+    if not questions:
+        return None
+    session = PracticeSession.objects.create(
+        user=user, kind='check', mode='exam', check_quiz=quiz,
+    )
+    PracticeItem.objects.bulk_create([
+        PracticeItem(session=session, question=q, order=i)
+        for i, q in enumerate(questions)
+    ])
+    return session
+
+
+def check_code_allowed(user, question):
+    """
+    Принимать ли код по задаче среза: окно закрыто – это уже банк; иначе
+    только из собственной незакрытой попытки, а не перебором question_id.
+    """
+    return check_question_open(user, question, running_only=True)
+
+
+def check_question_open(user, question, running_only=False):
+    """
+    Видит ли ученик задачу среза: срез вышел в банк или задача досталась ему
+    в его собственной попытке. running_only – только в незакрытой (код после
+    сдачи не принимается); файл условия своей задачи можно скачать и после.
+    """
+    if user.is_superuser or question.quiz.check_released():
+        return True
+    items = PracticeItem.objects.filter(
+        session__user=user, session__kind='check', question=question)
+    if running_only:
+        items = items.filter(session__finished_at__isnull=True)
+    return items.exists()

@@ -159,6 +159,11 @@ class EgeTask(models.Model):
         help_text="Сколько задач этого задания нужно решить верно в режиме «Учёба», "
                   "чтобы открылся «Экзамен». 0 – экзамен доступен сразу."
     )
+    covered = models.BooleanField(
+        default=False, verbose_name="Разобрали на уроке",
+        help_text="Пометка учителя для себя: карточка на карте /ege/ закрашена. "
+                  "Ученики её не видят."
+    )
 
     class Meta:
         ordering = ['number']

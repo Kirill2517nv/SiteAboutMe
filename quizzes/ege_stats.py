@@ -23,7 +23,7 @@ from textbook.models import Article, ArticleProgress, EgeTask
 
 from .ege_constants import (  # noqa: F401
     DEFAULT_TASK_MINUTES, EGE_EXAM_MINUTES, EGE_MAX_PRIMARY, EGE_QUIZ_TYPES,
-    EGE_RECOMMENDED_TIME, EGE_TASK_POINTS, EXCLUDED_KINDS, PRACTICE_QUIZ_TYPES,
+    EGE_RECOMMENDED_TIME, EGE_TASK_POINTS, EXCLUDED_KINDS, practice_pool_q,
     ege_mistakes_color, ege_score_color, ege_time_color, test_score_for,
 )
 from .models import (
@@ -149,8 +149,8 @@ def _solved_by_number(user):
     rows = (
         PracticeItem.objects
         .filter(session__user=user, is_correct=True,
-                question__ege_number__isnull=False,
-                question__quiz__quiz_type__in=PRACTICE_QUIZ_TYPES)
+                question__ege_number__isnull=False)
+        .filter(practice_pool_q('question__'))
         .exclude(session__kind__in=EXCLUDED_KINDS)
         # Перенесённый ответ – копия прошлого зачёта, второй раз он не считается.
         .exclude(carried=True)
@@ -325,7 +325,7 @@ def task_stats(user):
     # решённое на экзамене в числителе есть.
     bank_counts = dict(
         Question.objects
-        .filter(quiz__quiz_type__in=PRACTICE_QUIZ_TYPES, ege_number__isnull=False)
+        .filter(practice_pool_q(), ege_number__isnull=False)
         .exclude(classroom_only=True)
         .values_list('ege_number')
         .annotate(n=Count('id'))
@@ -336,7 +336,7 @@ def task_stats(user):
     linked = linked_numbers()
     group_counts = dict(
         Question.objects
-        .filter(quiz__quiz_type__in=PRACTICE_QUIZ_TYPES, ege_number__in=linked)
+        .filter(practice_pool_q(), ege_number__in=linked)
         .exclude(group_id='')
         .exclude(classroom_only=True)
         .values_list('ege_number')
@@ -399,7 +399,7 @@ def linked_numbers():
     """
     return set(
         Question.objects
-        .filter(quiz__quiz_type__in=PRACTICE_QUIZ_TYPES, ege_number__isnull=False)
+        .filter(practice_pool_q(), ege_number__isnull=False)
         .exclude(group_id='')
         .values_list('ege_number', flat=True)
         .distinct()
@@ -1167,8 +1167,8 @@ def _class_mistakes(ids):
     outcomes = {}
     for uid, question_id, correct in (
         PracticeItem.objects
-        .filter(session__user_id__in=ids, answered_at__isnull=False,
-                question__quiz__quiz_type__in=PRACTICE_QUIZ_TYPES)
+        .filter(session__user_id__in=ids, answered_at__isnull=False)
+        .filter(practice_pool_q('question__'))
         .exclude(session__kind__in=EXCLUDED_KINDS)
         .exclude(carried=True)
         .order_by('answered_at')
@@ -1440,7 +1440,7 @@ def task_student_rows(users, numbers):
 
     bank_sizes = dict(
         Question.objects
-        .filter(quiz__quiz_type__in=PRACTICE_QUIZ_TYPES, ege_number__in=numbers)
+        .filter(practice_pool_q(), ege_number__in=numbers)
         .exclude(classroom_only=True)
         .values_list('ege_number').annotate(n=Count('id'))
     )
@@ -1451,7 +1451,11 @@ def task_student_rows(users, numbers):
 
     stats = {uid: {'parts': {n: _part() for n in numbers}, 'study': set(), 'active': None}
              for uid in ids}
-    for uid, qid, quiz_type, mode, number, correct, attempts, answered, seconds in (
+    # Решённое и долг считаются по тренировочному пулу – как _solved_by_number
+    # и mistake_count; срез входит в него, только когда окно закрылось.
+    pool = set(Question.objects.filter(practice_pool_q(), ege_number__in=numbers)
+               .values_list('id', flat=True))
+    for uid, qid, mode, number, correct, attempts, answered, seconds in (
         PracticeItem.objects
         .filter(session__user_id__in=ids, answered_at__isnull=False,
                 question__ege_number__in=numbers,
@@ -1459,7 +1463,7 @@ def task_student_rows(users, numbers):
         .exclude(session__kind__in=EXCLUDED_KINDS)
         .exclude(carried=True)
         .order_by('answered_at')
-        .values_list('session__user_id', 'question_id', 'question__quiz__quiz_type',
+        .values_list('session__user_id', 'question_id',
                      'session__mode', 'question__ege_number', 'is_correct',
                      'attempts', 'answered_at', 'seconds')
     ):
@@ -1472,7 +1476,7 @@ def task_student_rows(users, numbers):
         # Экзамен связки открывают только задачи 19-го – ровно как exam_access.
         if mode == 'study' and correct and number == lead:
             row['study'].add(qid)
-        if quiz_type not in PRACTICE_QUIZ_TYPES:
+        if qid not in pool:
             continue
         part['last'][qid] = correct
         if correct:

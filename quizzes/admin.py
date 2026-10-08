@@ -23,6 +23,7 @@ class QuizRoleFilter(admin.SimpleListFilter):
             ('selfcheck', 'Самопроверка статьи'),
             ('bank', 'Банк ЕГЭ'),
             ('exam', 'Вариант ЕГЭ'),
+            ('check', 'Срез ЕГЭ'),
         )
 
     def queryset(self, request, queryset):
@@ -39,7 +40,7 @@ class QuizRoleFilter(admin.SimpleListFilter):
         if value == 'standard':
             return queryset.filter(**{f'{p}quiz_type': 'standard',
                                       f'{p}is_self_check': False}).exclude(**practicum)
-        if value in ('bank', 'exam'):
+        if value in ('bank', 'exam', 'check'):
             return queryset.filter(**{f'{p}quiz_type': value})
         return queryset
 
@@ -137,11 +138,36 @@ class QuizAdmin(admin.ModelAdmin):
                        'is_self_check')
         }),
         ('ЕГЭ', {
-            'fields': ('quiz_type', 'exam_mode', 'is_public', 'slug'),
+            'fields': ('quiz_type', 'exam_mode', 'is_public', 'slug', 'check_minutes'),
             'classes': ('collapse',),
         }),
     )
     change_form_template = 'admin/quizzes/quiz/change_form.html'
+
+    # Срез назначают на сайте (/ege/checks/<id>/): окно у каждого класса своё и
+    # живёт только в назначении. Даты теста и инлайн назначений здесь были
+    # вторым местом с теми же датами – их и путали.
+    def _is_check(self, obj):
+        return obj is not None and obj.quiz_type == 'check'
+
+    def get_fieldsets(self, request, obj=None):
+        if not self._is_check(obj):
+            return self.fieldsets
+        return ((None, {
+            'fields': ('title', 'description', 'quiz_type', 'slug', 'check_page'),
+        }),)
+
+    def get_readonly_fields(self, request, obj=None):
+        return ('check_page',) if self._is_check(obj) else ()
+
+    def get_inlines(self, request, obj):
+        return [QuestionInline] if self._is_check(obj) else self.inlines
+
+    @admin.display(description='Назначение и отчёт')
+    def check_page(self, obj):
+        from django.utils.html import format_html
+        url = reverse('ege:ege_check_report', args=[obj.id])
+        return format_html('<a href="{}">Открыть страницу среза на сайте</a>', url)
 
     def get_urls(self):
         urls = super().get_urls()

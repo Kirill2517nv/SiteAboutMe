@@ -1,0 +1,54 @@
+{% comment %}
+Срезы на хабе. Ученику – назначенные и открытые сейчас, с одной кнопкой:
+«Начать» / «Продолжить» / «Итог» (попытка одна). Учителю – последние срезы
+со ссылкой на отчёт. Отдельной вкладки нет: ученику срез нужен в тот день,
+когда он идёт, а не как раздел, в который надо зайти.
+{% endcomment %}
+{% if checks %}
+<div class="space-y-3 mb-8">
+    {% for quiz, window, session in checks %}
+    {% with minutes=quiz.check_duration %}
+    <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brand-200 dark:border-cyan-800 bg-brand-50 dark:bg-cyan-950/30 p-4">
+        <div class="min-w-0">
+            <div class="text-xs font-medium uppercase tracking-wide text-brand-700 dark:text-cyan-400">Срез</div>
+            <div class="text-xl font-bold text-gray-900 dark:text-white">{{ quiz.title }}</div>
+            <div class="text-sm text-gray-600 dark:text-slate-400">
+                Задания {{ quiz.check_numbers|join:", " }} · {{ minutes }} мин · до {{ window.end_date|date:"j E, H:i" }}
+            </div>
+        </div>
+        {% if session and session.is_finished %}
+        <a href="{% url 'ege:ege_practice_result' session.pk %}"
+           class="px-5 py-2.5 rounded-lg bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-200 font-medium hover:border-brand-400">
+            Сдано – итог
+        </a>
+        {% elif session %}
+        <a href="{% url 'ege:ege_practice' session.pk %}"
+           class="px-5 py-2.5 rounded-lg bg-brand-600 text-white font-medium hover:bg-brand-700">
+            Продолжить
+        </a>
+        {% else %}
+        <form method="post" action="{% url 'ege:ege_check_start' quiz.id %}"
+              onsubmit="return confirm('Срез пишется один раз, таймер {{ minutes }} мин пойдёт сразу. Начать?')">
+            {% csrf_token %}
+            <button type="submit" class="px-5 py-2.5 rounded-lg bg-brand-600 text-white font-medium hover:bg-brand-700">
+                Начать
+            </button>
+        </form>
+        {% endif %}
+    </div>
+    {% endwith %}
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if teacher_checks %}
+<div class="flex flex-wrap items-center gap-2 mb-6 text-sm">
+    <span class="text-gray-500 dark:text-slate-400">Срезы:</span>
+    {% for quiz in teacher_checks %}
+    <a href="{% url 'ege:ege_check_report' quiz.id %}"
+       class="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-700 dark:text-slate-300 hover:border-brand-400">
+        {{ quiz.title }}
+    </a>
+    {% endfor %}
+</div>
+{% endif %}

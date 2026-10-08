@@ -23,7 +23,7 @@ VISIBILITY_VALUES = {value for value, _ in Profile.NAME_VISIBILITY_CHOICES}
 def _back_link(question):
     """Откуда пришли в галерею: банк – архив решённого, вариант – его таблица, иначе – тест."""
     quiz = question.quiz
-    if quiz.quiz_type == 'bank' and question.ege_number:
+    if quiz.quiz_type in ('bank', 'check') and question.ege_number:
         return reverse('ege:ege_solved', args=[question.ege_number]), f'Задание {question.ege_number}'
     if quiz.quiz_type == 'exam':
         return reverse('ege:ege_results', args=[quiz.id]), 'Результаты варианта'

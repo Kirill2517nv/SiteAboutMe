@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+{% load textbook_tags %}
+
+{% block title %}{{ quiz.title }}: задачи{% endblock title %}
+
+{% block content %}
+{% comment %}
+Все задачи среза с ответами – вычитать перед уроком. Условие рисует тот же
+_ege_question_body.html, что и сессия ученика, ответ – _ege_answer_body.html:
+кривая таблица или потерянная картинка видны здесь ровно так, как их увидит
+ученик. Ширина колонки та же (p-6), что у карточки задачи в сессии.
+{% endcomment %}
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+    <a href="{% url 'ege:ege_check_report' quiz.id %}"
+       class="inline-flex items-center gap-1 text-sm text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200 mb-4">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+        </svg>
+        К срезу
+    </a>
+
+    <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">{{ quiz.title }}: задачи</h1>
+    <p class="text-base text-gray-500 dark:text-slate-400 mt-1 mb-8">
+        Ученик получает по одной случайной задаче на номер. Ответы видны только учителю.
+    </p>
+
+    {% for number, questions in blocks %}
+    <section class="mb-10">
+        <div class="flex items-center gap-3 mb-3">
+            <h2 class="text-xl font-bold text-gray-900 dark:text-white">Задание {{ number }}</h2>
+            <span class="text-sm text-gray-400 dark:text-slate-500">{{ questions|length }} задач{{ questions|length|plural:"а,и," }}</span>
+            <div class="flex-1 h-px bg-gray-200 dark:bg-slate-700"></div>
+        </div>
+        <div class="space-y-4">
+            {% for question in questions %}
+            <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 p-6">
+                {% include 'quizzes/_ege_question_body.html' with question=question %}
+                <div class="mt-4 rounded-lg border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-900/20 p-3 text-sm">
+                    {% include 'quizzes/_ege_answer_body.html' with question=question %}
+                </div>
+                {% if question.source_url %}
+                <a href="{{ question.source_url }}" target="_blank" rel="noopener"
+                   class="inline-block mt-3 text-xs text-gray-400 hover:text-brand-600">Оригинал на источнике</a>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% empty %}
+    <p class="text-gray-500 dark:text-slate-400">В срезе нет задач.</p>
+    {% endfor %}
+</div>
+{% endblock content %}
+
+{% block pre_alpine_js %}{% include 'quizzes/_mathjax.html' %}{% endblock pre_alpine_js %}

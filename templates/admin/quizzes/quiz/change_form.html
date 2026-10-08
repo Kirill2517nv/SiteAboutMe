@@ -2,7 +2,10 @@
 {% load i18n %}
 
 {% block object-tools-items %}
-    {% if original %}
+    {% if original.quiz_type == 'check' %}
+    {# Срез назначают на сайте: окно у каждого класса своё #}
+    <li><a href="{% url 'ege:ege_check_report' original.pk %}">Назначение среза</a></li>
+    {% elif original %}
     <li>
         <a href="{% url 'admin:quizzes_quiz_bulk_assign' original.pk %}">Назначить нескольким ученикам</a>
     </li>

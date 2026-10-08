@@ -56,7 +56,14 @@ def solved_question_ids(user, question_ids):
 
 
 def can_view(user, question):
-    return user.is_superuser or question.id in solved_question_ids(user, [question.id])
+    if user.is_superuser:
+        return True
+    # Задача среза до конца окна: сдавший первым прочёл бы чужой код, пока
+    # одноклассники ещё пишут ту же задачу.
+    if question.quiz.quiz_type == 'check':
+        if not question.quiz.check_released():
+            return False
+    return question.id in solved_question_ids(user, [question.id])
 
 
 def full_name(user):
