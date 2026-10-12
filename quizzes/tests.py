@@ -4093,3 +4093,30 @@ class CheckWorkTests(TestCase):
         finally:
             os.unlink(f.name)
         self.assertFalse(Quiz.objects.filter(slug='check-2').exists())
+
+
+class KompegeImagesTests(TestCase):
+    """Картинка, которую парсер выбросил вместе с местом в тексте, встаёт
+    после фразы, стоящей перед ней в оригинале, а файл ложится рядом с
+    картинками load_ege."""
+
+    GIF = 'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+
+    def test_restores_lost_data_image(self):
+        import tempfile
+        from unittest import mock
+        from django.core.management import call_command
+        quiz = Quiz.objects.create(title='Банк 12', quiz_type='bank')
+        q = Question.objects.create(
+            quiz=quiz, ege_number=12, question_type='text', external_id='kompege-12-1',
+            text='Программа работы исполнителя:\n\nПосле выполнения программы ответ.')
+        source = ('<p>Программа работы исполнителя:<br /><img src="data:image/gif;base64,'
+                  f'{self.GIF}" /></p><p>После выполнения программы ответ.</p>')
+        api = mock.Mock(**{'json.return_value': {'text': source}})
+        with override_settings(MEDIA_ROOT=tempfile.mkdtemp()), \
+                mock.patch('quizzes.management.commands.kompege_images.requests.get', return_value=api):
+            call_command('kompege_images', '12', stdout=mock.Mock())
+            call_command('kompege_images', '12', stdout=mock.Mock())  # повтор ничего не дублирует
+        q.refresh_from_db()
+        self.assertEqual(q.text, 'Программа работы исполнителя:\n\n[img:1]\n\nПосле выполнения программы ответ.')
+        self.assertEqual([i.image.name for i in q.images.all()], ['ege/bank-12/images/bank-12_1_12_1.gif'])

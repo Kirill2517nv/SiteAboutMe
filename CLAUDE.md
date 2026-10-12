@@ -24,6 +24,7 @@ python manage.py seed_ege_theory_17      # Fill one EGE theory article (one comm
 python manage.py recalc_ege_difficulty --dry-run   # Recompute Question.solve_rate from real success rate
 python manage.py retag_ege --from 2 --to 5 --dry-run   # Codifier changed: move/archive/delete questions of one EGE task
 python manage.py mark_exam_pool --dry-run              # Fill the exam-only reserve (Question.exam_only)
+python manage.py kompege_images 12 --dry-run           # Докачать с kompege картинки, потерянные парсером (data:-URI, чужой хост)
 python manage.py ege_pools --dump fixtures/ege-pools.json   # Snapshot pools + EgeTask settings (dev → prod, see docs/ege-bank-deploy.md)
 python manage.py ege_pools --load fixtures/ege-pools.json --dry-run
 python manage.py seed_textbook_structure       # Textbook skeleton: 21 sections + article titles (idempotent); content – seed_textbook_block<N> (1–13)
