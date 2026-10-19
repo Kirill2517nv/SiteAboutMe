@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Ежедневный бэкап боевой базы (основная – lbm-srv, через Tailscale) на этот
-# компьютер, хранится 10 последних.
-# Запускается Планировщиком Windows через Git Bash (PowerShell 5.1 портит
-# двоичный вывод при перенаправлении в файл).
+# Ежедневный бэкап боевой базы (основная – lbm-srv) на ноутбук, хранится 10
+# последних. Запускается кроном пользователя admin на ноутбуке, дамп идёт через
+# Tailscale. Бэкап лежит не на той машине, где основная база: смерть lbm-srv
+# его не заберёт. С dev тоже работает: BACKUP_DIR=... bash scripts/backup-prod-db.sh
 #
 # Дамп пишется во временный файл и становится настоящим только после проверки:
 # оборванное соединение не должно вытеснить из ротации исправную копию.
 set -euo pipefail
 
-DEST="${BACKUP_DIR:-/c/Users/Kirill/Backups/site-db}"
+DEST="${BACKUP_DIR:-/home/admin/backups/site-db}"
 KEEP=10
 mkdir -p "$DEST"
 
@@ -17,7 +17,7 @@ tmp="$out.part"
 
 # Реквизиты базы берутся из настроек Django на сервере – тот же источник, что у сайта,
 # и пароль не покидает сервер. pg_dump только читает базу.
-ssh -o BatchMode=yes -o ConnectTimeout=20 lih@lbm-srv \
+ssh -o BatchMode=yes -o ConnectTimeout=20 lih@100.65.27.51 \
   'cd /home/lih/siteSchool && venv/bin/python -c "
 import os, django
 os.environ.setdefault(\"DJANGO_SETTINGS_MODULE\", \"config.settings\")

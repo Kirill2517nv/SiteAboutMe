@@ -124,9 +124,31 @@ lbm-srv получает полный деплой: `git pull`, `pip`, `migrate`
 
 ## Бэкап
 
-Бэкап – `scripts/backup-prod-db.sh` на dev, запускается Планировщиком Windows.
-Дамп снимается с основной базы на lbm-srv через Tailscale (`ssh lih@lbm-srv`) и
-хранится в `C:\Users\Kirill\Backups\site-db`: десять последних копий.
+Бэкап – `scripts/backup-prod-db.sh` на ноутбуке, крон пользователя admin раз в
+сутки (20:00 UTC = 03:00 по Новосибирску). Дамп снимается с основной базы на
+lbm-srv через Tailscale (`ssh lih@100.65.27.51`) и хранится в
+`/home/admin/backups/site-db`: десять последних копий, журнал – `backup.log`
+там же. Реплика бэкап не заменяет: случайный `DELETE` она повторит через
+миллисекунды.
+
+```bash
+ssh admin@192.168.1.199 -p 2222 'tail -3 /home/admin/backups/site-db/backup.log'
+```
+
+Во время аварии (lbm-srv лежит) крон пишет в журнал FAIL – основная база тогда
+на самом ноутбуке, дамп снимать руками: `sudo -u postgres pg_dump -Fc siteschool`.
+
+## Часы lbm-srv
+
+Сервер стоит в чужой сети, и NTP-сервер, который отдаёт эта сеть, timesyncd
+отвергает (`Server has too large root distance`). Без синхронизации часы lbm-srv
+ушли на 7 часов вперёд – дедлайны экзаменов и окна срезов считались от неверного
+«сейчас». Серверы времени заданы явно в
+`/etc/systemd/timesyncd.conf.d/siteschool.conf`. Проверка:
+
+```bash
+ssh lih@lbm-srv 'timedatectl | grep synchronized'   # должно быть yes
+```
 
 ## Проверка реплики
 
