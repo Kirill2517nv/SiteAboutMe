@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Ежедневный бэкап боевой базы на этот компьютер, хранится 10 последних.
+# Ежедневный бэкап боевой базы (основная – lbm-srv, через Tailscale) на этот
+# компьютер, хранится 10 последних.
 # Запускается Планировщиком Windows через Git Bash (PowerShell 5.1 портит
 # двоичный вывод при перенаправлении в файл).
 #
@@ -16,8 +17,8 @@ tmp="$out.part"
 
 # Реквизиты базы берутся из настроек Django на сервере – тот же источник, что у сайта,
 # и пароль не покидает сервер. pg_dump только читает базу.
-ssh -o BatchMode=yes -o ConnectTimeout=20 -p 2222 admin@192.168.1.199 \
-  'cd /home/admin/site && venv/bin/python -c "
+ssh -o BatchMode=yes -o ConnectTimeout=20 lih@lbm-srv \
+  'cd /home/lih/siteSchool && venv/bin/python -c "
 import os, django
 os.environ.setdefault(\"DJANGO_SETTINGS_MODULE\", \"config.settings\")
 django.setup()
