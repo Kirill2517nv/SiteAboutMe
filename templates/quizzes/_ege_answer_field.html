@@ -1,0 +1,55 @@
+{% comment %}Поле ответа задачи ЕГЭ (answer-table.js): одно поле или таблица по форме эталона. key – выражение Alpine с ключом задачи. Компонент страницы держит answers и методы answerShapeOf, answerLocked, answerWrong, answerInput, answerEnter, answerBlur – у сессии и у варианта они свои.{% endcomment %}
+<div x-data="answerTable(answerShapeOf({{ key }}))" x-modelable="answerValue" x-model="answers[{{ key }}]"
+     @input="$nextTick(() => answerInput({{ key }}))" @focusout="answerBlur({{ key }})">
+    <template x-if="!answerShape">
+        <input type="text" x-model="answerValue" autocomplete="off"
+               @keydown.enter.prevent="answerEnter({{ key }})"
+               :disabled="answerLocked({{ key }})"
+               class="w-full max-w-md px-4 py-2.5 border rounded-lg focus:ring-2 transition-colors dark:bg-slate-900 dark:text-white disabled:opacity-60"
+               :class="answerWrong({{ key }})
+                   ? 'border-red-400 bg-red-50 dark:bg-red-900/20 focus:ring-red-500'
+                   : 'border-gray-300 dark:border-slate-600 focus:ring-brand-500 focus:border-brand-500'"
+               placeholder="Введите ответ...">
+    </template>
+    <template x-if="answerShape">
+        <div>
+            {% comment %}w-fit: рамка обнимает таблицу, а не тянется по ширине подписи под ней.{% endcomment %}
+            <div class="w-fit max-w-full overflow-x-auto rounded-lg border"
+                 :class="answerWrong({{ key }}) ? 'border-red-400' : 'border-gray-300 dark:border-slate-600'">
+                <table class="text-sm text-center border-collapse">
+                    <thead>
+                        <tr class="bg-slate-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300">
+                            <th class="w-10 border-b border-gray-300 dark:border-slate-600"></th>
+                            <template x-for="c in answerShape[1]" :key="c">
+                                <th class="px-3 py-1.5 font-medium border-b border-l border-gray-300 dark:border-slate-600" x-text="c"></th>
+                            </template>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="(row, r) in answerCells" :key="r">
+                            <tr>
+                                <th class="w-10 bg-slate-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300 font-medium border-t border-gray-300 dark:border-slate-600" x-text="r + 1"></th>
+                                <template x-for="(cell, c) in row" :key="c">
+                                    <td class="border-t border-l border-gray-300 dark:border-slate-600 p-0">
+                                        <input type="text" autocomplete="off" inputmode="numeric"
+                                               x-model="answerCells[r][c]" @input="answerSync()"
+                                               @paste="answerPaste($event, r, c)"
+                                               @keydown.enter.prevent="answerEnter({{ key }})"
+                                               :disabled="answerLocked({{ key }})"
+                                               :aria-label="'Строка ' + (r + 1) + ', столбец ' + (c + 1)"
+                                               class="w-28 px-2 py-1.5 text-center bg-white dark:bg-slate-900 dark:text-white border-0 focus:ring-2 focus:ring-inset focus:ring-brand-500 disabled:opacity-60">
+                                    </td>
+                                </template>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5 text-xs text-gray-500 dark:text-slate-400">
+                <button type="button" @click="answerClear(); answerInput({{ key }})" x-show="!answerLocked({{ key }})"
+                        class="px-2.5 py-1 rounded-md border border-gray-300 dark:border-slate-600 hover:border-red-400 hover:text-red-600 dark:hover:text-red-400 transition-colors">Очистить</button>
+                <span>Можно вставить вывод программы целиком – числа разойдутся по ячейкам.</span>
+            </div>
+        </div>
+    </template>
+</div>

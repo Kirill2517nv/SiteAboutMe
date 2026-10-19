@@ -16,6 +16,8 @@ app.autodiscover_tasks()
 # Configure queue for code execution tasks
 app.conf.task_routes = {
     'quizzes.tasks.check_code_task': {'queue': 'code_execution'},
+    # «Запустить» – та же песочница, тот же воркер с Docker.
+    'quizzes.tasks.run_code_task': {'queue': 'code_execution'},
 }
 
 # Default queue for other tasks

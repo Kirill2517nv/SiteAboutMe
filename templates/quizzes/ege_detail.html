@@ -170,26 +170,30 @@
                 {% endfor %}
 
                 <!-- Answer input -->
-                {% if question.question_type == 'text' %}
+                {% if question.question_type == 'code' %}
+                <div class="mt-4">
+                    <div class="flex items-center justify-between gap-3 mb-2">
+                        <span class="text-sm font-medium text-gray-700 dark:text-slate-300">Код:</span>
+                        {% include 'quizzes/_code_lang_switch.html' with key=question.id %}
+                    </div>
+                    <div id="codemirror-wrap-{{ question.id }}"></div>
+                    {% include 'quizzes/_ege_code_run.html' with question_id=question.id key=question.id %}
+                </div>
+                {% endif %}
+                {% if question.question_type == 'text' or question.question_type == 'code' %}
                 <div class="mt-4">
                     <label class="block text-sm font-medium text-gray-700 mb-2">Ответ:</label>
-                    <input type="text"
-                           x-model="answers[{{ question.id }}]"
-                           autocomplete="off"
-                           @input="onAnswerChange({{ question.id }})"
-                           class="w-full max-w-md px-4 py-2.5 border rounded-lg focus:ring-2 transition-colors"
-                           :class="checkResults[{{ question.id }}] === false
-                               ? 'border-red-400 bg-red-50 text-red-700 focus:ring-red-500 focus:border-red-500'
-                               : 'border-gray-300 focus:ring-brand-500 focus:border-brand-500'"
-                           placeholder="Введите ответ..."
-                           :disabled="isExam && tasks.find(t => t.id === {{ question.id }})?.is_solved">
+                    {% include 'quizzes/_ege_answer_field.html' with key=question.id %}
                     {% if quiz.exam_mode == 'practice' %}
                     <button @click="checkAnswer({{ question.id }})"
-                            :disabled="!answers[{{ question.id }}] || checkingAnswer === {{ question.id }}"
+                            :disabled="!(answers[{{ question.id }}] || '').trim() || checkingAnswer === {{ question.id }}"
                             class="mt-3 px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-                        <span x-show="checkingAnswer !== {{ question.id }}">Проверить</span>
+                        <span x-show="checkingAnswer !== {{ question.id }}">Проверить ответ</span>
                         <span x-show="checkingAnswer === {{ question.id }}">Проверяю...</span>
                     </button>
+                    {% if question.question_type == 'code' %}
+                    <span class="ml-2 text-xs text-gray-400">Код из редактора сохранится вместе с ответом.</span>
+                    {% endif %}
                     {% endif %}
                     <!-- Check result -->
                     <div x-show="checkResults[{{ question.id }}] !== undefined" x-cloak class="mt-3">
@@ -200,89 +204,6 @@
                         <div x-show="checkResults[{{ question.id }}] === false" class="code-status failed">
                             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                             Неверно. Попробуйте ещё раз.
-                        </div>
-                    </div>
-                </div>
-                {% elif question.question_type == 'code' %}
-                <div class="mt-4">
-                    <div class="flex items-center justify-between gap-3 mb-2">
-                        <span class="text-sm font-medium text-gray-700 dark:text-slate-300">Код:</span>
-                        {% include 'quizzes/_code_lang_switch.html' with key=question.id %}
-                    </div>
-                    <div id="codemirror-wrap-{{ question.id }}"></div>
-
-                    {% if quiz.exam_mode == 'practice' %}
-                    <button @click="submitCode({{ question.id }})"
-                            :disabled="codeStatuses[{{ question.id }}] === 'pending' || codeStatuses[{{ question.id }}] === 'running'"
-                            class="mt-3 px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-                        <span x-show="codeStatuses[{{ question.id }}] !== 'pending' && codeStatuses[{{ question.id }}] !== 'running'">Проверить решение</span>
-                        <span x-show="codeStatuses[{{ question.id }}] === 'pending' || codeStatuses[{{ question.id }}] === 'running'" class="flex items-center gap-2">
-                            <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
-                            Проверяю...
-                        </span>
-                    </button>
-                    <button type="button" x-show="codeStatuses[{{ question.id }}] === 'pending' || codeStatuses[{{ question.id }}] === 'running'" x-cloak
-                            @click="codeChecker.stopSubmission({{ question.id }})"
-                            class="mt-3 ml-2 px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors">
-                        Остановить
-                    </button>
-                    {% endif %}
-
-                    <!-- Code status -->
-                    <div x-show="codeStatuses[{{ question.id }}]" x-cloak class="mt-3">
-                        <div x-show="codeStatuses[{{ question.id }}] === 'pending' || codeStatuses[{{ question.id }}] === 'running'" class="code-status pending">
-                            <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
-                            Код проверяется...
-                        </div>
-                        <div x-show="codeStatuses[{{ question.id }}] === 'success'" class="code-status success">
-                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                            Все тесты пройдены!
-                        </div>
-                        <div x-show="codeStatuses[{{ question.id }}] === 'failed'" class="code-status failed">
-                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-                            <span class="min-w-0 font-mono whitespace-pre-wrap break-words" x-text="codeErrors[{{ question.id }}] || 'Тесты не пройдены'"></span>
-                        </div>
-                        <div x-show="codeStatuses[{{ question.id }}] === 'error'" class="code-status error">
-                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
-                            <span x-text="codeErrors[{{ question.id }}] || 'Системная ошибка'"></span>
-                        </div>
-                        <!-- Performance metrics: current + best -->
-                        <div x-show="codeMetrics[{{ question.id }}] && (codeMetrics[{{ question.id }}]?.cpu_time_ms != null || codeMetrics[{{ question.id }}]?.memory_kb != null)"
-                             x-cloak class="mt-3 rounded-lg border border-gray-100 bg-gray-50 p-3 text-xs">
-                            <!-- Current attempt -->
-                            <div class="flex items-center gap-4 text-gray-600">
-                                <span class="font-medium text-gray-500 w-28">Текущая попытка</span>
-                                <span x-show="codeMetrics[{{ question.id }}]?.cpu_time_ms != null" class="flex items-center gap-1">
-                                    <svg class="w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                                    <span x-text="formatCpuTime(codeMetrics[{{ question.id }}]?.cpu_time_ms)"></span>
-                                </span>
-                                <span x-show="codeMetrics[{{ question.id }}]?.memory_kb != null" class="flex items-center gap-1">
-                                    <svg class="w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
-                                    <span x-text="formatMemory(codeMetrics[{{ question.id }}]?.memory_kb)"></span>
-                                </span>
-                            </div>
-                            <!-- Best result -->
-                            <template x-if="getBestMetrics({{ question.id }})">
-                                <div class="flex items-center gap-4 text-green-700 mt-1.5 pt-1.5 border-t border-gray-200">
-                                    <span class="font-medium text-green-600 w-28">Лучший результат</span>
-                                    <span x-show="getBestMetrics({{ question.id }})?.cpu != null" class="flex items-center gap-1">
-                                        <svg class="w-3.5 h-3.5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                                        <span x-text="formatCpuTime(getBestMetrics({{ question.id }})?.cpu)"></span>
-                                        <button x-show="getBestMetrics({{ question.id }})?.has_cpu_code"
-                                                @click="showBestCode({{ question.id }}, 'cpu')"
-                                                class="ml-0.5 text-green-500 hover:text-green-700 underline decoration-dotted"
-                                                title="Посмотреть код лучшей попытки по времени">код</button>
-                                    </span>
-                                    <span x-show="getBestMetrics({{ question.id }})?.mem != null" class="flex items-center gap-1">
-                                        <svg class="w-3.5 h-3.5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
-                                        <span x-text="formatMemory(getBestMetrics({{ question.id }})?.mem)"></span>
-                                        <button x-show="getBestMetrics({{ question.id }})?.has_mem_code"
-                                                @click="showBestCode({{ question.id }}, 'memory')"
-                                                class="ml-0.5 text-green-500 hover:text-green-700 underline decoration-dotted"
-                                                title="Посмотреть код лучшей попытки по памяти">код</button>
-                                    </span>
-                                </div>
-                            </template>
                         </div>
                     </div>
                 </div>
@@ -436,31 +357,6 @@
         </div>
     </div>
 </div>
-<!-- Best code viewer modal -->
-<div x-show="bestCodeModal.show" x-cloak class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-    <div @click.stop class="bg-white rounded-2xl p-6 max-w-2xl w-full shadow-2xl max-h-[80vh] flex flex-col">
-        <div class="flex items-center justify-between mb-3">
-            <h3 class="text-lg font-bold text-gray-900" x-text="bestCodeModal.title"></h3>
-            <button @click="bestCodeModal.show = false" class="text-gray-400 hover:text-gray-600">
-                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-            </button>
-        </div>
-        <div class="text-xs text-gray-500 mb-3" x-text="bestCodeModal.subtitle"></div>
-        <div class="flex-1 overflow-auto rounded-lg border border-gray-200">
-            <pre class="p-4 bg-gray-900 text-gray-100 text-sm font-mono whitespace-pre overflow-x-auto"><code x-text="bestCodeModal.code"></code></pre>
-        </div>
-        <div class="flex justify-end gap-2 mt-4">
-            <button @click="loadBestCode()"
-                    class="px-4 py-2 text-sm font-medium bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors">
-                Вставить в редактор
-            </button>
-            <button @click="bestCodeModal.show = false"
-                    class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
-                Закрыть
-            </button>
-        </div>
-    </div>
-</div>
 </div> <!-- close x-data="egeApp()" -->
 </div> <!-- close x-data="presentMode()" -->
 {% endblock content %}
@@ -472,9 +368,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/clike/clike.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/edit/matchbrackets.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/edit/closebrackets.min.js"></script>
-<!-- Quiz async (WebSocket + code submission) -->
 <script src="{% static 'js/code-lang.js' %}"></script>
-<script src="{% static 'js/quiz-async.js' %}"></script>
+<script src="{% static 'js/answer-table.js' %}"></script>
+<script src="{% static 'js/code-run.js' %}"></script>
 <!-- EGE timer + localStorage -->
 <script src="{% static 'js/ege-timer.js' %}"></script>
 
@@ -487,15 +383,12 @@ function egeApp() {
         answers: {},
         checkResults: {},       // questionId -> true/false (text check results)
         checkingAnswer: null,   // questionId being checked
-        codeStatuses: {},       // questionId -> status string
-        codeErrors: {},         // questionId -> error message
-        codeMetrics: {},        // questionId -> {cpu_time_ms, memory_kb}
+        codes: {},              // questionId -> код; оценивается не он, а ответ
         finishing: false,
         showFinishConfirm: false,
         showSavePrompt: false,
         pendingNavigationUrl: null,
         showMobileSidebar: false,
-        bestCodeModal: { show: false, title: '', subtitle: '', code: '', questionId: null },
         isExam: '{{ quiz.exam_mode }}' === 'exam',
         quizId: {{ quiz.id }},
         csrfToken: '{{ csrf_token }}',
@@ -505,8 +398,8 @@ function egeApp() {
         timerCritical: false,
 
         // Modules
-        codeChecker: null,
         answerStore: null,
+        codeStore: null,
         timeTracker: null,
         egeTimer: null,
         codeMirrors: {},
@@ -515,32 +408,24 @@ function egeApp() {
         init() {
             const lastSubs = {{ last_submissions_json|safe }};
 
-            // Restore code submission statuses and metrics
-            for (const [qid, sub] of Object.entries(lastSubs)) {
-                if (sub.status === 'success' && sub.is_correct) {
-                    this.codeStatuses[qid] = 'success';
-                } else if (sub.status === 'failed') {
-                    this.codeStatuses[qid] = 'failed';
-                } else if (sub.status === 'pending' || sub.status === 'running') {
-                    this.codeStatuses[qid] = sub.status;
-                }
-                if (sub.cpu_time_ms != null || sub.memory_kb != null) {
-                    this.codeMetrics[qid] = {
-                        cpu_time_ms: sub.cpu_time_ms,
-                        memory_kb: sub.memory_kb,
-                    };
+            // Ответы и код – два хранилища. До разделения код лежал среди
+            // ответов: такой черновик переезжает в код, иначе он оказался бы
+            // в поле ответа. Код многострочный, однострочный ответ – нет.
+            this.answerStore = new EgeAnswerStore(this.quizId);
+            this.codeStore = new EgeAnswerStore('codes_' + this.quizId);
+            this.answers = this.answerStore.load();
+            this.codes = this.codeStore.load();
+            for (const task of this.tasks) {
+                const old = String(this.answers[task.id] || '');
+                if (task.type === 'code' && !task.shape && old.includes('\n') && !(task.id in this.codes)) {
+                    this.codes[task.id] = old;
+                    delete this.answers[task.id];
                 }
             }
 
-            // Initialize answer store (localStorage)
-            this.answerStore = new EgeAnswerStore(this.quizId);
-            this.answers = this.answerStore.load();
-
-            // Restore code answers from submissions
+            // Код из последнего снимка, если черновика нет
             for (const [qid, sub] of Object.entries(lastSubs)) {
-                if (sub.code && !this.answers[qid]) {
-                    this.answers[qid] = sub.code;
-                }
+                if (sub.code && !this.codes[qid]) this.codes[qid] = sub.code;
                 this.langs[qid] = sub.language || 'python';
             }
             // Выбор языка в браузере новее последней отправки – как и черновик кода.
@@ -562,13 +447,6 @@ function egeApp() {
                     this.checkResults[task.id] = false;
                 }
             }
-
-            // Code checker (WebSocket) – destroy previous if init() re-runs
-            if (this.codeChecker) this.codeChecker.destroy();
-            this.codeChecker = new QuizCodeChecker(this.quizId, this.csrfToken);
-            this.codeChecker.onStatusChange = (questionId, status, isCorrect, errorLog, cpuTimeMs, memoryKb) => {
-                this.handleCodeStatus(questionId, status, isCorrect, errorLog, cpuTimeMs, memoryKb);
-            };
 
             // Time tracker (destroy previous if init() called twice by Alpine)
             if (this.timeTracker) this.timeTracker.destroy();
@@ -631,6 +509,17 @@ function egeApp() {
 
         _langKey() { return `ege_lang_${this.quizId}`; },
 
+        // Для _ege_answer_field.html и _ege_code_run.html.
+        _task(id) { return this.tasks.find(t => t.id === Number(id)); },
+        answerShapeOf(id) { return this._task(id)?.shape || null; },
+        answerLocked(id) { return this.isExam && !!this._task(id)?.is_solved; },
+        answerWrong(id) { return this.checkResults[id] === false; },
+        answerInput(id) { this.onAnswerChange(id); },
+        answerEnter(id) {},
+        answerBlur(id) {},
+        codeOf(id) { return this.codeMirrors[id] ? Alpine.raw(this.codeMirrors[id]).getValue() : (this.codes[id] || ''); },
+        langOf(id) { return this.langs[id] || 'python'; },
+
         setLang(id, lang) {
             this.langs[id] = lang;
             saveCodeLangs(this._langKey(), this.langs);
@@ -646,7 +535,7 @@ function egeApp() {
             if (oldCmEl) oldCmEl.remove();
 
             const cm = CodeMirror(wrap, {
-                value: this.answers[task.id] || '',
+                value: this.codes[task.id] || '',
                 mode: codeLangMode(this.langs[task.id]),
                 theme: codeLangTheme(this.langs[task.id]),
                 lineNumbers: true,
@@ -658,8 +547,8 @@ function egeApp() {
                 extraKeys: { Tab: (cm) => cm.replaceSelection('    ', 'end') },
             });
             cm.on('change', () => {
-                this.answers[task.id] = cm.getValue();
-                this.answerStore.save(this.answers);
+                this.codes[task.id] = cm.getValue();
+                this.codeStore.save(this.codes);
             });
             this.codeMirrors[task.id] = cm;
             return cm;
@@ -672,7 +561,7 @@ function egeApp() {
             if (this.codeMirrors[task.id]) {
                 // CM5 corrupts internal state after x-show display:none toggle.
                 // Destroy and recreate the instance for a clean state.
-                this.answers[task.id] = this.codeMirrors[task.id].getValue();
+                this.codes[task.id] = this.codeMirrors[task.id].getValue();
                 delete this.codeMirrors[task.id];
             }
 
@@ -710,10 +599,9 @@ function egeApp() {
             const task = this.tasks[i];
             let cls = '';
             if (i === this.currentTask) cls += ' active';
-            if (task.is_solved || this.checkResults[task.id] === true ||
-                (this.codeStatuses[task.id] === 'success')) {
+            if (task.is_solved || this.checkResults[task.id] === true) {
                 cls += ' solved';
-            } else if (this.checkResults[task.id] === false || this.codeStatuses[task.id] === 'failed') {
+            } else if (this.checkResults[task.id] === false) {
                 cls += ' wrong';
             } else if (this.answers[task.id]) {
                 cls += ' answered';
@@ -725,13 +613,13 @@ function egeApp() {
 
         get solvedCount() {
             return this.tasks.filter(t =>
-                t.is_solved || this.checkResults[t.id] === true || this.codeStatuses[t.id] === 'success'
+                t.is_solved || this.checkResults[t.id] === true
             ).length;
         },
 
         get currentScore() {
             return this.tasks.reduce((sum, t) => {
-                if (t.is_solved || this.checkResults[t.id] === true || this.codeStatuses[t.id] === 'success') {
+                if (t.is_solved || this.checkResults[t.id] === true) {
                     return sum + t.points;
                 }
                 return sum;
@@ -741,8 +629,7 @@ function egeApp() {
         get answeredCount() {
             return this.tasks.filter(t =>
                 (this.answers[t.id] && String(this.answers[t.id]).trim()) ||
-                t.is_solved || this.checkResults[t.id] === true ||
-                this.codeStatuses[t.id] === 'success'
+                t.is_solved || this.checkResults[t.id] === true
             ).length;
         },
 
@@ -757,7 +644,11 @@ function egeApp() {
                 const resp = await fetch(`/ege/${this.quizId}/check/`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.csrfToken },
-                    body: JSON.stringify({ question_id: questionId, answer: this.answers[questionId] }),
+                    // Код уходит вместе с ответом – это снимок решения.
+                    body: JSON.stringify({
+                        question_id: questionId, answer: this.answers[questionId],
+                        code: this.codeOf(questionId), language: this.langOf(questionId),
+                    }),
                 });
                 const data = await resp.json();
                 if (resp.ok) {
@@ -771,100 +662,6 @@ function egeApp() {
                 console.error('Check error:', e);
             }
             this.checkingAnswer = null;
-        },
-
-        // Code submission (practice only)
-        async submitCode(questionId) {
-            const code = this.codeMirrors[questionId]?.getValue() || '';
-            if (!code.trim()) return;
-            this.answers[questionId] = code;
-            this.answerStore.save(this.answers);
-            const result = await this.codeChecker.submitCode(questionId, code, this.langs[questionId] || 'python');
-            if (result.error && !result.submission_id) {
-                alert(result.error);
-            }
-        },
-
-        handleCodeStatus(questionId, status, isCorrect, errorLog, cpuTimeMs, memoryKb) {
-            this.codeStatuses[questionId] = status;
-            if (errorLog) this.codeErrors[questionId] = errorLog;
-
-            // Сохраняем метрики текущей попытки
-            if (cpuTimeMs != null || memoryKb != null) {
-                this.codeMetrics[questionId] = {
-                    cpu_time_ms: cpuTimeMs,
-                    memory_kb: memoryKb,
-                };
-            }
-
-            if (status === 'success' && isCorrect) {
-                const task = this.tasks.find(t => t.id === questionId);
-                if (task) {
-                    task.is_solved = true;
-                    // Обновляем лучшие метрики на клиенте (серверная версия обновится в Celery)
-                    const code = this.codeMirrors[questionId]?.getValue() || this.answers[questionId] || '';
-                    if (cpuTimeMs != null && (task.best_cpu_time_ms == null || cpuTimeMs < task.best_cpu_time_ms)) {
-                        task.best_cpu_time_ms = cpuTimeMs;
-                        task.best_cpu_code = code;
-                    }
-                    if (memoryKb != null && (task.best_memory_kb == null || memoryKb < task.best_memory_kb)) {
-                        task.best_memory_kb = memoryKb;
-                        task.best_memory_code = code;
-                    }
-                }
-            }
-        },
-
-        formatCpuTime(ms) {
-            if (ms == null) return '';
-            if (ms >= 1000) return (ms / 1000).toFixed(2) + ' с';
-            if (ms < 1) return '< 1 мс';
-            return ms.toFixed(0) + ' мс';
-        },
-
-        formatMemory(kb) {
-            if (kb == null) return '';
-            return kb < 1024 ? kb + ' КБ' : (kb / 1024).toFixed(1) + ' МБ';
-        },
-
-        getBestMetrics(questionId) {
-            const task = this.tasks.find(t => t.id === questionId);
-            if (!task) return null;
-            const cpu = task.best_cpu_time_ms;
-            const mem = task.best_memory_kb;
-            if (cpu == null && mem == null) return null;
-            return {
-                cpu, mem,
-                has_cpu_code: !!task.best_cpu_code,
-                has_mem_code: !!task.best_memory_code,
-            };
-        },
-
-        showBestCode(questionId, type) {
-            const task = this.tasks.find(t => t.id === questionId);
-            if (!task) return;
-            const isCpu = type === 'cpu';
-            this.bestCodeModal = {
-                show: true,
-                title: isCpu ? 'Лучшая попытка по времени' : 'Лучшая попытка по памяти',
-                subtitle: isCpu
-                    ? `Время: ${this.formatCpuTime(task.best_cpu_time_ms)}`
-                    : `Память: ${this.formatMemory(task.best_memory_kb)}`,
-                code: isCpu ? task.best_cpu_code : task.best_memory_code,
-                questionId,
-            };
-        },
-
-        loadBestCode() {
-            const qid = this.bestCodeModal.questionId;
-            const code = this.bestCodeModal.code;
-            if (!qid || !code) return;
-            this.answers[qid] = code;
-            this.answerStore.save(this.answers);
-            if (this.codeMirrors[qid]) {
-                this.codeMirrors[qid].setValue(code);
-            }
-            this.bestCodeModal.show = false;
         },
 
         // Finish
@@ -884,15 +681,15 @@ function egeApp() {
                 const resp = await fetch(`/ege/${this.quizId}/finish/`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.csrfToken },
-                    body: JSON.stringify({ answers: this.answers, languages: this.langs, force }),
+                    body: JSON.stringify({ answers: this.answers, codes: this.codes, languages: this.langs, force }),
                 });
                 const data = await resp.json();
                 if (data.success) {
                     // Убираем перехватчики перед redirect
                     this._removeInterceptors();
                     this.answerStore.clear();
+                    this.codeStore.clear();
                     if (this.egeTimer) this.egeTimer.stop();
-                    if (this.codeChecker) this.codeChecker.destroy();
                     window.location.href = data.redirect_url;
                 } else {
                     alert(data.error || 'Ошибка при завершении');
@@ -925,7 +722,6 @@ function egeApp() {
         // Cleanup
         destroy() {
             this._removeInterceptors();
-            if (this.codeChecker) this.codeChecker.destroy();
             if (this.timeTracker) this.timeTracker.destroy();
             if (this.egeTimer) this.egeTimer.stop();
         },

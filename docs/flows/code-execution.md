@@ -2,6 +2,14 @@
 
 Async pipeline: клиент → Django → Celery → Docker → WebSocket → клиент.
 
+!!! note "Тренажёр ЕГЭ оценивает ответ, а не вывод"
+    В тренажёре ЕГЭ этот путь используется только для двух вещей: «Запустить»
+    (`run_code_task`, без записи в базу) и фоновый прогон **снимка**
+    (`CodeSubmission` с непустым `answer`). Задачу там оценивает ответ в поле
+    или таблице (`ege_scoring.check_answer`), а не вывод программы. Обычная
+    отправка ниже – практикум учебника и прочие квизы, где задача
+    засчитывается по тестам.
+
 ---
 
 ## Общая архитектура
@@ -190,9 +198,33 @@ sequenceDiagram
 
 Метрики берутся по худшему из прошедших тестов (`max` по времени и по памяти), а не по одному удачному запуску: иначе решение выглядело бы лучше, чем есть. Если задача не засчитана, метрики не сохраняются вовсе (`cpu_time_ms` и `memory_kb` остаются пустыми).
 
+### Режим снимка
+
+Снимок – это `CodeSubmission` с непустым `answer`, созданный
+`tasks.create_snapshot` из тренажёра ЕГЭ. Задачу там уже оценил ответ
+(`ege_scoring.check_answer`), поэтому та же `check_code_task` работает иначе:
+
+- тесты запускаются ради времени, памяти и ответа «программа отработала без
+  ошибки», но вывод с эталоном **не** сравнивается: решение задания 2 честно
+  печатает таблицу истинности;
+- `is_correct` = ответ верный **и** все тесты завершились без ошибки и
+  таймаута;
+- `score` всегда `None` – балл у снимка живёт в `PracticeItem`, `UserAnswer` и
+  `ExamTaskProgress`, а не в отправке;
+- исход задачи снимок не меняет: `update_user_answer_from_submission` и
+  `update_practice_item_from_submission` для него сразу выходят, а
+  `update_exam_progress_from_submission` берёт только рекорды
+  (`best_cpu_time_ms` / `best_memory_kb` и код).
+
+Снимки питают «Решения других», «Похожие решения» и `best_code_metrics`.
+Пустой код снимка не создаёт – ответ без кода законен; тот же код, язык и ответ
+подряд второй раз не сохраняется.
+
 ### Обновление результатов
 
-После проверки кода Celery task обновляет связанные записи:
+После проверки кода Celery task обновляет связанные записи. Для снимка первые
+две функции сразу выходят, третья берёт только рекорды – исход задачи записал
+ответ.
 
 **update_user_answer_from_submission:**
 1. Найти `UserAnswer` связанный с `CodeSubmission`
@@ -245,14 +277,66 @@ flowchart TD
 
 ---
 
+## Запустить (run_code_task)
+
+«Запустить» под редактором в тренажёре ЕГЭ – прогон кода без оценки. Задачу
+оценивает ответ, поэтому черновой запуск не должен попадать ни в статистику,
+ни в галерею, ни в рекорды.
+
+```mermaid
+sequenceDiagram
+    participant B as Браузер
+    participant V as run_code_view / run_stop_view
+    participant R as Redis
+    participant C as run_code_task
+    participant D as Docker
+    participant S as run_status_view
+
+    B->>V: POST /quizzes/question/<id>/run/\n{code, language, stdin}
+    V->>R: SET code-run:<user_id> NX EX 90
+    alt замок занят
+        V-->>B: 409
+    end
+    V->>C: apply_async(task_id=run_id)
+    V-->>B: {token}
+    loop раз в секунду, до 120 опросов
+        B->>S: GET /quizzes/run/<token>/
+        S->>R: AsyncResult(run_id)
+        S-->>B: {status: "running"} или\n{status: "done", output, error, cpu_time_ms, memory_kb}
+    end
+    B->>V: POST /quizzes/run/<token>/stop/
+    V->>D: docker kill по метке submission=run-<run_id>
+```
+
+- `run_code_view` принимает только `question_type='code'` из квизов
+  `quiz_type in ('exam', 'bank', 'check')`; у среза нужен открытый вопрос
+  (`check_question_open`), иначе – `quiz.is_public`. `stdin` обрезается до
+  10 000 символов.
+- Один запуск на ученика за раз: замок в Redis (`code-run:<user_id>`, `SET NX`,
+  90 секунд) снимает сама задача; второй запуск получает 409. Redis или очередь
+  недоступны – 503.
+- Токен – `django.core.signing` (salt `code-run`) со списком `[run_id, user_id]`,
+  живёт час: чужой запуск по нему не прочитать и не остановить.
+- `run_code_task` (очередь `code_execution`) использует ту же песочницу и файлы
+  задачи, но с `stdin` ученика. Результат лежит в result backend Celery
+  (Redis), **в базу ничего не пишется** – `CodeSubmission` не создаётся.
+- «Остановить» убивает контейнеры с меткой `submission=run-<run_id>`; задача
+  завершается с ошибкой «Проверка остановлена…» (`STOPPED_MESSAGE`), и её
+  забирает тот же опрос статуса.
+
+---
+
 ## Очистка зависших задач
 
-`cleanup_stale_submissions()` – периодическая задача Celery Beat (раз в 30 минут, `beat_schedule` в `config/celery.py`):
+`cleanup_stale_submissions()` – периодическая задача Celery Beat (раз в 30 минут, `beat_schedule` в `config/celery.py`). Два срока, потому что снимок никто не ждёт на экране:
 
-1. Найти `CodeSubmission` со статусом `pending`/`running` старше 10 минут
-2. Установить `status='error'`, `error_log='Превышено время ожидания'`
-3. Обновить связанные `UserAnswer`
-4. Отправить WS-уведомление
+1. Обычные отправки (`answer IS NULL`) со статусом `pending`/`running` старше 10 минут
+2. Снимки (`answer IS NOT NULL`) со статусом `pending`/`running` старше `SNAPSHOT_STALE_AFTER` = 24 часа
+3. Установить `status='error'`, `error_log='Превышено время ожидания'`
+4. Обновить связанные `UserAnswer`
+5. Отправить WS-уведомление
+
+Сутки у снимков – потому что после экзамена класса их в очереди тысячи: 10 минут там обычная очередь, а не зависание. Закрытый снимок потерян для «Решений других» и рекордов – `check_code_task` берёт только `pending`.
 
 !!! warning "Почему задачи зависают"
     - Docker контейнер завершился по OOM, но Celery не получил результат

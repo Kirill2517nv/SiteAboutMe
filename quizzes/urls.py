@@ -8,6 +8,9 @@ from .views import (
     submit_code_view,
     submission_status_view,
     submission_stop_view,
+    run_code_view,
+    run_status_view,
+    run_stop_view,
     finish_quiz_view,
     question_hint_view,
     question_check_view,
@@ -24,6 +27,10 @@ urlpatterns = [
     path('<int:quiz_id>/question/<int:question_id>/submit/', submit_code_view, name='submit_code'),
     path('submission/<int:submission_id>/status/', submission_status_view, name='submission_status'),
     path('submission/<int:submission_id>/stop/', submission_stop_view, name='submission_stop'),
+    # «Запустить» в тренажёре ЕГЭ: прогон без оценки, результат – по подписанному токену
+    path('question/<int:question_id>/run/', run_code_view, name='run_code'),
+    path('run/<str:token>/', run_status_view, name='run_status'),
+    path('run/<str:token>/stop/', run_stop_view, name='run_stop'),
     path('<int:quiz_id>/finish/', finish_quiz_view, name='finish_quiz'),
 
     # Подсказка к задаче (открывается по правилам, см. textbook.services.hint_state)

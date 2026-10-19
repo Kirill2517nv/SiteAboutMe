@@ -432,8 +432,8 @@ Postgres после пересоздания вопросов сидами от�
 | `user_result` | ForeignKey(UserResult) | Результат, CASCADE, related_name=`answers` |
 | `question` | ForeignKey(Question) | Вопрос, CASCADE |
 | `selected_choice` | ForeignKey(Choice) | Выбранный вариант, CASCADE, nullable |
-| `text_answer` | CharField(200) | Текстовый ответ, nullable |
-| `code_answer` | TextField | Код ответа, nullable |
+| `text_answer` | CharField(500) | Текстовый ответ, nullable. У задачи с кодом варианта – ответ из поля, по которому она и оценена |
+| `code_answer` | TextField | Код ответа (снимка), nullable |
 | `error_log` | TextField | Лог ошибки, nullable |
 | `is_correct` | BooleanField | Правильный ли ответ, default=False |
 | `score` | PositiveSmallIntegerField | Частичный балл (задания 26 и 27), nullable |
@@ -451,8 +451,10 @@ Postgres после пересоздания вопросов сидами от�
 | `question` | ForeignKey(Question) | Вопрос, CASCADE |
 | `quiz` | ForeignKey(Quiz) | Тест, CASCADE |
 | `code` | TextField | Исходный код |
+| `language` | CharField(10) | `python` (по умолчанию) или `cpp` |
+| `answer` | TextField | Ответ ученика, nullable. Заполнен только у снимков тренажёра ЕГЭ; `None` – отправка проверена выводом на тестах (практикум учебника) |
 | `status` | CharField | `pending` → `running` → `success`/`failed`/`error` |
-| `is_correct` | BooleanField | Все тесты пройдены, nullable |
+| `is_correct` | BooleanField | Все тесты пройдены, nullable. У снимка – ответ верный **и** программа отработала без ошибки |
 | `score` | PositiveSmallIntegerField | Частичный балл (задания 26 и 27), nullable |
 | `error_log` | TextField | Лог ошибок, blank |
 | `celery_task_id` | CharField | ID задачи Celery, blank |
@@ -460,6 +462,16 @@ Postgres после пересоздания вопросов сидами от�
 | `completed_at` | DateTimeField | Время завершения, nullable |
 | `cpu_time_ms` | FloatField | Время CPU в мс, nullable |
 | `memory_kb` | IntegerField | Использование памяти в КБ, nullable |
+
+**Снимок тренажёра ЕГЭ.** `tasks.create_snapshot` создаёт отправку с непустым
+`answer`: задачу там оценивает ответ, а прогон в песочнице нужен ради времени,
+памяти и ответа «программа отработала без ошибки». Вывод с эталоном **не**
+сравнивается, `score` у снимка всегда пуст – балл живёт в `PracticeItem`,
+`UserAnswer` и `ExamTaskProgress`. Исход задачи снимок не меняет:
+`update_user_answer_from_submission` и `update_practice_item_from_submission`
+для него сразу выходят, `update_exam_progress_from_submission` берёт только
+рекорды. Снимки питают «Решения других», «Похожие решения» и
+`best_code_metrics`. Пустой код снимка не даёт – ответ без кода законен.
 
 ### ExamTaskProgress
 
@@ -513,7 +525,7 @@ Postgres после пересоздания вопросов сидами от�
 | `session` | ForeignKey(PracticeSession) | CASCADE, related_name=`items` |
 | `question` | ForeignKey(Question) | CASCADE, related_name=`practice_items` |
 | `order` | PositiveSmallIntegerField | Порядок в сессии |
-| `text_answer` | CharField(200) | Ответ ученика, blank |
+| `text_answer` | CharField(500) | Ответ ученика, blank. У задачи с кодом – ответ из поля (оценивается он, а не вывод программы), код лежит в `submission` |
 | `submission` | ForeignKey(CodeSubmission) | Отправка кода, SET_NULL, nullable |
 | `is_correct` | BooleanField | nullable – пусто, пока ученик не отвечал |
 | `score` | PositiveSmallIntegerField | Частичный балл (задания 26 и 27), nullable |

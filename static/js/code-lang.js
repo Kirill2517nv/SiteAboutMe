@@ -8,8 +8,37 @@ function codeLangMode(lang) {
     return CODE_LANG_MODES[lang] || 'python';
 }
 
+// Светлый фон кода – тот же выбор, что у блоков кода учебника
+// (article_detail.html, textbook-widgets.js): класс code-light на <html> и
+// ключ codeTheme в localStorage. Выбрал светлый в статье – светлый и здесь.
+try {
+    if (localStorage.getItem('codeTheme') === 'light') document.documentElement.classList.add('code-light');
+} catch (e) { /* приватное окно */ }
+
+function codeLight() {
+    return document.documentElement.classList.contains('code-light');
+}
+
+// Светлая тема – штатная default из codemirror.css, рамку ей даёт codemirror-vscode.css.
 function codeLangTheme(lang) {
+    if (codeLight()) return 'default';
     return CODE_LANG_THEMES[lang] || 'material-darker';
+}
+
+function codeThemeLabel() {
+    return codeLight() ? 'Тёмный фон' : 'Светлый фон';
+}
+
+// Переключает фон у всех редакторов страницы разом. Экземпляр берётся из
+// DOM (el.CodeMirror), а не из данных Alpine – там он в Proxy, см. codeLangApply.
+function codeThemeToggle() {
+    const light = document.documentElement.classList.toggle('code-light');
+    try { localStorage.setItem('codeTheme', light ? 'light' : 'dark'); } catch (e) { /* приватное окно */ }
+    document.querySelectorAll('.CodeMirror').forEach((el) => {
+        const cm = el.CodeMirror;
+        if (cm) cm.setOption('theme', codeLangTheme(cm.getOption('mode') === 'python' ? 'python' : 'cpp'));
+    });
+    document.querySelectorAll('.code-block__theme').forEach((b) => { b.textContent = codeThemeLabel(); });
 }
 
 // Переключить язык у живого редактора. Экземпляр CodeMirror лежит в данных

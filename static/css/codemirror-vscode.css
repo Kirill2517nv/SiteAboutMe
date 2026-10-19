@@ -24,3 +24,41 @@
 .cm-s-vscode-dark .cm-comment { color: #6a9955; }
 .cm-s-vscode-dark .cm-meta { color: #c586c0; }
 .cm-s-vscode-dark .cm-operator { color: #d4d4d4; }
+
+
+/* Светлый фон (html.code-light, переключатель «Светлый фон» – общий с учебником).
+   Тема CodeMirror – штатная default, цвета токенов – те же, что у светлых блоков
+   кода статьи (textbook-article.css), чтобы листинг и редактор читались одинаково. */
+html.code-light .CodeMirror { border-color: #d1d5db; }
+html.code-light .cm-s-default.CodeMirror { background: #fff; color: #111827; }
+html.code-light .cm-s-default .CodeMirror-gutters { background: #f9fafb; border-right-color: #e5e7eb; }
+html.code-light .cm-s-default .CodeMirror-linenumber { color: #9ca3af; }
+html.code-light .cm-s-default .cm-keyword,
+html.code-light .cm-s-default .cm-atom { color: #b3122a; font-weight: 600; }
+html.code-light .cm-s-default .cm-string { color: #0a6b2e; }
+html.code-light .cm-s-default .cm-number { color: #0550ae; }
+html.code-light .cm-s-default .cm-comment { color: #4b5563; font-style: italic; }
+html.code-light .cm-s-default .cm-def,
+html.code-light .cm-s-default .cm-function { color: #6b21a8; }
+html.code-light .cm-s-default .cm-builtin,
+html.code-light .cm-s-default .cm-type { color: #9a3412; }
+html.code-light .cm-s-default .cm-meta { color: #6b21a8; }
+html.code-light .cm-s-default .cm-variable,
+html.code-light .cm-s-default .cm-variable-2,
+html.code-light .cm-s-default .cm-operator { color: #111827; }
+
+/* Python и C++ на тёмном фоне – один фон и одна полоска у номеров строк.
+   material-darker сам гасит рамку колонки номеров (border: none), поэтому
+   полоска страницы у Python пропадала, а у C++ оставалась. */
+.cm-s-material-darker.CodeMirror,
+.cm-s-material-darker .CodeMirror-gutters { background: #1e1e1e; }
+.cm-s-material-darker .CodeMirror-gutters { border-right: 1px solid #374151; }
+
+/* Ввод и вывод «Запустить» (_ege_code_run.html) – тот же фон и рамка, что у
+   редактора: три окна одного решения выглядят одинаково на обоих фонах. */
+.run-in, .run-out { background: #1e1e1e; color: #d4d4d4; border: 1px solid #374151; }
+.run-in::placeholder, .run-out__muted { color: #6b7280; }
+.run-out__err { color: #fca5a5; }
+html.code-light .run-in, html.code-light .run-out { background: #fff; color: #111827; border-color: #d1d5db; }
+html.code-light .run-in::placeholder, html.code-light .run-out__muted { color: #9ca3af; }
+html.code-light .run-out__err { color: #b91c1c; }

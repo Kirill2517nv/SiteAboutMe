@@ -46,7 +46,7 @@
             <div class="px-6 py-4 flex items-center gap-4 hover:bg-gray-50 transition-colors" id="answer-row-{{ answer.question.id }}">
                 <!-- Number -->
                 <div class="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold
-                    {% if answer.submission and answer.submission.status in 'pending,running' %}
+                    {% if answer.submission and answer.submission.answer is None and answer.submission.status in 'pending,running' %}
                         bg-yellow-100 text-yellow-700
                     {% elif answer.is_correct %}
                         bg-green-100 text-green-700
@@ -65,14 +65,14 @@
                     </p>
                     <p class="text-xs text-gray-400">
                         {% if answer.text_answer %}Ответ: {{ answer.text_answer }}{% endif %}
-                        {% if answer.code_answer %}Код отправлен{% endif %}
+                        {% if answer.code_answer %}· код сохранён{% endif %}
                         {% if not answer.text_answer and not answer.code_answer %}Нет ответа{% endif %}
                     </p>
                 </div>
 
                 <!-- Points -->
                 <div class="flex-shrink-0 text-right">
-                    {% if answer.submission and answer.submission.status in 'pending,running' %}
+                    {% if answer.submission and answer.submission.answer is None and answer.submission.status in 'pending,running' %}
                     <span class="inline-flex items-center gap-1 text-sm text-yellow-600">
                         <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
                             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>

@@ -69,10 +69,11 @@ flowchart TD
 
     subgraph CODE_FLOW[Задачи на код]
         direction TB
-        C1[Написать код] --> C2["POST /submit/\nАсинхронная проверка"]
-        C2 --> C3[Celery + Docker]
-        C3 --> C4[WebSocket результат]
-        C4 --> C5[Обновить ExamTaskProgress\nbest metrics]
+        C1["Вписать ответ в поле\nили таблицу; код – инструмент"] --> C2{Practice mode?}
+        C2 -->|Да| C3["POST /check/\ncheck_answer по эталону"]
+        C2 -->|Нет| C4[Ответ хранится до finish]
+        C3 --> C5["create_snapshot\nкод уходит в Celery"]
+        C4 --> C6["finish: check_answer\n+ create_snapshot"]
     end
 
     TEXT_FLOW --> SAVE_TIME["POST /save-time/\nПериодическое сохранение"]
@@ -128,7 +129,7 @@ flowchart TD
 
 ---
 
-## Проверка текстового ответа (Practice)
+## Проверка ответа (Practice)
 
 ```mermaid
 sequenceDiagram
@@ -138,17 +139,24 @@ sequenceDiagram
     participant DB as Database
 
     U->>JS: Ввести ответ + Enter
-    JS->>API: POST /ege/5/check/\n{question_id: 1, answer: "42"}
+    JS->>API: POST /ege/5/check/\n{question_id, answer, code, language}
 
-    API->>API: normalize_text_answer("42")
-    API->>DB: Question.check_text_answer()
+    API->>API: check_answer(question, answer)\nэталон – expected_answer()
 
-    alt correct_text_answer совпадает
+    alt задание 26 или 27
+        API->>API: grade() – балл 0/1/2
+    else normalize_text_answer совпал с эталоном
         API->>API: is_correct = True
-    else alternative_answers содержит
+    else текстовая и check_text_answer()
         API->>API: is_correct = True
-    else
-        API->>API: is_correct = False
+    else таблица – числа эталона по порядку
+        API->>API: outputs_match()
+    else задача с кодом
+        API->>API: outputs_match()
+    end
+
+    opt задача с кодом
+        API->>DB: create_snapshot(код, ответ)\n→ Celery, вне оценки
     end
 
     API->>DB: get_or_create ExamTaskProgress
@@ -161,7 +169,7 @@ sequenceDiagram
     JS->>U: Визуальная обратная связь\n✅ или ❌
 ```
 
-Проверка доступна только в тренировочном варианте: при `exam_mode != 'practice'` возвращается 403. Принимается и `choice` – тип проверяется вместе с `text` (всё остальное даёт 400). Балл здесь не ставится: растут только `attempts_to_solve` и `is_solved`, а балл варианта считает `finish` по своим правилам.
+Проверка доступна только в тренировочном варианте: при `exam_mode != 'practice'` возвращается 403. Принимаются `text`, `choice` и `code` – тип не из этих трёх даёт 400. У задачи с кодом в поле оценивается **ответ**, а не вывод программы: `check_answer` сверяет его с эталоном, а присланный `code` уходит снимком в фон и на оценку не влияет. Балл за 26 и 27 держится в `ExamTaskProgress` (в `CodeSubmission` он не пишется), а балл варианта считает `finish`.
 
 ---
 
@@ -182,43 +190,164 @@ flowchart TD
     RESULT --> LOOP[Для каждого вопроса]
 
     LOOP --> QTYPE{Тип?}
-    QTYPE -->|text| CHECK_TEXT[ege_grade → score;\nпусто – check_text_answer]
-    QTYPE -->|code| CHECK_CODE[Последний CodeSubmission\n→ is_correct? → score]
+    QTYPE -->|text| CHECK_TEXT["check_answer по ответу\n26–27 – score 0/1/2"]
+    QTYPE -->|code| CHECK_CODE["check_answer по ответу из поля\n+ create_snapshot кода"]
 
     CHECK_TEXT --> ANSWER[Создать UserAnswer]
     CHECK_CODE --> ANSWER
     ANSWER --> NEXT{Ещё?}
     NEXT -->|Да| LOOP
     NEXT -->|Нет| UPDATE_PROGRESS[Обновить ExamTaskProgress\nпо каждой отвеченной задаче]
-    UPDATE_PROGRESS --> RESPONSE["JSON:\nscore, total_points,\npending_checks,\nredirect_url"]
+    UPDATE_PROGRESS --> RESPONSE["JSON:\nscore, total_points,\npending_checks = 0,\nredirect_url"]
 ```
+
+Снимки кода проверяются в фоне и на балл не влияют: `ege_finish_view` всегда
+возвращает `pending_checks: 0`, а `ege_result_view` считает «на проверке» только
+старые отправки практикума (`submission.answer IS NULL`).
 
 ---
 
-## Логика проверки code-задач
+## Прогон кода: снимок и обычная отправка
 
-Задача на код засчитывается, только если прошли **все** тест-кейсы: тест-кейсы – это разные входы одной задачи, а не варианты записи одного ответа. Первый же провал прекращает проверку и попадает в `error_log`.
+В тренажёре ЕГЭ задача с кодом оценивается **ответом**, поэтому прогон здесь –
+не оценка: `check_code_task` запускает тесты ради времени, памяти и ответа на
+вопрос «программа отработала без ошибки». В практикуме учебника обычная
+отправка (`submission.answer IS NULL`) проверяется по-старому: вывод против
+эталона, и задача засчитана, только если прошли **все** тест-кейсы.
 
 ```mermaid
 flowchart TD
     CASES[Список тест-кейсов] --> LOOP[Для каждого тест-кейса]
     LOOP --> RUN[run_code_in_docker]
     RUN --> ERR{error?}
-    ERR -->|Да| FAIL0["score = 0\nbreak"]
-    ERR -->|Нет| MATCH{outputs_match?}
+    ERR -->|Да| FAIL0["all_tests_passed = False\nошибка в error_log, break"]
+    ERR -->|Нет| SNAP{снимок?\nanswer не пуст}
+    SNAP -->|Да| METRICS["Запомнить cpu/memory,\nесли хуже уже пройденных"]
+    SNAP -->|Нет| MATCH{outputs_match?}
     MATCH -->|Нет| PARTIAL{is_partial_task?<br/>26 или 27}
     PARTIAL -->|Нет| FAIL[all_tests_passed = False\nbreak]
     PARTIAL -->|Да| GRADE["grade() – худший балл\ncontinue"]
-    MATCH -->|Да| METRICS["Запомнить cpu/memory,<br/>если хуже уже пройденных"]
+    MATCH -->|Да| METRICS
     METRICS --> MORE{Ещё тесты?}
     GRADE --> MORE
     MORE -->|Да| LOOP
-    MORE -->|Нет| DONE["success, если score == points"]
+    MORE -->|Нет| DONE["снимок: is_correct = ответ верный\nи все тесты прошли; иначе\nобычная отправка – score == points"]
 ```
 
-Исключение – задания 26 и 27 (`ege_scoring.is_partial_task`): неверный ответ там ещё может стоить 1 балла, поэтому тесты прогоняются до конца, а баллом становится **худший** из них. Решённой такая задача считается только при полном балле; частичный балл остаётся в работе над ошибками.
+Исключение – задания 26 и 27 (`ege_scoring.is_partial_task`): неверный ответ там ещё может стоить 1 балла, поэтому тесты прогоняются до конца, а баллом становится **худший** из них. Это правило работает только у обычной отправки – у снимка `score` всегда пуст, балл живёт рядом с ответом. Решённой такая задача считается только при полном балле; частичный балл остаётся в работе над ошибками.
 
 Вывод сравнивает `ege_scoring.outputs_match` – тот же, что и в синхронной проверке `quiz_detail_view`. Если и эталон, и ответ состоят только из чисел, сравниваются числа по порядку (задание 20 печатает два числа, и «98 293» одной строкой равно тем же числам в две), иначе – нормализованный текст. Метрики берутся по худшему из прошедших тестов, а не по одному удачному запуску.
+
+---
+
+## Задачи с кодом: ответ, «Запустить» и снимок
+
+Задача с кодом в тренажёре оценивается как на настоящем ЕГЭ – по ответу,
+который ученик вписывает в поле или таблицу. Код – инструмент: его прогоняют,
+чтобы проверить себя, но оценку даёт ответ. Практикум учебника (обычные квизы,
+`submit_code_view`, `finish_quiz_view`) работает по-старому: задача
+засчитывается, когда вывод прошёл все тесты.
+
+**Поле ответа.** `ege_scoring.answer_shape(question)` считает по эталону форму
+таблицы `[строк, столбцов]` или возвращает `None` – тогда хватит одного поля.
+Таблица нужна, когда в эталоне два и больше чисел (17, 18, 20, 25–27); у
+текстовых задач тоже (задание 18 – два числа). В браузер уходит только форма –
+сами числа эталона остаются на сервере. Поле рисует
+`templates/quizzes/_ege_answer_field.html`, а `static/js/answer-table.js`
+разносит вставленный вывод программы по ячейкам.
+
+**Сверка.** Одна функция `ege_scoring.check_answer(question, answer) ->
+(is_correct, score)`. Эталон – `ege_scoring.expected_answer(question)`: у
+текстовой задачи `correct_text_answer`, у задачи с кодом – `output_data` её
+единственного `TestCase`. Таблица приходит строками через перевод строки,
+ячейки – через пробел; несколько чисел сравниваются как числа по порядку
+(`outputs_match`). `score` не `None` только у заданий 26 и 27 (шкала 0/1/2,
+`grade`). Эту же функцию зовут сессия (`_apply_answer`), проверка и завершение
+варианта и фоновый прогон снимка.
+
+**«Запустить».** Кнопка под редактором прогоняет код без оценки и без записи в
+базу: `POST /quizzes/question/<id>/run/` → Celery `run_code_task` → результат
+забирается по подписанному токену. Один запуск на ученика за раз – замок в
+Redis на 90 секунд; второй получает 409. Подробности – в
+[Выполнении кода](code-execution.md).
+
+**Снимок.** `tasks.create_snapshot(user, quiz, question, code, language, answer)`
+создаёт `CodeSubmission` с непустым `answer` (новое поле; `None` – старая
+отправка практикума, проверенная тестами). Пустой код снимка не даёт – ответ
+без кода законен; тот же код, язык и ответ подряд второй раз не сохраняются.
+Когда снимается код:
+
+| Где | Когда | Откуда код и ответ |
+|-----|-------|--------------------|
+| Тренировка в сессии | «Проверить ответ» (`practice_answer_view`) | `code` и `language` из тела запроса, ответ – из поля |
+| Экзамен и срез в сессии | завершение (`practice_finish_view`) | поле `codes` = JSON `{item_id: {code, language}}`, ответ – `PracticeItem.text_answer` |
+| Вариант, режим «Тренировка» | «Проверить ответ» (`ege_check_answer_view`) | `code` и `language` из тела запроса |
+| Вариант, завершение | `ege_finish_view` | `codes` и `languages` из тела, ответ – из `answers` |
+
+Снимок сессии (и тренировки, и экзамена) привязывается к
+`PracticeItem.submission`. Рекорды (`best_code_metrics`) по этой связи не ходят –
+они берут все отработавшие снимки ученика; архив решённого показывает последние
+отработавшие по языку и только без них – код из `PracticeItem.submission`.
+
+Код экзамена до завершения лежит только в `localStorage` браузера. Коды
+принимаются и в течение `EXAM_CODES_GRACE` = 2 минуты после дедлайна: страница
+жмёт «Завершить» на нуле, а сессию к этому моменту уже закрыл по часам
+`_owned_session`. Ответы после дедлайна не принимаются.
+
+**Прогон снимка.** `check_code_task` при `submission.answer is not None`
+запускает тесты, но вывод с эталоном **не** сравнивает – решение задания 2
+честно печатает таблицу истинности. `is_correct` снимка = ответ верный и
+программа на всех тестах завершилась без ошибки и таймаута; `score` всегда
+`None` – балл живёт в `PracticeItem`, `UserAnswer` и `ExamTaskProgress`. Исход
+задачи снимок не меняет: `update_user_answer_from_submission` и
+`update_practice_item_from_submission` для снимка сразу выходят, а
+`update_exam_progress_from_submission` берёт у него только рекорды
+(`best_cpu_time_ms` / `best_memory_kb`). Снимки питают «Решения других»,
+«Похожие решения» и `best_code_metrics`.
+
+**Результат – сразу.** Оценка ответа синхронная, снимки проверяются в фоне и на
+результат не влияют. `ege_finish_view` возвращает `pending_checks: 0`, а
+`ege_result_view` считает «на проверке» только отправки с
+`submission.answer IS NULL`.
+
+**Уборка.** `cleanup_stale_submissions` закрывает обычные отправки
+`pending`/`running` старше 10 минут, а снимки – только старше
+`SNAPSHOT_STALE_AFTER` = 24 часа: после экзамена класса их в очереди тысячи, а
+закрытый снимок потерян для галереи и рекордов (`check_code_task` берёт только
+`pending`).
+
+**Ответ без рабочего кода.** `ege_stats.broken_code_answers(users, numbers)`
+возвращает задачи, где верный ответ есть хотя бы в одном снимке, но ни один
+снимок задачи не отработал. Системная ошибка (`status='error'`) не в счёт,
+задачи урока (`classroom_only`) тоже. Это сигнал учителю, не вердикт: задача
+остаётся засчитанной. Виден только суперпользователю – отметка «без рабочего
+кода: N» у фамилии на `/ege/task/<n>/students/`, вкладка `?code=broken` на
+странице ученика и подпись снимка «ответ верный, код не отработал» вместо
+«неверно».
+
+```mermaid
+sequenceDiagram
+    participant B as Браузер
+    participant V as practice_answer_view
+    participant S as ege_scoring
+    participant DB as Database
+    participant C as Celery
+
+    B->>V: POST /ege/practice/<pk>/answer/\n{item_id, answer, code, language}
+    V->>S: check_answer(question, answer)
+    S-->>V: (is_correct, score)
+    V->>DB: PracticeItem: text_answer,\nis_correct, score, attempts
+
+    opt код не пуст
+        V->>DB: create_snapshot(status='pending')
+        V->>C: check_code_task.delay()
+        C->>C: тесты ради времени и памяти\nвывод с эталоном не сравнивается
+        C->>DB: CodeSubmission.is_correct =\nответ верный и код отработал
+        Note over C,DB: исход задачи уже записан –\nснимок его не меняет
+    end
+
+    V-->>B: {is_correct, score, attempts, locked}
+```
 
 ---
 

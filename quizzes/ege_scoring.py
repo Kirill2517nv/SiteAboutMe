@@ -96,3 +96,58 @@ def _grade_pair(expected, got, full):
     if sorted(got[:2]) == sorted(expected) and len(got) >= 2:
         return 1
     return 0
+
+
+def expected_answer(question):
+    """
+    Эталон ответа задачи – то, что ученик должен вписать в бланк.
+
+    У текстовой задачи это correct_text_answer, у задачи с кодом – вывод её
+    теста: код теперь только инструмент, и оценивается ответ в поле, как на
+    экзамене. Тест у задач банка ЕГЭ один и без stdin.
+    """
+    if question.question_type == 'code':
+        test = next(iter(question.test_cases.all()), None)
+        return test.output_data if test else ''
+    return question.correct_text_answer or ''
+
+
+def answer_shape(question):
+    """
+    Размер таблицы ответа [строк, столбцов] или None – хватит одного поля.
+
+    Считается по эталону: таблица нужна, когда в нём несколько чисел (17, 18,
+    20, 25–27). В браузер уходит только форма – на экзамене её тоже видно, – а
+    сами числа остаются на сервере.
+    """
+    expected = expected_answer(question).strip()
+    if not NUMBERS_ONLY_RE.match(expected) or len(_numbers(expected)) < 2:
+        return None
+    lines = [line for line in expected.splitlines() if line.strip()]
+    return [len(lines), max(len(NUMBER_RE.findall(line)) for line in lines)]
+
+
+def check_answer(question, answer):
+    """
+    Сверяет ответ из поля или таблицы с эталоном: (верно?, балл).
+
+    Балл – не None только у заданий 26 и 27 (шкала 0/1/2). Таблица приходит
+    строками через перевод строки, ячейки через пробел, поэтому несколько чисел
+    сравниваются как числа по порядку. Одно число у текстовой задачи – по
+    старому правилу check_text_answer (с альтернативными ответами).
+    """
+    from .models import normalize_text_answer
+
+    expected = expected_answer(question)
+    score = grade(question, answer, expected)
+    if score is not None:
+        return score >= question.points, score
+    if normalize_text_answer(answer) == normalize_text_answer(expected):
+        return True, None
+    if question.question_type == 'text':
+        if question.check_text_answer(answer):
+            return True, None
+        # Числа по порядку – только для таблицы: у одного числа outputs_match
+        # сравнил бы int'ы и засчитал «0» вместо «00».
+        return answer_shape(question) is not None and outputs_match(answer, expected), None
+    return outputs_match(answer, expected), None

@@ -104,6 +104,9 @@
                     <div class="mt-4">
                         <div class="text-xs font-medium text-gray-500 dark:text-slate-400 mb-1.5">Ответ ученика{% if item.question.question_type == 'code' and item.submission %} · {{ item.submission.get_language_display }}{% endif %}</div>
                         {% if item.question.question_type == 'code' and item.submission %}
+                        {% if item.text_answer %}
+                        <div class="mb-2 inline-block px-3 py-1.5 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 font-medium whitespace-pre-line">{{ item.text_answer }}</div>
+                        {% endif %}
                         <pre class="p-3 rounded-lg bg-slate-900 text-slate-100 text-xs overflow-x-auto"><code class="language-{{ item.submission.language }}">{{ item.submission.code }}</code></pre>
                         {% if item.submission.error_log %}
                         {% comment %}

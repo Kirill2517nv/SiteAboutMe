@@ -6,6 +6,7 @@
 """
 import json
 from collections import Counter, defaultdict
+from datetime import timedelta
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -22,13 +23,14 @@ from accounts.templatetags.profile_tags import surname_first
 from textbook.models import Article, EgeTask
 
 from . import ege_practice, ege_stats
-from .ege_scoring import grade as ege_grade
+from .ege_scoring import answer_shape, check_answer, expected_answer
 from .ege_constants import (
     EGE_QUIZ_TYPES, EGE_RECOMMENDED_TIME, EGE_TASK_POINTS, EXAM_MINUTES,
     EXCLUDED_KINDS, practice_pool_q,
     LINKED_GROUP_TITLE, STUDY_MAX_SIZE, ege_time_color,
 )
 from .models import CodeSubmission, PracticeItem, PracticeSession, Question
+from .tasks import create_snapshot
 from .utils import js_json
 
 # Потолок одной порции времени. Страница досылает время раз в минуту и не
@@ -225,6 +227,9 @@ def ege_task_students_view(request, number):
 
     students, groups, loose, current = _class_filter(request)
     rows = ege_stats.task_student_rows(students, numbers)
+    broken = ege_stats.broken_code_answers(students, numbers)
+    for row in rows:
+        row['broken'] = len(broken.get(row['user'].id, ()))
     # Сортировка по той же строке, что стоит в ячейке («Фамилия Имя», иначе
     # логин), – как в отчёте учебника: order_by('last_name') ставил учеников
     # без фамилии в начало, хотя в таблице у них логин.
@@ -257,6 +262,9 @@ def ege_task_student_view(request, number, user_id):
     кода – все отправки с логом. Промежуточные текстовые ответы в базе не
     хранятся: от выдачи остаётся последний ответ и счётчик попыток.
 
+    ?code=broken – верный ответ, при котором код не отработал (ege_stats.
+    broken_code_answers, на это число ведёт отметка в таблице учеников).
+
     ?errors=1 – только задачи из долга, по тому же правилу, что счётчик в
     таблице: исход последней попытки. Задачи урока (classroom) не показываются –
     их решают у доски, и в статистике их тоже нет.
@@ -264,6 +272,8 @@ def ege_task_student_view(request, number, user_id):
     numbers = _teacher_task_numbers(request, number)
     student = get_object_or_404(User, id=user_id, is_superuser=False)
     errors_only = request.GET.get('errors') == '1'
+    broken_ids = ege_stats.broken_code_answers([student], numbers).get(student.id, set())
+    broken_only = request.GET.get('code') == 'broken'
 
     items = list(
         PracticeItem.objects
@@ -302,7 +312,8 @@ def ege_task_student_view(request, number, user_id):
     mistakes = sum(1 for entry in by_question.values() if entry['last'] is False)
     entries = [
         entry for entry in by_question.values()
-        if not errors_only or entry['last'] is False
+        if (not errors_only or entry['last'] is False)
+        and (not broken_only or entry['question'].id in broken_ids)
     ]
     # Итог по задаче – сумма всех выдач: сколько ученик на неё потратил всего.
     for entry in by_question.values():
@@ -313,6 +324,11 @@ def ege_task_student_view(request, number, user_id):
 
     questions = [entry['question'] for entry in entries]
     prefetch_related_objects(questions, 'images', 'test_cases')
+    # Подпись снимка: «неверно» соврало бы там, где ответ верный, а не отработал
+    # код. После prefetch – иначе эталон читался бы запросом на каждую отправку.
+    for entry in entries:
+        for sub in entry['submissions']:
+            sub.answer_ok = bool(sub.answer) and check_answer(entry['question'], sub.answer)[0]
 
     return render(request, 'quizzes/ege_task_student.html', {
         'number': numbers[0],
@@ -323,6 +339,8 @@ def ege_task_student_view(request, number, user_id):
         'total': total,
         'mistakes': mistakes,
         'errors_only': errors_only,
+        'broken_only': broken_only,
+        'broken': len(broken_ids),
     })
 
 
@@ -559,6 +577,9 @@ def _item_payload(item, reveal):
         'difficulty_label': question.get_effective_difficulty_display(),
         'recommended_min': EGE_RECOMMENDED_TIME.get(question.ege_number or 0, 5),
         'answer': item.text_answer or '',
+        # Таблица ответа (строк × столбцов) или None – одно поле. Только форма:
+        # числа эталона в браузер не уходят.
+        'shape': answer_shape(question),
         # На экзамене исход задачи скрыт до конца сессии – иначе после
         # перезагрузки страницы сетка задач раскрасилась бы верно/неверно.
         'is_correct': item.is_correct if reveal else None,
@@ -575,7 +596,7 @@ def _item_payload(item, reveal):
         'answered': item.answered_at is not None,
     }
     if reveal and item.gave_up:
-        payload['correct_answer'] = question.correct_text_answer or ''
+        payload['correct_answer'] = expected_answer(question)
     return payload
 
 
@@ -675,7 +696,8 @@ def practice_view(request, pk):
     if session.is_finished:
         return redirect('ege:ege_practice_result', pk=session.pk)
 
-    items = list(session.items.select_related('question').order_by('order'))
+    items = list(session.items.select_related('question')
+                 .prefetch_related('question__test_cases').order_by('order'))
     reveal = session.mode == 'study'
 
     # Последняя отправка кода по каждой задаче – чтобы ученик, вернувшийся на
@@ -690,11 +712,9 @@ def practice_view(request, pk):
         )
         for sub in subs:
             if sub.question_id not in last_submissions:
-                last_submissions[sub.question_id] = {
-                    'id': sub.id, 'status': sub.status,
-                    'is_correct': sub.is_correct, 'code': sub.code,
-                    'language': sub.language,
-                }
+                # Только код и язык: на экзамене вердикт прошлого снимка той же
+                # задачи в данных страницы был бы подсказкой.
+                last_submissions[sub.question_id] = {'code': sub.code, 'language': sub.language}
 
     # Сколько секунд осталось до конца экзамена: считаем на сервере, чтобы
     # переведённые назад часы в браузере не продлевали контрольную.
@@ -721,13 +741,15 @@ def practice_view(request, pk):
 def _apply_answer(item, answer, seconds, study):
     """Записывает ответ ученика в задачу сессии. Возвращает исход."""
     # Задания 26 и 27 оцениваются по шкале 0/1/2 – балл пишем рядом с исходом,
-    # а решённой задача считается только при полном балле.
-    score = ege_grade(item.question, answer, item.question.correct_text_answer or '')
-    is_correct = (score >= item.question.points if score is not None
-                  else item.question.check_text_answer(answer))
-    item.text_answer = answer[:200]
-    item.is_correct = is_correct
-    item.score = score
+    # а решённой задача считается только при полном балле. У задачи с кодом
+    # оценивается тоже ответ из поля: код – инструмент, его снимок лежит рядом.
+    is_correct, score = check_answer(item.question, answer)
+    item.text_answer = answer[:500]
+    # Повтор решённой задачи не оценивается: неудачный эксперимент оставляет
+    # is_correct пустым, и задача не уходит в работу над ошибками.
+    if is_correct or item.session.kind != 'retry':
+        item.is_correct = is_correct
+        item.score = score
     # «Попытка» имеет смысл только там, где есть обратная связь: на экзамене
     # ученик правит черновик вслепую, и считать правки попытками нечестно.
     item.attempts = item.attempts + 1 if study else 1
@@ -755,9 +777,6 @@ def practice_answer_view(request, pk):
     answer = (data.get('answer') or '').strip()
     seconds = data.get('seconds') or 0
 
-    if item.question.question_type == 'code':
-        return JsonResponse({'error': 'Задачи на код проверяются отправкой кода'}, status=400)
-
     if not answer:
         return JsonResponse({'error': 'Ответ пуст'}, status=400)
 
@@ -770,6 +789,16 @@ def practice_answer_view(request, pk):
         return JsonResponse({'error': 'Задача уже закрыта'}, status=409)
 
     is_correct = _apply_answer(item, answer, seconds, study)
+
+    # Снимок кода – в момент проверки ответа, а не по «Запустить». На экзамене
+    # код уходит один раз, при завершении (practice_finish_view).
+    if study and item.question.question_type == 'code':
+        submission = create_snapshot(
+            request.user, item.question.quiz, item.question, data.get('code'),
+            'cpp' if data.get('language') == 'cpp' else 'python', answer)
+        if submission:
+            item.submission = submission
+            item.save(update_fields=['submission'])
 
     if not study:
         # Ни исхода, ни намёка на него: разбор ученик увидит после завершения.
@@ -819,7 +848,7 @@ def practice_reveal_view(request, pk):
 
     return JsonResponse({
         'item_id': item.id,
-        'correct_answer': item.question.correct_text_answer or '',
+        'correct_answer': expected_answer(item.question),
         'attempts': item.attempts,
         'locked': True,
     })
@@ -851,6 +880,35 @@ def practice_time_view(request, pk):
     return JsonResponse({'seconds': item.seconds})
 
 
+EXAM_CODES_GRACE = timedelta(minutes=2)
+
+
+def _save_exam_codes(request, session):
+    """
+    Снимки кода экзамена – в момент завершения, рядом с последним ответом.
+
+    Код приходит из браузера полем codes: {item_id: {code, language}}. Во
+    время экзамена он лежит только в localStorage – запуски не сохраняются.
+    """
+    try:
+        codes = json.loads(request.POST.get('codes') or '{}')
+    except json.JSONDecodeError:
+        return
+    if not isinstance(codes, dict):
+        return
+    items = session.items.select_related('question__quiz').filter(question__question_type='code')
+    for item in items:
+        row = codes.get(str(item.id))
+        if not isinstance(row, dict):
+            continue
+        submission = create_snapshot(
+            request.user, item.question.quiz, item.question, row.get('code'),
+            'cpp' if row.get('language') == 'cpp' else 'python', item.text_answer or '')
+        if submission:
+            item.submission = submission
+            item.save(update_fields=['submission'])
+
+
 @login_required
 @require_POST
 def practice_finish_view(request, pk):
@@ -877,12 +935,20 @@ def practice_finish_view(request, pk):
         for row in pending[:100]:
             item = by_id.get(row.get('item_id'))
             answer = (row.get('answer') or '').strip()
-            if not item or not answer or item.question.question_type == 'code':
+            if not item or not answer:
                 continue
             if study and item.is_locked:
                 continue
             _apply_answer(item, answer, row.get('seconds') or 0, study)
 
+    # Код принимается и чуть после дедлайна: страница сама жмёт «Завершить» на
+    # нуле, а _owned_session к этому моменту уже закрыл сессию по часам – без
+    # поблажки код терял каждый, кто писал до последней секунды. Ответы после
+    # дедлайна не принимаются (маячок выше), а код на балл не влияет.
+    if session.mode == 'exam' and (
+            not session.is_finished
+            or timezone.now() <= session.deadline + EXAM_CODES_GRACE):
+        _save_exam_codes(request, session)
     if not session.is_finished:
         session.finished_at = timezone.now()
         session.save(update_fields=['finished_at'])
@@ -904,7 +970,8 @@ def practice_result_view(request, pk):
     if not session.is_finished:
         return redirect('ege:ege_practice', pk=session.pk)
 
-    items = list(session.items.select_related('question').order_by('order'))
+    items = list(session.items.select_related('question')
+                 .prefetch_related('question__test_cases').order_by('order'))
     rows = []
     total_seconds = 0
     correct = 0
@@ -949,7 +1016,7 @@ def practice_result_view(request, pk):
             'mm_ss': f'{minutes}:{secs:02d}' if seconds else '–',
             'color': ege_time_color(seconds, question.ege_number),
             'recommended_min': EGE_RECOMMENDED_TIME.get(question.ege_number or 0, 5),
-            'correct_answer': '' if hide_answers else (question.correct_text_answer or ''),
+            'correct_answer': '' if hide_answers else expected_answer(question),
             'attempts': item.attempts,
             'gave_up': item.gave_up,
             'theory_slug': theory_slugs.get(question.ege_number),

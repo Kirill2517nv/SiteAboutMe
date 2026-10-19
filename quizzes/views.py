@@ -31,7 +31,8 @@ from .ege_constants import (  # noqa: F401
     ege_time_color, test_score_for,
 )
 from .ege_constants import EXCLUDED_KINDS, practice_pool_q
-from .ege_scoring import grade as ege_grade
+from .ege_scoring import answer_shape, check_answer, expected_answer
+from .tasks import create_snapshot
 
 
 def _language(value):
@@ -495,18 +496,12 @@ def ege_detail_view(request, quiz_id):
                 user=request.user, quiz=quiz, question=q
             ).order_by('-created_at').first()
             if sub:
-                last_submissions[q.id] = {
-                    'id': sub.id,
-                    'status': sub.status,
-                    'is_correct': sub.is_correct,
-                    'code': sub.code,
-                    'language': sub.language,
-                    'cpu_time_ms': sub.cpu_time_ms,
-                    'memory_kb': sub.memory_kb,
-                }
+                # Только код и язык: исход решает ответ, а вердикт снимка
+                # в данных страницы был бы подсказкой.
+                last_submissions[q.id] = {'code': sub.code, 'language': sub.language}
 
     # Последние текстовые ответы из UserAnswer (для нерешённых text-задач)
-    text_questions = [q for q in questions if q.question_type == 'text']
+    text_questions = [q for q in questions if q.question_type in ('text', 'code')]
     last_text_answers = {}  # question_id -> text_answer
     if text_questions:
         text_ua_qs = UserAnswer.objects.filter(
@@ -525,10 +520,10 @@ def ege_detail_view(request, quiz_id):
         prog = progress_map.get(q.id)
         saved_answer = ''
         saved_answer_wrong = False
-        if q.question_type == 'text':
+        if q.question_type in ('text', 'code'):
             if prog and prog.is_solved:
                 # Решена — показываем правильный ответ
-                saved_answer = q.correct_text_answer or ''
+                saved_answer = expected_answer(q)
             elif q.id in last_text_answers:
                 # Не решена, но есть предыдущий ответ — показываем его
                 saved_answer = last_text_answers[q.id]
@@ -544,6 +539,7 @@ def ege_detail_view(request, quiz_id):
             'time_spent': prog.time_spent_seconds if prog else 0,
             'saved_answer': saved_answer,
             'saved_answer_wrong': saved_answer_wrong,
+            'shape': answer_shape(q),
         }
         # Лучшие метрики для code-задач
         if q.question_type == 'code' and prog:
@@ -589,10 +585,14 @@ def ege_check_answer_view(request, quiz_id):
 
     question = get_object_or_404(Question, id=question_id, quiz=quiz)
 
-    if question.question_type not in ('text', 'choice'):
+    if question.question_type not in ('text', 'choice', 'code'):
         return JsonResponse({'error': 'Тип задачи не поддерживает синхронную проверку'}, status=400)
 
-    is_correct = question.check_text_answer(answer)
+    if question.question_type == 'choice':
+        is_correct, score = question.check_text_answer(answer), None
+    else:
+        # У задачи с кодом оценивается ответ из поля, код уходит снимком.
+        is_correct, score = check_answer(question, answer)
 
     # Обновляем ExamTaskProgress
     progress, _ = ExamTaskProgress.objects.get_or_create(
@@ -606,12 +606,20 @@ def ege_check_answer_view(request, quiz_id):
         progress.attempts_to_solve += 1
         fields_to_update.append('attempts_to_solve')
 
+    if score is not None and score > (progress.score or 0):
+        progress.score = score
+        fields_to_update.append('score')
+
     if is_correct and not progress.is_solved:
         progress.is_solved = True
         progress.first_solved_at = timezone.now()
         fields_to_update += ['is_solved', 'first_solved_at']
 
     progress.save(update_fields=fields_to_update)
+
+    if question.question_type == 'code':
+        create_snapshot(request.user, quiz, question, data.get('code'),
+                        _language(data.get('language')), answer)
 
     return JsonResponse({
         'is_correct': is_correct,
@@ -639,6 +647,9 @@ def ege_finish_view(request, quiz_id):
     answers_data = data.get('answers', {})  # {question_id: answer_text}
     force = data.get('force', False)
     languages = data.get('languages', {})  # {question_id: 'python' | 'cpp'}
+    codes = data.get('codes', {})  # {question_id: код} – снимки задач с кодом
+    if not isinstance(codes, dict):
+        codes = {}
 
     questions = list(quiz.questions.all().order_by('ege_number', 'id'))
 
@@ -660,7 +671,7 @@ def ege_finish_view(request, quiz_id):
     user_answers_to_create = []
 
     for question in questions:
-        user_input = answers_data.get(str(question.id), '')
+        user_input = str(answers_data.get(str(question.id)) or '').strip()[:500]
         is_correct = False
         score = None
         text_answer = None
@@ -668,60 +679,18 @@ def ege_finish_view(request, quiz_id):
         error_log = None
         submission = None
 
-        if question.question_type == 'text':
+        if question.question_type in ('text', 'code'):
+            # У задачи с кодом, как и у текстовой, оценивается ответ из поля.
+            # За задания 26 и 27 бывает 1 балл из 2.
             text_answer = user_input
             if user_input:
-                # За задания 26 и 27 бывает 1 балл из 2: числа перепутаны
-                # местами или верна половина ответа.
-                score = ege_grade(question, user_input, question.correct_text_answer or '')
-                if score is not None:
-                    is_correct = score >= question.points
-                    total_score += score
-                else:
-                    is_correct = question.check_text_answer(user_input)
-                    if is_correct:
-                        total_score += question.points
-
-        elif question.question_type == 'code':
-            # Берём последний completed CodeSubmission
-            latest_sub = CodeSubmission.objects.filter(
-                user=request.user, quiz=quiz, question=question,
-            ).order_by('-created_at').first()
-
-            if latest_sub:
-                code_answer = latest_sub.code
-                submission = latest_sub
-                if latest_sub.status in ('success', 'failed'):
-                    is_correct = latest_sub.is_correct or False
-                    error_log = latest_sub.error_log
-                    # За задания 26 и 27 бывает 1 балл из 2 – он уже посчитан
-                    # проверкой и лежит в отправке.
-                    score = latest_sub.score
-                    if score is not None:
-                        total_score += score
-                    elif is_correct:
-                        total_score += question.points
-                elif latest_sub.status in ('pending', 'running'):
-                    # Ещё проверяется — Celery обновит позже
-                    code_answer = latest_sub.code
-            elif user_input:
-                # Код написан, но "Проверить" не нажималась — создаём submission
-                new_sub = CodeSubmission.objects.create(
-                    user=request.user, quiz=quiz, question=question,
-                    code=user_input, status='pending',
-                    language=_language(languages.get(str(question.id))),
-                )
-                try:
-                    task = check_code_task.delay(new_sub.id)
-                    new_sub.celery_task_id = task.id
-                    new_sub.save(update_fields=['celery_task_id'])
-                except Exception:
-                    new_sub.status = 'error'
-                    new_sub.error_log = 'Сервер проверки временно недоступен'
-                    new_sub.completed_at = timezone.now()
-                    new_sub.save(update_fields=['status', 'error_log', 'completed_at'])
-                code_answer = user_input
-                submission = new_sub
+                is_correct, score = check_answer(question, user_input)
+                total_score += score if score is not None else (question.points if is_correct else 0)
+            if question.question_type == 'code':
+                submission = create_snapshot(
+                    request.user, quiz, question, str(codes.get(str(question.id)) or ''),
+                    _language(languages.get(str(question.id))), user_input or '')
+                code_answer = submission.code if submission else None
 
         user_answers_to_create.append(UserAnswer(
             user_result=user_result,
@@ -730,7 +699,7 @@ def ege_finish_view(request, quiz_id):
             code_answer=code_answer,
             error_log=error_log,
             is_correct=is_correct,
-            score=submission.score if submission else score,
+            score=score,
             submission=submission,
         ))
 
@@ -768,10 +737,8 @@ def ege_finish_view(request, quiz_id):
             progress.save(update_fields=fields)
 
     # Pending code submissions count
-    pending_checks = sum(
-        1 for ua in user_answers_to_create
-        if ua.submission and ua.submission.status in ('pending', 'running')
-    )
+    # Снимки кода на балл не влияют – ждать их проверки нечего.
+    pending_checks = 0
 
     return JsonResponse({
         'success': True,
@@ -802,8 +769,9 @@ def ege_result_view(request, quiz_id):
     total_points = quiz.questions.aggregate(total=Sum('points'))['total'] or 0
 
     # Pending code checks
+    # Снимки кода (answer не пуст) на балл не влияют – их не ждём.
     pending_count = answers.filter(
-        submission__isnull=False,
+        submission__isnull=False, submission__answer__isnull=True,
         submission__status__in=['pending', 'running'],
     ).count()
 
@@ -1744,6 +1712,113 @@ def submit_code_view(request, quiz_id, question_id):
         'status': 'pending',
         'message': 'Код отправлен на проверку'
     })
+
+
+RUN_SALT = 'code-run'
+MAX_STDIN = 10_000
+
+
+def _acquire_run_lock(user_id, run_id):
+    """Один запуск на ученика: иначе кнопкой можно забить очередь проверки всем."""
+    import redis
+    from .tasks import RUN_LOCK_SECONDS, run_lock_key
+    client = redis.Redis.from_url(settings.CELERY_BROKER_URL)
+    return bool(client.set(run_lock_key(user_id), run_id, nx=True, ex=RUN_LOCK_SECONDS))
+
+
+def _release_run_lock(user_id):
+    import redis
+    from .tasks import run_lock_key
+    try:
+        redis.Redis.from_url(settings.CELERY_BROKER_URL).delete(run_lock_key(user_id))
+    except Exception:
+        pass  # redis лежит – замок истечёт сам
+
+
+@login_required
+@require_POST
+def run_code_view(request, question_id):
+    """
+    «Запустить» – прогон кода задачи ЕГЭ без оценки: вывод, ошибка, время, память.
+
+    Ничего не пишет в базу: CodeSubmission питает статистику, галерею и
+    рекорды, а черновые прогоны там лишние. Задачу оценивает ответ в поле.
+    """
+    from django.core import signing
+    from uuid import uuid4
+    from .ege_constants import EGE_QUIZ_TYPES
+    from .tasks import run_code_task
+
+    question = get_object_or_404(
+        Question.objects.select_related('quiz'), id=question_id,
+        question_type='code', quiz__quiz_type__in=EGE_QUIZ_TYPES,
+    )
+    if question.quiz.quiz_type == 'check':
+        from .ege_practice import check_question_open
+        if not check_question_open(request.user, question):
+            return JsonResponse({'error': 'Срез не назначен'}, status=403)
+    elif not question.quiz.is_public:
+        return JsonResponse({'error': 'Задача недоступна'}, status=403)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Невалидный JSON'}, status=400)
+    if not isinstance(data, dict):
+        return JsonResponse({'error': 'Невалидный JSON'}, status=400)
+    code = str(data.get('code') or '').strip()
+    if not code:
+        return JsonResponse({'error': 'Код пуст'}, status=400)
+
+    run_id = uuid4().hex
+    try:
+        if not _acquire_run_lock(request.user.id, run_id):
+            return JsonResponse({'error': 'Предыдущий запуск ещё идёт'}, status=409)
+    except Exception:
+        return JsonResponse({'error': 'Сервер запуска временно недоступен'}, status=503)
+    try:
+        run_code_task.apply_async(
+            args=[code, _language(data.get('language')), str(data.get('stdin') or '')[:MAX_STDIN],
+                  question.id, run_id, request.user.id],
+            task_id=run_id,
+        )
+    except Exception:
+        # Задача не ушла – замок снимет только она сама, поэтому снимаем здесь,
+        # иначе ученик полторы минуты читал бы «предыдущий запуск ещё идёт».
+        _release_run_lock(request.user.id)
+        return JsonResponse({'error': 'Сервер запуска временно недоступен'}, status=503)
+    # Чужой запуск по id не прочитать и не остановить: id подписан вместе с учеником.
+    return JsonResponse({'token': signing.dumps([run_id, request.user.id], salt=RUN_SALT)})
+
+
+def _run_id(request, token):
+    from django.core import signing
+    try:
+        run_id, user_id = signing.loads(token, salt=RUN_SALT, max_age=3600)
+    except signing.BadSignature:
+        raise Http404
+    if user_id != request.user.id:
+        raise Http404
+    return run_id
+
+
+@login_required
+@require_GET
+def run_status_view(request, token):
+    from celery.result import AsyncResult
+    result = AsyncResult(_run_id(request, token))
+    if not result.ready():
+        return JsonResponse({'status': 'running'})
+    if result.failed():
+        return JsonResponse({'status': 'done', 'output': '', 'error': 'Системная ошибка запуска'})
+    return JsonResponse({'status': 'done', **result.result})
+
+
+@login_required
+@require_POST
+def run_stop_view(request, token):
+    stop_submission(f'run-{_run_id(request, token)}')
+    return JsonResponse({'ok': True})
 
 
 @login_required

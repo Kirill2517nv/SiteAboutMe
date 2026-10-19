@@ -391,6 +391,15 @@ class CodeSubmission(models.Model):
         null=True, blank=True, verbose_name="Балл",
         help_text="Заполняется только там, где балл частичный (задания 26 и 27). Пусто – задача оценивается «верно/неверно».",
     )
+    # Снимок кода из тренажёра ЕГЭ: задачу там оценивает ответ в поле, а код
+    # сохраняется рядом с ним. None – старая отправка, оценённая выводом на
+    # тестах (практикум учебника так и работает). У снимка is_correct – «ответ
+    # верный и программа отработала без ошибки»: вывод не сравнивается, задание
+    # 2 честно решают, печатая таблицу истинности.
+    answer = models.TextField(
+        null=True, blank=True, verbose_name="Ответ ученика",
+        help_text="Только у снимков тренажёра ЕГЭ. Пусто – отправка проверена выводом на тестах.",
+    )
     error_log = models.TextField(null=True, blank=True, verbose_name="Лог ошибки")
     celery_task_id = models.CharField(max_length=255, null=True, blank=True, verbose_name="ID задачи Celery")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создано")
@@ -556,7 +565,7 @@ class PracticeItem(models.Model):
     question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name='practice_items', verbose_name="Задача")
     order = models.PositiveSmallIntegerField(default=0, verbose_name="Порядок в сессии")
 
-    text_answer = models.CharField(max_length=200, blank=True, default='', verbose_name="Ответ ученика")
+    text_answer = models.CharField(max_length=500, blank=True, default='', verbose_name="Ответ ученика")
     submission = models.ForeignKey(
         CodeSubmission, null=True, blank=True, on_delete=models.SET_NULL,
         related_name='practice_items', verbose_name="Отправка кода"
@@ -704,7 +713,7 @@ class UserAnswer(models.Model):
     question = models.ForeignKey(Question, on_delete=models.CASCADE, verbose_name="Вопрос")
 
     selected_choice = models.ForeignKey(Choice, on_delete=models.CASCADE, null=True, blank=True, verbose_name="Выбранный вариант")
-    text_answer = models.CharField(max_length=200, null=True, blank=True, verbose_name="Текстовый ответ")
+    text_answer = models.CharField(max_length=500, null=True, blank=True, verbose_name="Текстовый ответ")
     code_answer = models.TextField(null=True, blank=True, verbose_name="Код ученика")
     error_log = models.TextField(null=True, blank=True, verbose_name="Лог ошибки")
 

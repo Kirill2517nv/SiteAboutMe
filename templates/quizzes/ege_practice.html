@@ -262,42 +262,18 @@
                         {% include 'quizzes/_code_lang_switch.html' with key=item.id %}
                     </div>
                     <div id="cm-wrap-{{ item.id }}"></div>
-                    <button @click="submitCode({{ item.id }})"
-                            :disabled="busy[{{ item.id }}] || locked[{{ item.id }}]"
-                            class="mt-3 px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-                        <span x-show="!busy[{{ item.id }}]">Проверить решение</span>
-                        <span x-show="busy[{{ item.id }}]" class="flex items-center gap-2">
-                            <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                            </svg>
-                            Проверяю...
-                        </span>
-                    </button>
-                    <button x-show="busy[{{ item.id }}]" x-cloak @click="stopCode({{ item.id }})"
-                            class="mt-3 ml-2 px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors">
-                        Остановить
-                    </button>
+                    {% include 'quizzes/_ege_code_run.html' with question_id=item.question.id key=item.id %}
                 </div>
-                {% else %}
+                {% endif %}
                 <div class="mt-4">
                     <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Ответ:</label>
-                    <input type="text" x-model="answers[{{ item.id }}]"
-                           autocomplete="off"
-                           @input="dirty[{{ item.id }}] = true"
-                           {% if reveal %}@keydown.enter.prevent="check({{ item.id }})"{% else %}@blur="flushAnswers()"{% endif %}
-                           :disabled="locked[{{ item.id }}]"
-                           class="w-full max-w-md px-4 py-2.5 border rounded-lg focus:ring-2 transition-colors dark:bg-slate-900 dark:text-white disabled:opacity-60"
-                           :class="verdict[{{ item.id }}] === false
-                               ? 'border-red-400 bg-red-50 dark:bg-red-900/20 focus:ring-red-500'
-                               : 'border-gray-300 dark:border-slate-600 focus:ring-brand-500 focus:border-brand-500'"
-                           placeholder="Введите ответ...">
+                    {% include 'quizzes/_ege_answer_field.html' with key=item.id %}
                     <div class="flex flex-wrap items-center gap-3 mt-3">
                         {% if reveal %}
                         <button @click="check({{ item.id }})"
-                                :disabled="!answers[{{ item.id }}] || busy[{{ item.id }}] || locked[{{ item.id }}]"
+                                :disabled="!(answers[{{ item.id }}] || '').trim() || busy[{{ item.id }}] || locked[{{ item.id }}]"
                                 class="px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-                            <span x-show="!attempts[{{ item.id }}]">Проверить</span>
+                            <span x-show="!attempts[{{ item.id }}]">Проверить ответ</span>
                             <span x-show="attempts[{{ item.id }}]" x-cloak>Проверить ещё раз</span>
                         </button>
                         {% comment %}
@@ -312,6 +288,9 @@
                         <span x-show="attempts[{{ item.id }}] && !locked[{{ item.id }}]" x-cloak
                               class="text-xs text-gray-400"
                               x-text="'попыток: ' + attempts[{{ item.id }}]"></span>
+                        {% if item.question.question_type == 'code' %}
+                        <span class="text-xs text-gray-400">Код из редактора сохранится вместе с ответом.</span>
+                        {% endif %}
                         {% else %}
                         <span class="text-xs text-gray-400"
                               x-text="dirty[{{ item.id }}] ? 'сохраняется...' :
@@ -320,7 +299,6 @@
                         {% endif %}
                     </div>
                 </div>
-                {% endif %}
 
                 {% if user.is_superuser %}
                 {% comment %}
@@ -373,12 +351,9 @@
                         <div class="mt-1 pl-7" x-show="scores[{{ item.id }}]" x-cloak
                              x-text="'Засчитано ' + scores[{{ item.id }}] + ' из ' + points[{{ item.id }}] + ' баллов.'"></div>
                         <div class="mt-1 pl-7" x-show="correct[{{ item.id }}]" x-cloak>
-                            Правильный ответ: <span class="font-semibold" x-text="correct[{{ item.id }}]"></span>
+                            Правильный ответ: <span class="font-semibold whitespace-pre-line" x-text="correct[{{ item.id }}]"></span>
                         </div>
                     </div>
-                    <div x-show="errors[{{ item.id }}]" x-cloak
-                         class="mt-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300 text-sm font-mono whitespace-pre-wrap break-words"
-                         x-text="errors[{{ item.id }}]"></div>
                 </div>
                 {% endif %}
 
@@ -423,6 +398,7 @@
 
     <form method="post" action="{% url 'ege:ege_practice_finish' session.pk %}" x-ref="finishForm" class="hidden">
         {% csrf_token %}
+        <input type="hidden" name="codes" x-ref="finishCodes">
     </form>
 </div>
 </div>
@@ -434,6 +410,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/python/python.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/clike/clike.min.js"></script>
 <script src="{% static 'js/code-lang.js' %}"></script>
+<script src="{% static 'js/answer-table.js' %}"></script>
+<script src="{% static 'js/code-run.js' %}"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/edit/matchbrackets.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/edit/closebrackets.min.js"></script>
 
@@ -458,13 +436,13 @@ function practiceApp() {
         dirty: {},       // itemId -> ответ введён, но ещё не отправлен
         saved: {},       // itemId -> ответ принят сервером (режим «Экзамен»)
         correct: {},     // itemId -> правильный ответ (только после «Показать ответ»)
-        errors: {},      // itemId -> лог провалившегося теста
         scores: {},      // itemId -> балл, если он частичный (задания 26 и 27)
         points: {},      // itemId -> сколько баллов стоит задача
         busy: {},        // itemId -> идёт проверка
         showFinishConfirm: false,
 
         editors: {},
+        codes: {},  // item_id → код в редакторе; оценивается не он, а ответ
         langs: {},  // item_id → 'python' | 'cpp', по умолчанию Python
         clock: '0:00',
         examLeft: {{ seconds_left|default_if_none:"null" }},
@@ -473,8 +451,6 @@ function practiceApp() {
         _taskStart: null,
         _tick: null,
         _ticks: 0,
-        _polls: {},
-        _subs: {},       // itemId -> id отправки на проверке, для «Остановить»
 
         init() {
             for (const it of this.items) {
@@ -486,8 +462,15 @@ function practiceApp() {
                 this.points[it.item_id] = it.points;
                 if (it.correct_answer) this.correct[it.item_id] = it.correct_answer;
                 const sub = this.lastSubs[it.question_id];
-                if (sub && sub.code) this.answers[it.item_id] = sub.code;
+                if (sub && sub.code) this.codes[it.item_id] = sub.code;
                 if (sub) this.langs[it.item_id] = sub.language || 'python';
+            }
+            // Черновик кода свежее последнего снимка: запуски на сервере не
+            // хранятся, а на экзамене снимок делается только при завершении.
+            const drafts = loadCodeLangs(this._draftKey());
+            for (const [id, d] of Object.entries(drafts)) {
+                if (d.code) this.codes[id] = d.code;
+                if (d.lang) this.langs[id] = d.lang;
             }
 
             if (this.examLeft !== null) this._examEnd = Date.now() + this.examLeft * 1000;
@@ -547,10 +530,44 @@ function practiceApp() {
             document.removeEventListener('visibilitychange', this._onHide);
             if (this._onLeave) window.removeEventListener('beforeunload', this._onLeave);
             if (this._onBack) window.removeEventListener('popstate', this._onBack);
-            for (const id of Object.keys(this._polls)) clearInterval(this._polls[id]);
         },
 
         item() { return this.items[this.current]; },
+
+        _itemById(id) { return this.items.find(x => x.item_id === Number(id)); },
+
+        // Для _ege_answer_field.html и _ege_code_run.html.
+        answerShapeOf(id) { return this._itemById(id)?.shape || null; },
+        answerLocked(id) { return !!this.locked[id]; },
+        answerWrong(id) { return this.verdict[id] === false; },
+        answerInput(id) { this.dirty[id] = true; },
+        answerEnter(id) {
+            if (this.reveal && (this.answers[id] || '').trim() && !this.locked[id]) this.check(id);
+        },
+        answerBlur(id) { if (!this.reveal) this.flushAnswers(); },
+        codeOf(id) { return this.editors[id] ? Alpine.raw(this.editors[id]).getValue() : (this.codes[id] || ''); },
+        langOf(id) { return this.langs[id] || 'python'; },
+
+        _draftKey() { return `ege_practice_${this.sessionId}_codes`; },
+        _saveDrafts() {
+            const drafts = {};
+            for (const it of this.items) {
+                if (it.type !== 'code') continue;
+                drafts[it.item_id] = { code: this.codes[it.item_id] || '', lang: this.langOf(it.item_id) };
+            }
+            saveCodeLangs(this._draftKey(), drafts);
+        },
+
+        // Код всех задач с кодом – для снимков при завершении экзамена.
+        _codesPayload() {
+            const out = {};
+            for (const it of this.items) {
+                if (it.type === 'code' && (this.codes[it.item_id] || '').trim()) {
+                    out[it.item_id] = { code: this.codes[it.item_id], language: this.langOf(it.item_id) };
+                }
+            }
+            return JSON.stringify(out);
+        },
 
         btnClass(it, i) {
             let cls = i === this.current ? ' active' : '';
@@ -646,7 +663,7 @@ function practiceApp() {
                 const itemId = Number(key);
                 delete this.dirty[itemId];
                 const it = this.items.find(x => x.item_id === itemId);
-                if (!it || it.type === 'code' || this.locked[itemId]) continue;
+                if (!it || this.locked[itemId]) continue;
                 if (!(this.answers[itemId] || '').trim()) continue;
                 await this.check(itemId);
             }
@@ -656,6 +673,7 @@ function practiceApp() {
             this._finishing = true;   // снимает предупреждение об уходе
             this._flushTime();
             await this.flushAnswers();
+            this.$refs.finishCodes.value = this._codesPayload();
             this.$refs.finishForm.submit();
         },
 
@@ -671,7 +689,7 @@ function practiceApp() {
             for (const key of Object.keys(this.dirty)) {
                 const itemId = Number(key);
                 const it = this.items.find(x => x.item_id === itemId);
-                if (!it || it.type === 'code' || this.locked[itemId]) continue;
+                if (!it || this.locked[itemId]) continue;
                 const answer = (this.answers[itemId] || '').trim();
                 if (answer) pending.push({ item_id: itemId, answer: answer });
             }
@@ -679,6 +697,7 @@ function practiceApp() {
             body.append('csrfmiddlewaretoken', this.csrf);
             body.append('beacon', '1');
             body.append('answers', JSON.stringify(pending));
+            body.append('codes', this._codesPayload());
             navigator.sendBeacon(this.finishUrl, body);
         },
 
@@ -690,7 +709,12 @@ function practiceApp() {
                 const resp = await fetch(`/ege/practice/${this.sessionId}/answer/`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.csrf },
-                    body: JSON.stringify({ item_id: itemId, answer: this.answers[itemId] }),
+                    // Код уходит вместе с ответом – это и есть снимок решения.
+                    // На экзамене сервер его игнорирует: снимок – при завершении.
+                    body: JSON.stringify({
+                        item_id: itemId, answer: this.answers[itemId],
+                        code: this.codeOf(itemId), language: this.langOf(itemId),
+                    }),
                     keepalive: true,   // уход со страницы не должен терять ответ
                 });
                 const data = await resp.json();
@@ -742,13 +766,13 @@ function practiceApp() {
             // пересоздаём инстанс вместо refresh (та же причина, что в ege_detail).
             const stale = wrap.querySelector('.CodeMirror');
             if (stale) {
-                this.answers[it.item_id] = this.editors[it.item_id]?.getValue() ?? this.answers[it.item_id];
+                this.codes[it.item_id] = this.editors[it.item_id]?.getValue() ?? this.codes[it.item_id];
                 stale.remove();
                 delete this.editors[it.item_id];
             }
 
             const cm = CodeMirror(wrap, {
-                value: this.answers[it.item_id] || '',
+                value: this.codes[it.item_id] || '',
                 mode: codeLangMode(this.langs[it.item_id]),
                 theme: codeLangTheme(this.langs[it.item_id]),
                 lineNumbers: true,
@@ -760,7 +784,8 @@ function practiceApp() {
                 extraKeys: { Tab: (cm) => cm.replaceSelection('    ', 'end') },
             });
             cm.on('change', () => {
-                this.answers[it.item_id] = cm.getValue();
+                this.codes[it.item_id] = cm.getValue();
+                this._saveDrafts();
                 // Повтор: верный вариант сдан, ученик пишет следующий – это снова
                 // время решения. Соседей связки (carried) правка не размораживает.
                 if (this.isRetry && !it.carried && this.verdict[it.item_id] === true) {
@@ -774,74 +799,7 @@ function practiceApp() {
         setLang(itemId, lang) {
             this.langs[itemId] = lang;
             codeLangApply(this.editors[itemId], lang);
-        },
-
-        async submitCode(itemId) {
-            const it = this.items.find(x => x.item_id === itemId);
-            const code = this.editors[itemId]?.getValue() || '';
-            if (!code.trim()) return;
-
-            this.busy[itemId] = true;
-            this.errors[itemId] = '';
-            this._flushTime();
-
-            try {
-                const resp = await fetch(`/quizzes/${it.quiz_id}/question/${it.question_id}/submit/`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.csrf },
-                    body: JSON.stringify({ code, language: this.langs[itemId] || 'python' }),
-                });
-                const data = await resp.json();
-                if (!resp.ok && !data.submission_id) {
-                    this.errors[itemId] = data.error || 'Не удалось отправить код';
-                    this.busy[itemId] = false;
-                    return;
-                }
-                this._poll(itemId, data.submission_id);
-            } catch (e) {
-                this.errors[itemId] = 'Ошибка сети';
-                this.busy[itemId] = false;
-            }
-        },
-
-        // Вердикт («остановлено» – неверная попытка) заберёт тот же _poll.
-        stopCode(itemId) {
-            const id = this._subs[itemId];
-            if (!id) return;
-            fetch(`/quizzes/submission/${id}/stop/`, {
-                method: 'POST', headers: { 'X-CSRFToken': this.csrf },
-            }).catch(() => {});
-        },
-
-        // ponytail: опрос вместо WebSocket. Сокет из quiz-async.js подписан на один
-        // квиз, а задачи сессии приходят из разных банков и вариантов. Переходим
-        // на WS, если задержка в пару секунд начнёт мешать.
-        _poll(itemId, submissionId) {
-            if (!submissionId) { this.busy[itemId] = false; return; }
-            this._subs[itemId] = submissionId;
-            this._polls[itemId] = setInterval(async () => {
-                try {
-                    const resp = await fetch(`/quizzes/submission/${submissionId}/status/`);
-                    const data = await resp.json();
-                    if (data.status === 'pending' || data.status === 'running') return;
-
-                    clearInterval(this._polls[itemId]);
-                    delete this._polls[itemId];
-                    this.busy[itemId] = false;
-                    this.verdict[itemId] = !!data.is_correct;
-                    // Задания 26 и 27: неверный ответ ещё может стоить 1 балла.
-                    this.scores[itemId] = data.score;
-                    this.points[itemId] = data.points;
-                    this.attempts[itemId] = (this.attempts[itemId] || 0) + 1;
-                    if (data.is_correct && !this.isRetry) this.locked[itemId] = true;
-                    if (!data.is_correct && data.error_log) this.errors[itemId] = data.error_log;
-                } catch (e) {
-                    clearInterval(this._polls[itemId]);
-                    delete this._polls[itemId];
-                    this.busy[itemId] = false;
-                    this.errors[itemId] = 'Не удалось получить результат проверки';
-                }
-            }, 2000);
+            this._saveDrafts();
         },
     };
 }

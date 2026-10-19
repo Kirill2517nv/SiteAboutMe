@@ -39,13 +39,23 @@
 
     <div class="flex flex-wrap gap-2 mb-6">
         <a href="?"
-           class="px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors {% if not errors_only %}bg-brand-600 border-brand-600 text-white{% else %}bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-300 hover:border-brand-400{% endif %}">
+           class="px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors {% if not errors_only and not broken_only %}bg-brand-600 border-brand-600 text-white{% else %}bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-300 hover:border-brand-400{% endif %}">
             Все задачи · {{ total }}
         </a>
         <a href="?errors=1"
            class="px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors {% if errors_only %}bg-brand-600 border-brand-600 text-white{% else %}bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-300 hover:border-brand-400{% endif %}">
             Только ошибки · {{ mistakes }}
         </a>
+        {% comment %}
+        Ответ верный, а код при нём не отработал ни разу (ege_stats.broken_code_answers).
+        Сигнал «спросите», не вердикт: перебор бывает медленнее песочницы.
+        {% endcomment %}
+        {% if broken %}
+        <a href="?code=broken"
+           class="px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors {% if broken_only %}bg-amber-500 border-amber-500 text-white{% else %}bg-white dark:bg-slate-800 border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:border-amber-500{% endif %}">
+            Ответ без рабочего кода · {{ broken }}
+        </a>
+        {% endif %}
     </div>
 
     <div class="space-y-3">
@@ -108,8 +118,9 @@
                         {% else %}
                         <span class="text-xs text-gray-400">без зачёта</span>
                         {% endif %}
-                        {% if question.question_type != 'code' %}
-                        <span class="ml-auto font-mono {% if item.is_correct %}text-emerald-700 dark:text-emerald-300{% else %}text-red-700 dark:text-red-300{% endif %}">{{ item.text_answer|default:"(пусто)" }}</span>
+                        {% comment %}У старых задач с кодом ответа в поле не было – их «(пусто)» соврало бы.{% endcomment %}
+                        {% if question.question_type != 'code' or item.text_answer %}
+                        <span class="ml-auto font-mono whitespace-pre-line {% if item.is_correct %}text-emerald-700 dark:text-emerald-300{% else %}text-red-700 dark:text-red-300{% endif %}">{{ item.text_answer|default:"(пусто)" }}</span>
                         {% endif %}
                     </div>
                     {% endfor %}
@@ -131,12 +142,18 @@
                             <span class="text-xs font-medium text-amber-600 dark:text-amber-400">{{ sub.score }} из {{ question.points }}</span>
                             {% elif sub.is_correct %}
                             <span class="text-xs font-medium text-emerald-600 dark:text-emerald-400">верно</span>
+                            {% elif sub.answer_ok and sub.status == 'failed' %}
+                            <span class="text-xs font-medium text-amber-600 dark:text-amber-400">ответ верный, код не отработал</span>
                             {% elif sub.is_correct is False %}
                             <span class="text-xs font-medium text-red-600 dark:text-red-400">неверно</span>
                             {% else %}
                             <span class="text-xs text-gray-400">{{ sub.get_status_display }}</span>
                             {% endif %}
                             <span class="text-xs text-gray-400">{{ sub.get_language_display }}</span>
+                            {% comment %}Снимок к ответу: «верно» – ответ верный и программа отработала без ошибки.{% endcomment %}
+                            {% if sub.answer is not None %}
+                            <span class="text-xs text-gray-500 dark:text-slate-400">ответ: <span class="font-mono">{{ sub.answer|default:"–" }}</span></span>
+                            {% endif %}
                             {% if sub.cpu_time_ms is not None %}
                             <span class="text-xs text-gray-400 tabular-nums">{{ sub.cpu_time_ms|floatformat:0 }} мс{% if sub.memory_kb is not None %} ·{{ sub.memory_kb }} КБ{% endif %}</span>
                             {% endif %}
@@ -170,7 +187,7 @@
         {% empty %}
         <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 p-8 text-center">
             <p class="text-gray-500 dark:text-slate-400">
-                {% if errors_only %}Ошибок по этому заданию нет.{% else %}Ученик ещё не решал это задание.{% endif %}
+                {% if broken_only %}Таких задач нет.{% elif errors_only %}Ошибок по этому заданию нет.{% else %}Ученик ещё не решал это задание.{% endif %}
             </p>
         </div>
         {% endfor %}

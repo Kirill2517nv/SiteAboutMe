@@ -92,6 +92,10 @@
                     <div class="text-xs font-medium text-gray-500 dark:text-slate-400 mb-1.5">Ваше решение</div>
                     {% endif %}
                     {% if row.is_code and row.solutions %}
+                    {% if row.item.text_answer %}
+                    <div class="mb-3 text-sm text-gray-600 dark:text-slate-300">Ответ:
+                        <span class="font-medium text-emerald-700 dark:text-emerald-300 whitespace-pre-line">{{ row.item.text_answer }}</span></div>
+                    {% endif %}
                     {% for sub in row.solutions %}
                     <div class="text-xs font-medium text-gray-500 dark:text-slate-400 mb-1.5{% if not forloop.first %} mt-4{% endif %}">Ваше решение · {{ sub.get_language_display }}</div>
                     <pre class="p-3 rounded-lg bg-slate-900 text-slate-100 text-xs overflow-x-auto"><code class="language-{{ sub.language }}">{{ sub.code }}</code></pre>

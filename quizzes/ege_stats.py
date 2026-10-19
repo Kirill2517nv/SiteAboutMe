@@ -27,7 +27,7 @@ from .ege_constants import (  # noqa: F401
     ege_mistakes_color, ege_score_color, ege_time_color, test_score_for,
 )
 from .models import (
-    ExamTaskProgress, PracticeItem, PracticeSession, Question, Quiz, UserResult,
+    CodeSubmission, ExamTaskProgress, PracticeItem, PracticeSession, Question, Quiz, UserResult,
 )
 
 # Вклад одной задачи в «решено верно». Обычно это 0 или 1, но за задания 26 и
@@ -1406,6 +1406,39 @@ def class_rows(users):
                                -row['score']['primary'],
                                row['user'].last_name, row['user'].username))
     return rows
+
+
+def broken_code_answers(users, numbers):
+    """
+    Задачи, где ответ верный, а код при нём не отработал: {user_id: {question_id}}.
+
+    Сигнал учителю «посмотрите и спросите», не вердикт: задачу засчитал ответ, и
+    так и остаётся. Честный перебор бывает медленнее песочницы, путь к файлу –
+    домашним; но так же выглядит и списанный ответ с кодом для вида. Задача
+    выпадает из списка, как только хоть один её снимок отработал (is_correct) –
+    ученик довёл решение. Снимок с системной ошибкой (status='error': очередь,
+    Docker) не в счёт: это не про код ученика.
+    """
+    from .ege_scoring import check_answer
+
+    snapshots = (
+        CodeSubmission.objects
+        .filter(user__in=users, answer__isnull=False, status__in=('success', 'failed'),
+                question__ege_number__in=numbers, question__classroom_only=False)
+        .select_related('question')
+        .prefetch_related('question__test_cases')
+    )
+    good, bad = set(), set()
+    for sub in snapshots:
+        key = (sub.user_id, sub.question_id)
+        if sub.is_correct:
+            good.add(key)
+        elif sub.answer and check_answer(sub.question, sub.answer)[0]:
+            bad.add(key)
+    result = defaultdict(set)
+    for user_id, question_id in bad - good:
+        result[user_id].add(question_id)
+    return result
 
 
 def task_student_rows(users, numbers):

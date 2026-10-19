@@ -83,6 +83,13 @@
                                class="font-medium text-gray-900 dark:text-white hover:text-brand-600 dark:hover:text-cyan-400">
                                 {{ row.user|surname_first }}
                             </a>
+                            {% if row.broken %}
+                            <a href="{% url 'ege:ege_task_student' number row.user.id %}?code=broken"
+                               title="Верный ответ, но код при нём ни разу не отработал – стоит спросить, как решал"
+                               class="ml-1.5 px-1.5 py-0.5 rounded-md text-xs font-medium text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30 hover:bg-amber-100 whitespace-nowrap">
+                                без рабочего кода: {{ row.broken }}
+                            </a>
+                            {% endif %}
                         </td>
 
                         {% comment %}

@@ -77,8 +77,9 @@ sequenceDiagram
 - **Exam mode:** если `UserResult` уже существует – redirect на результат (одна попытка)
 - **Practice mode:** вопросы доступны для повторного решения
 - Загружает `ExamTaskProgress` для каждого вопроса (solved, attempts, time)
-- Для code-вопросов: последний `CodeSubmission` + лучшие метрики
-- Для text-вопросов: восстанавливает последний ответ из `UserAnswer`
+- Для code-вопросов: последние сохранённые код и язык (`last_submissions_json`, без вердикта) + лучшие метрики
+- Для text- и code-вопросов: восстанавливает последний ответ из `UserAnswer`
+- Форма поля ответа – `answer_shape(question)`: таблица или одно поле
 
 **`tasks_json` структура:**
 ```json
@@ -91,6 +92,7 @@ sequenceDiagram
     "attempts": 3,
     "time_spent": 120,
     "saved_answer": "42",
+    "shape": null,
     "points": 1
   },
   {
@@ -100,13 +102,23 @@ sequenceDiagram
     "is_solved": false,
     "attempts": 1,
     "time_spent": 300,
-    "last_code": "n = int(input())",
+    "saved_answer": "",
+    "shape": [1, 2],
     "best_cpu_time_ms": 45.2,
     "best_memory_kb": 8192,
+    "best_cpu_code": "n = int(input())",
     "points": 2
   }
 ]
 ```
+
+`shape` – `[строк, столбцов]` таблицы ответа или `null`, если хватает одного
+поля. Считается по эталону (`ege_scoring.answer_shape`): таблица нужна, когда
+в нём два и больше чисел (17, 18, 20, 25–27), – в том числе у текстовых задач
+(задание 18 – два числа). В браузер уходит только форма, сами числа эталона
+остаются на сервере. `last_submissions_json` несёт только `{code, language}`:
+вердикт прошлого снимка был бы подсказкой. WebSocket здесь не подключается –
+оценку даёт «Проверить ответ», а не вывод программы.
 
 ---
 
@@ -115,12 +127,15 @@ sequenceDiagram
 **View:** `ege_check_answer_view`
 **Content-Type:** `application/json`
 
-Мгновенная проверка текстового ответа. **Только в practice mode.**
+Мгновенная проверка ответа (`text`, `choice`, `code`). **Только в practice mode.**
 
 **Запрос:**
 ```json
-{"question_id": 1, "answer": "42"}
+{"question_id": 5, "answer": "42", "code": "n = int(input())", "language": "python"}
 ```
+
+`code` и `language` нужны только задаче с кодом: у неё оценивается **ответ**,
+а код уходит снимком (`create_snapshot`) в фон и в оценке не участвует.
 
 **Ответ (200):**
 ```json
@@ -133,12 +148,19 @@ sequenceDiagram
 
 | Код | Причина |
 |-----|---------|
-| 400 | Пустой ответ или невалидный question_id |
+| 400 | Пустой ответ, невалидный question_id или тип не из `text` / `choice` / `code` |
 | 403 | Exam mode (проверка запрещена) |
 | 404 | Вопрос не найден в этом тесте |
 
-!!! tip "Нормализация"
-    Ответ нормализуется через `normalize_text_answer()` – lowercase, strip, удаление ведущих нулей. Также проверяется `alternative_answers` JSON-поле.
+!!! tip "Как сверяется ответ"
+    `ege_scoring.check_answer(question, answer)` – одна функция для сессии,
+    варианта и снимка. Эталон – `expected_answer(question)`: у текстовой задачи
+    `correct_text_answer`, у задачи с кодом – `output_data` её теста. Если
+    в эталоне только числа (таблица), они сравниваются по порядку
+    (`outputs_match`), поэтому «98 293» в строке и те же числа в двух строках
+    – один ответ. У текстовой задачи дополнительно проверяется
+    `alternative_answers`. У 26 и 27 `score` бывает частичным (0/1/2), но
+    в этот ответ он не входит – балл держит `ExamTaskProgress`.
 
 ---
 
@@ -153,9 +175,14 @@ sequenceDiagram
 ```json
 {
   "answers": {"1": "42", "3": "100"},
+  "codes": {"5": "n = int(input())"},
+  "languages": {"5": "python"},
   "force": false
 }
 ```
+
+`codes` и `languages` – для задач с кодом: из них создаются снимки, а оценивается
+ответ из `answers`.
 
 **Ответ (200):**
 ```json
@@ -164,7 +191,7 @@ sequenceDiagram
   "result_id": 20,
   "score": 15,
   "total_points": 28,
-  "pending_checks": 1,
+  "pending_checks": 0,
   "redirect_url": "/ege/5/result/"
 }
 ```
@@ -172,9 +199,12 @@ sequenceDiagram
 **Логика:**
 
 1. Exam mode: блокирует повторную сдачу (403 если `UserResult` существует)
-2. Text-вопросы: проверяет через `check_text_answer()`
-3. Code-вопросы: использует последний `CodeSubmission`
-4. Обновляет `ExamTaskProgress` для правильных ответов
+2. Text- и code-вопросы: `check_answer()` по ответу из поля; у 26 и 27 балл
+   частичный
+3. Code-вопросы: `create_snapshot()` из `codes` пишет `CodeSubmission.answer`,
+   `UserAnswer.text_answer` – ответ, `code_answer` – код снимка
+4. Обновляет `ExamTaskProgress` по каждой отвеченной задаче
+5. `pending_checks` всегда 0: снимки проверяются в фоне и на балл не влияют
 
 ---
 
@@ -183,7 +213,9 @@ sequenceDiagram
 **View:** `ege_result_view`
 **Template:** `quizzes/ege_result.html`
 
-Показывает результат: набранные баллы, правильные/неправильные ответы.
+Показывает результат: набранные баллы, правильные/неправильные ответы. «На
+проверке» здесь считаются только обычные отправки (`submission.answer IS NULL`):
+снимки кода на балл не влияют, ждать их нечего.
 
 ---
 
@@ -326,13 +358,17 @@ sequenceDiagram
     V-->>B: redirect /ege/practice/<pk>/
 
     loop Решение
-        B->>V: POST /ege/practice/<pk>/answer/
+        B->>V: POST /ege/practice/<pk>/answer/\n{answer, code, language}
+        V->>V: check_answer(question, answer)
         V->>DB: PracticeItem.is_correct, attempts, score
+        opt задача с кодом в тренировке
+            V->>DB: create_snapshot → Celery
+        end
         V-->>B: study – вердикт; exam – только {saved: true}
         B->>V: POST /ege/practice/<pk>/time/
     end
 
-    B->>V: POST /ege/practice/<pk>/finish/
+    B->>V: POST /ege/practice/<pk>/finish/\n(код экзамена – полем codes)
     V-->>B: redirect /ege/practice/<pk>/result/
 ```
 
@@ -401,18 +437,22 @@ sequenceDiagram
 **View:** `views_practice.practice_view` · **Template:** `quizzes/ege_practice.html`
 
 Одна задача на экране. **Правильные ответы в браузер не уходят** ни в одном
-режиме – их отдаёт только `/reveal/`. У экзамена страница получает
-`seconds_left`, посчитанный на сервере.
+режиме – их отдаёт только `/reveal/`. В `items_json` у каждой задачи есть
+`shape` – форма таблицы ответа `[строк, столбцов]` или `null` (одно поле);
+`last_submissions_json` несёт только `{code, language}`, без вердикта. У
+экзамена страница получает `seconds_left`, посчитанный на сервере.
 
 ### POST `/ege/practice/<pk>/answer/` – Ответ на задачу
 
-**Content-Type:** `application/json` · `{"item_id": 12, "answer": "42", "seconds": 40}`
+**Content-Type:** `application/json` · `{"item_id": 12, "answer": "42", "seconds": 40, "code": "...", "language": "python"}`
+
+`code` и `language` – только для задачи с кодом: оценку даёт `answer`
+(`ege_scoring.check_answer`), а код уходит снимком.
 
 - `mode='study'` – `{"is_correct", "score", "item_id", "attempts", "locked"}`;
   верный ответ не отдаётся
 - `mode='exam'` – `{"saved": true, "item_id"}`, ни исхода, ни намёка на него
-- Решённая или открытая задача – 409; задача на коде – 400 (проверяется
-  отправкой кода); завершённая сессия – 403
+- Решённая или открытая задача – 409; завершённая сессия – 403
 
 ### POST `/ege/practice/<pk>/reveal/` – «Показать ответ»
 
@@ -433,6 +473,13 @@ sequenceDiagram
 Поле `beacon=1` – уход с экзамена через `sendBeacon`: недосланные ответы
 (`answers`, до 100 штук) сохраняются и сессия закрывается одним запросом,
 ответ 204. Обычный POST – редирект на разбор.
+
+Код экзамена приходит полем формы `codes` = JSON
+`{item_id: {code, language}}` – по нему создаются снимки, ответ берётся из
+`PracticeItem.text_answer`. До завершения код лежит только в `localStorage`
+браузера. Коды принимаются и в течение `EXAM_CODES_GRACE` = 2 минуты после
+дедлайна (страница жмёт «Завершить» на нуле, а сессию уже закрыл по часам
+`_owned_session`); ответы после дедлайна не принимаются.
 
 ### GET `/ege/practice/<pk>/result/` – Разбор сессии
 
@@ -507,5 +554,13 @@ sequenceDiagram
 у обоих заданий одно правило: ответ – два числа, 1 балл за перестановку или
 одну верную ячейку. Сравниваются числа, а не раскладка вывода, поэтому
 `43656 36` и те же числа в две строки – один ответ. Балл попадает в
-`CodeSubmission.score`, `PracticeItem.score`, `UserAnswer.score`,
-`ExamTaskProgress.score`; везде остальное – `null`.
+`PracticeItem.score`, `UserAnswer.score` и `ExamTaskProgress.score`; у снимка
+тренажёра `CodeSubmission.score` всегда `null`, а поле заполняется только
+у обычной отправки практикума. Везде остальное – `null`.
+
+Там же живут три функции, на которых держится оценка по ответу:
+`expected_answer(question)` – эталон (у задачи с кодом это `output_data` её
+теста), `answer_shape(question)` – форма таблицы ответа и
+`check_answer(question, answer)` – сверка и балл. Задачу с кодом в тренажёре
+оценивает ответ; вывод программы проверяется только у снимка и только на
+«отработало ли».

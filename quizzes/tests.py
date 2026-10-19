@@ -2986,20 +2986,22 @@ class CodeLanguageTests(TestCase):
         self.assertEqual(self._submit({'code': 'x', 'language': 'rust'}).language, 'python')
 
     def test_finish_creates_submission_in_the_chosen_language(self):
-        # Экзамен: код без «Проверить» уходит на проверку только при завершении,
-        # и язык должен приехать вместе с ним.
+        # Экзамен: снимок кода делается при завершении, рядом с ответом из
+        # поля, и язык должен приехать вместе с кодом.
         from unittest import mock
-        with mock.patch('quizzes.views.check_code_task.delay') as delay:
+        with mock.patch('quizzes.tasks.check_code_task.delay') as delay:
             delay.return_value.id = 'task'
             self.client.post(
                 f'/ege/{self.quiz.pk}/finish/',
                 data=json.dumps({
-                    'answers': {str(self.question.pk): 'int main(){}'},
+                    'answers': {str(self.question.pk): '42'},
+                    'codes': {str(self.question.pk): 'int main(){}'},
                     'languages': {str(self.question.pk): 'cpp'},
                 }),
                 content_type='application/json',
             )
-        self.assertEqual(CodeSubmission.objects.get(question=self.question).language, 'cpp')
+        sub = CodeSubmission.objects.get(question=self.question)
+        self.assertEqual((sub.language, sub.answer), ('cpp', '42'))
 
     def test_last_submission_reports_its_language(self):
         # Редактор открывается в языке последней отправки – иначе код C++
@@ -4120,3 +4122,230 @@ class KompegeImagesTests(TestCase):
         q.refresh_from_db()
         self.assertEqual(q.text, 'Программа работы исполнителя:\n\n[img:1]\n\nПосле выполнения программы ответ.')
         self.assertEqual([i.image.name for i in q.images.all()], ['ege/bank-12/images/bank-12_1_12_1.gif'])
+
+
+class CodeAnswerFieldTests(TestCase):
+    """
+    Задачи с кодом в тренажёре ЕГЭ: оценивается ответ в поле (или таблице),
+    код – снимок к нему. «Запустить» ничего не оценивает.
+    """
+
+    def setUp(self):
+        from unittest import mock
+        self.user = get_user_model().objects.create_user('runner', password='pwd')
+        self.bank = Quiz.objects.create(title='Банк 25', quiz_type='bank', slug='bank-25', is_public=True)
+        self.question = Question.objects.create(
+            quiz=self.bank, text='маски', question_type='code', ege_number=25, points=1)
+        self.question.test_cases.create(input_data='', output_data='100 5\n200 7\n')
+        self.session = PracticeSession.objects.create(
+            user=self.user, kind='topic', mode='study', ege_number=25)
+        self.item = PracticeItem.objects.create(session=self.session, question=self.question, order=0)
+        self.client.force_login(self.user)
+        patcher = mock.patch('quizzes.tasks.check_code_task.delay')
+        self.delay = patcher.start()
+        self.delay.return_value.id = 'task'
+        self.addCleanup(patcher.stop)
+
+    def _answer(self, answer, code=''):
+        return self.client.post(
+            f'/ege/practice/{self.session.pk}/answer/',
+            data=json.dumps({'item_id': self.item.pk, 'answer': answer, 'code': code}),
+            content_type='application/json',
+        ).json()
+
+    def test_shape_comes_from_the_expected_output(self):
+        self.assertEqual(ege_scoring.answer_shape(self.question), [2, 2])
+        one = Question.objects.create(quiz=self.bank, text='x', question_type='code', ege_number=5)
+        one.test_cases.create(input_data='', output_data='42')
+        self.assertIsNone(ege_scoring.answer_shape(one))
+        pair = Question.objects.create(quiz=self.bank, text='x', question_type='text',
+                                       ege_number=18, correct_text_answer='2575 466')
+        self.assertEqual(ege_scoring.answer_shape(pair), [1, 2])
+
+    def test_table_answer_is_compared_by_numbers(self):
+        self.assertEqual(ege_scoring.check_answer(self.question, '100 5\n200 7'), (True, None))
+        self.assertFalse(ege_scoring.check_answer(self.question, '100 5\n200 8')[0])
+        pair = Question.objects.create(quiz=self.bank, text='x', question_type='text',
+                                       ege_number=18, correct_text_answer='2575 466')
+        self.assertTrue(ege_scoring.check_answer(pair, '2575  466')[0])
+
+    def test_shape_reaches_the_page_but_the_numbers_do_not(self):
+        page = self.client.get(f'/ege/practice/{self.session.pk}/').content.decode()
+        self.assertIn('"shape": [2, 2]', page)
+        self.assertNotIn('200 7', page)
+
+    def test_answer_decides_the_task_and_code_becomes_a_snapshot(self):
+        data = self._answer('100 5\n200 7', code='print(1)')
+        self.assertTrue(data['is_correct'])
+        self.item.refresh_from_db()
+        self.assertTrue(self.item.is_correct)
+        sub = CodeSubmission.objects.get(question=self.question)
+        self.assertEqual((sub.code, sub.answer), ('print(1)', '100 5\n200 7'))
+        self.assertEqual(self.item.submission, sub)
+        self.delay.assert_called_once_with(sub.id)
+
+    def test_answer_without_code_is_allowed(self):
+        self.assertTrue(self._answer('100 5\n200 7')['is_correct'])
+        self.assertFalse(CodeSubmission.objects.exists())
+
+    def _check_snapshot(self, answer, run_result):
+        from unittest import mock
+        from .tasks import check_code_task
+        sub = CodeSubmission.objects.create(user=self.user, quiz=self.bank, question=self.question,
+                                            code='print(1)', answer=answer)
+        with mock.patch('quizzes.utils.compile_code', return_value=('print(1)', None)), \
+                mock.patch('quizzes.utils.run_code_in_docker', return_value=run_result), \
+                mock.patch('quizzes.tasks.send_ws_notification'):
+            check_code_task.run(sub.id)
+        sub.refresh_from_db()
+        return sub
+
+    def test_snapshot_ignores_the_output(self):
+        # Задание 2 печатает таблицу истинности, а не ответ: это честное решение.
+        sub = self._check_snapshot('100 5\n200 7', ('x y z\n0 0 1', None, 12.0, 900))
+        self.assertTrue(sub.is_correct)
+        self.assertEqual((sub.cpu_time_ms, sub.memory_kb), (12.0, 900))
+
+    def test_snapshot_needs_a_clean_run_and_a_right_answer(self):
+        self.assertFalse(self._check_snapshot('100 5\n200 7', ('', 'Traceback', None, None)).is_correct)
+        self.assertFalse(self._check_snapshot('1 2', ('100 5\n200 7', None, 1.0, 1)).is_correct)
+
+    def test_snapshot_does_not_touch_the_practice_item(self):
+        self._answer('100 5\n200 7')
+        self._check_snapshot('9', ('', 'boom', None, None))
+        self.item.refresh_from_db()
+        self.assertTrue(self.item.is_correct)
+
+    def test_exam_codes_are_saved_on_finish(self):
+        self.session.mode = 'exam'
+        self.session.save()
+        self._answer('100 5\n200 7', code='ignored during exam')
+        self.assertFalse(CodeSubmission.objects.exists())
+        self.client.post(f'/ege/practice/{self.session.pk}/finish/', {
+            'codes': json.dumps({str(self.item.pk): {'code': 'print(2)', 'language': 'cpp'}}),
+        })
+        sub = CodeSubmission.objects.get(question=self.question)
+        self.assertEqual((sub.code, sub.language, sub.answer), ('print(2)', 'cpp', '100 5\n200 7'))
+
+    def test_run_is_not_stored_and_its_token_is_personal(self):
+        from unittest import mock
+        with mock.patch('quizzes.views._acquire_run_lock', return_value=True), \
+                mock.patch('quizzes.tasks.run_code_task.apply_async') as apply_async:
+            resp = self.client.post(f'/quizzes/question/{self.question.pk}/run/',
+                                    data=json.dumps({'code': 'print(1)', 'stdin': '5'}),
+                                    content_type='application/json')
+        token = resp.json()['token']
+        self.assertEqual(apply_async.call_args.kwargs['args'][:3], ['print(1)', 'python', '5'])
+        self.assertFalse(CodeSubmission.objects.exists())
+        other = get_user_model().objects.create_user('other', password='pwd')
+        self.client.force_login(other)
+        self.assertEqual(self.client.get(f'/quizzes/run/{token}/').status_code, 404)
+
+    def test_run_refuses_a_second_run_and_non_ege_questions(self):
+        from unittest import mock
+        with mock.patch('quizzes.views._acquire_run_lock', return_value=False):
+            resp = self.client.post(f'/quizzes/question/{self.question.pk}/run/',
+                                    data=json.dumps({'code': 'print(1)'}), content_type='application/json')
+        self.assertEqual(resp.status_code, 409)
+        lesson = Quiz.objects.create(title='Практикум', quiz_type='standard', slug='pr')
+        q = Question.objects.create(quiz=lesson, text='x', question_type='code')
+        resp = self.client.post(f'/quizzes/question/{q.pk}/run/',
+                                data=json.dumps({'code': 'print(1)'}), content_type='application/json')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_cleanup_waits_for_snapshots_much_longer(self):
+        from unittest import mock
+        from .tasks import cleanup_stale_submissions
+        hour_ago = timezone.now() - timedelta(hours=1)
+        snap = CodeSubmission.objects.create(user=self.user, quiz=self.bank, question=self.question,
+                                             code='print(1)', answer='1')
+        old = CodeSubmission.objects.create(user=self.user, quiz=self.bank, question=self.question,
+                                            code='print(1)')
+        CodeSubmission.objects.filter(pk__in=[snap.pk, old.pk]).update(created_at=hour_ago)
+        with mock.patch('quizzes.tasks.send_ws_notification'):
+            cleanup_stale_submissions()
+        snap.refresh_from_db()
+        old.refresh_from_db()
+        self.assertEqual((snap.status, old.status), ('pending', 'error'))
+
+    def _snap(self, answer, status, is_correct):
+        return CodeSubmission.objects.create(user=self.user, quiz=self.bank, question=self.question,
+                                             code='print(1)', answer=answer, status=status,
+                                             is_correct=is_correct)
+
+    def test_right_answer_with_broken_code_is_a_signal(self):
+        self._snap('100 5\n200 7', 'failed', False)
+        self.assertEqual(ege_stats.broken_code_answers([self.user], [25]), {self.user.id: {self.question.id}})
+        # Довёл код до рабочего – сигнал снят.
+        self._snap('100 5\n200 7', 'success', True)
+        self.assertEqual(dict(ege_stats.broken_code_answers([self.user], [25])), {})
+
+    def test_wrong_answer_or_system_error_is_not_a_signal(self):
+        self._snap('1 2', 'failed', False)
+        self._snap('100 5\n200 7', 'error', None)
+        self.assertEqual(dict(ege_stats.broken_code_answers([self.user], [25])), {})
+
+    def test_teacher_sees_the_signal(self):
+        self._snap('100 5\n200 7', 'failed', False)
+        # Сигнал – только учителю: ученик не должен знать, что его код «на заметке».
+        self.assertEqual(self.client.get('/ege/task/25/students/').status_code, 403)
+        self.assertEqual(self.client.get(
+            f'/ege/task/25/students/{self.user.id}/?code=broken').status_code, 403)
+        teacher = get_user_model().objects.create_superuser('t', password='pwd')
+        self.client.force_login(teacher)
+        table = self.client.get('/ege/task/25/students/?group=all').content.decode()
+        self.assertIn('без рабочего кода: 1', table)
+        self._answer_as(self.user, '100 5\n200 7')
+        self.client.force_login(teacher)
+        page = self.client.get(f'/ege/task/25/students/{self.user.id}/?code=broken').content.decode()
+        self.assertIn('Ответ без рабочего кода · 1', page)
+        self.assertIn('ответ верный, код не отработал', page)
+
+    def _answer_as(self, user, answer):
+        self.client.force_login(user)
+        self._answer(answer)
+
+    def test_exam_closed_by_the_clock_still_keeps_the_code(self):
+        # Страница жмёт «Завершить» на нуле, а сессия к этому моменту уже закрыта
+        # по часам (_owned_session). Код терял каждый, кто писал до конца.
+        self.session.mode = 'exam'
+        self.session.save()
+        self._answer('100 5\n200 7')
+        PracticeSession.objects.filter(pk=self.session.pk).update(
+            created_at=timezone.now() - timedelta(minutes=61))
+        self.client.post(f'/ege/practice/{self.session.pk}/finish/', {
+            'codes': json.dumps({str(self.item.pk): {'code': 'print(3)'}}),
+        })
+        self.assertEqual(CodeSubmission.objects.get(question=self.question).code, 'print(3)')
+
+    def test_exam_page_carries_no_verdict_of_an_old_snapshot(self):
+        self._snap('100 5\n200 7', 'success', True)
+        self.session.mode = 'exam'
+        self.session.save()
+        page = self.client.get(f'/ege/practice/{self.session.pk}/').content.decode()
+        self.assertIn('"code": "print(1)"', page)
+        self.assertNotIn('"is_correct": true', page)
+
+    def test_run_lock_is_released_when_the_queue_is_down(self):
+        from unittest import mock
+        with mock.patch('quizzes.views._acquire_run_lock', return_value=True), \
+                mock.patch('quizzes.views._release_run_lock') as release, \
+                mock.patch('quizzes.tasks.run_code_task.apply_async', side_effect=OSError):
+            resp = self.client.post(f'/quizzes/question/{self.question.pk}/run/',
+                                    data=json.dumps({'code': 'print(1)'}), content_type='application/json')
+        self.assertEqual(resp.status_code, 503)
+        release.assert_called_once_with(self.user.id)
+        resp = self.client.post(f'/quizzes/question/{self.question.pk}/run/',
+                                data=json.dumps(['not', 'a', 'dict']), content_type='application/json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_variant_check_grades_the_answer_and_snapshots_the_code(self):
+        variant = Quiz.objects.create(title='Вариант', quiz_type='exam', slug='v-25',
+                                      is_public=True, exam_mode='practice')
+        q = Question.objects.create(quiz=variant, text='x', question_type='code', ege_number=25, points=1)
+        q.test_cases.create(input_data='', output_data='100 5')
+        data = self.client.post(f'/ege/{variant.pk}/check/', data=json.dumps(
+            {'question_id': q.pk, 'answer': '100 5', 'code': 'print(1)'}),
+            content_type='application/json').json()
+        self.assertTrue(data['is_solved'])
+        self.assertEqual(CodeSubmission.objects.get(question=q).answer, '100 5')
