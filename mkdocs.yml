@@ -82,6 +82,7 @@ nav:
     - "WebSocket": frontend/websocket.md
     - "Alpine.js": frontend/alpine.md
   - "Инфраструктура":
+    - "Два сервера": two-servers.md
     - "Сервер": infra/server.md
     - "Деплой": infra/deployment.md
     - "Сервисы": infra/services.md

@@ -1,0 +1,19 @@
+# lbm-srv: /etc/systemd/system/siteschool-web.service – Gunicorn (HTTP).
+# Сокеты всех юнитов – в /run/siteschool/ (siteschool.tmpfiles.conf): общий
+# RuntimeDirectory удалялся бы вместе с сокетом соседа при остановке одного юнита.
+[Unit]
+Description=Siteschool – Gunicorn (HTTP)
+After=network.target postgresql@16-siteschool.service redis-server.service
+
+[Service]
+User=lih
+Group=www-data
+UMask=0007
+WorkingDirectory=/home/lih/siteSchool
+EnvironmentFile=/home/lih/siteSchool/.env
+ExecStart=/home/lih/siteSchool/venv/bin/gunicorn config.wsgi:application --bind unix:/run/siteschool/web.sock --workers 9
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

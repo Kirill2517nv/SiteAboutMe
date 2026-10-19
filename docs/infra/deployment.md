@@ -1,43 +1,73 @@
 # Деплой
 
+!!! info "Два сервера"
+    Основной сервер – lbm-srv, ноутбук – шлюз и запасной. Общая схема и авария
+    описаны в **[«Два сервера»](../two-servers.md)**.
+
 ## Процесс деплоя
+
+Выкатка идёт с dev из Git Bash одной командой: `scripts/deploy.sh` заходит по
+SSH на оба сервера. lbm-srv получает полный деплой, ноутбук – только код и
+статику.
 
 ```mermaid
 flowchart TD
-    DEV[Разработка\nWindows] -->|"git push"| GH[GitHub\nKirill2517nv/SiteAboutMe]
-    GH -->|"ssh + git pull"| SERVER[Сервер\nkirill-lab.ru]
+    DEV[Разработка\nWindows] -->|"bash scripts/deploy.sh"| LBM[lbm-srv\nосновной]
+    DEV -->|"bash scripts/deploy.sh"| LAPTOP[ноутбук\nшлюз и запасной]
 
-    SERVER --> PULL[git pull]
-    PULL --> VENV[source venv/bin/activate]
-    VENV --> PIP[pip install -r requirements.txt]
-    PIP --> MIGRATE[python manage.py migrate]
-    MIGRATE --> STATIC[python manage.py collectstatic --noinput]
-    STATIC --> RESTART["sudo systemctl restart\nsite celery celerybeat daphne"]
-    RESTART --> VERIFY[Проверка работоспособности]
+    LBM --> L_PULL[git pull]
+    L_PULL --> L_PIP[pip install]
+    L_PIP --> L_MIG[migrate]
+    L_MIG --> L_STATIC[collectstatic]
+    L_STATIC --> L_DOCKER[docker build site-sandbox-cpp]
+    L_DOCKER --> L_RESTART["restart siteschool-web\nsiteschool-daphne\nsiteschool-celery\nsiteschool-celerybeat"]
+
+    LAPTOP --> S_PULL[git pull]
+    S_PULL --> S_PIP[pip install]
+    S_PIP --> S_STATIC[collectstatic]
+    S_STATIC --> S_DOCKER[docker build site-sandbox-cpp]
 ```
 
----
-
-## Шаги деплоя
-
-### 1. Подключение к серверу
+## Запуск
 
 ```bash
-ssh admin@192.168.1.199 -p 2222
-cd /home/admin/site
+bash scripts/deploy.sh
 ```
 
-### 2. Получение изменений
+Скрипт отказывается работать, если на ноутбуке стоит флаг
+`/home/admin/site/.failover`: в этом режиме основной сервер – ноутбук, и эта
+схема выкатки к нему не подходит.
+
+### Что делает скрипт на lbm-srv
 
 ```bash
-git pull
+cd ~/siteSchool
+git pull --ff-only
+venv/bin/pip install -q -r requirements.txt
+venv/bin/python manage.py migrate --noinput
+venv/bin/python manage.py collectstatic --noinput
+docker build -q -t site-sandbox-cpp docker/sandbox-cpp
+sudo systemctl restart siteschool-web siteschool-daphne siteschool-celery siteschool-celerybeat
 ```
 
-### 2а. Пересборка Tailwind CSS (при изменении шаблонов или конфига)
+### Что делает скрипт на ноутбуке
 
-Если в коммите менялись HTML-шаблоны или `tailwind.config.js`, CSS пересобирается локально перед деплоем и коммитится в репозиторий. На сервере дополнительных действий не требуется – `static/css/tailwind.css` уже актуален.
+```bash
+cd ~/site
+git pull --ff-only
+venv/bin/pip install -q -r requirements.txt
+venv/bin/python manage.py collectstatic --noinput
+docker build -q -t site-sandbox-cpp docker/sandbox-cpp
+```
 
-Для локальной пересборки (на Windows-машине разработчика):
+`migrate` на ноутбуке не выполняется: схема приходит репликой, запись в реплику
+невозможна. Сервисы сайта не перезапускаются – в обычном режиме они выключены.
+
+## Пересборка Tailwind CSS
+
+Если в коммите менялись HTML-шаблоны или `tailwind.config.js`, CSS
+пересобирается локально до деплоя и коммитится в репозиторий. На серверах
+дополнительных действий не требуется – `static/css/tailwind.css` уже актуален.
 
 ```bash
 npm run tw:build
@@ -46,100 +76,62 @@ npm run tw:build
 !!! info "Node.js"
     Требуется Node.js с установленными зависимостями (`npm install`). Tailwind v3.4+ установлен в `devDependencies`.
 
-### 3. Обновление зависимостей
+## Верификация
 
 ```bash
-source venv/bin/activate
-pip install -r requirements.txt
+# Сервисы lbm-srv
+ssh lih@lbm-srv 'systemctl status siteschool-web siteschool-daphne siteschool-celery siteschool-celerybeat nginx redis-server postgresql@16-siteschool --no-pager'
+
+# Ошибки после выкладки
+ssh lih@lbm-srv 'journalctl -u siteschool-web --since "5 minutes ago"'
+ssh lih@lbm-srv 'journalctl -u siteschool-daphne --since "5 minutes ago"'
+ssh lih@lbm-srv 'journalctl -u siteschool-celery --since "5 minutes ago"'
+
+# Redis
+ssh lih@lbm-srv 'redis-cli ping'   # → PONG
 ```
 
-### 4. Миграции БД
-
-```bash
-python manage.py migrate
-```
-
-!!! warning "Миграции на production"
-    Всегда проверяйте миграции перед деплоем: `python manage.py showmigrations`. Деструктивные миграции (удаление столбцов/таблиц) требуют особого внимания.
-
-### 5. Статические файлы
-
-```bash
-python manage.py collectstatic --noinput
-```
-
-Собирает файлы из `static/` и приложений в `staticfiles/` для отдачи Nginx.
-
-### 6. Перезапуск сервисов
-
-```bash
-sudo systemctl restart site celery celerybeat daphne
-```
+Проверка реплики после выкладки с миграциями – в
+[«Два сервера»](../two-servers.md#проверка-реплики).
 
 !!! tip "Nginx"
-    Nginx перезапускать обычно не нужно – конфигурация меняется редко. При изменении конфига: `sudo nginx -t && sudo systemctl restart nginx`.
-
-### 7. Верификация
-
-```bash
-# Проверить статус сервисов
-sudo systemctl status site celery celerybeat daphne nginx redis-server
-
-# Проверить логи на ошибки
-sudo journalctl -u site --since "5 minutes ago"
-sudo journalctl -u daphne --since "5 minutes ago"
-sudo journalctl -u celery --since "5 minutes ago"
-
-# Проверить Redis
-redis-cli ping  # → PONG
-```
-
----
-
-## Полная команда (one-liner)
-
-```bash
-cd /home/admin/site && git pull && source venv/bin/activate && \
-pip install -r requirements.txt && \
-python manage.py migrate && \
-python manage.py collectstatic --noinput && \
-sudo systemctl restart site celery celerybeat daphne
-```
-
-!!! note "Tailwind CSS"
-    `static/css/tailwind.css` хранится в репозитории и деплоится через `git pull`. Пересборка CSS выполняется на машине разработчика командой `npm run tw:build` и коммитируется вместе с изменениями шаблонов.
-
----
+    Nginx перезапускать обычно не нужно – конфигурация меняется редко. При изменении конфига: `sudo nginx -t && sudo systemctl reload nginx`.
 
 ## Выкладка данных и медиа
 
-Код и схема БД едут шагами выше. Данные и медиа выкладываются отдельно, и порядок внутри них важен – медиа строго до загрузчиков, пулы после банков. Он описан в двух отдельных документах, здесь не дублируется:
+Код и схема БД едут `deploy.sh`. Данные и медиа выкладываются отдельно, и
+порядок внутри них важен – медиа строго до загрузчиков, пулы после банков:
 
-- **[Банк ЕГЭ](../ege-bank-deploy.md)** – `media/ege/bank-*` через `rsync`, затем `load_ege`, `seed_ege_tasks` и `ege_pools`;
-- **[Симуляции спецкурса](../spetskurs-deploy.md)** – собранные `.wasm` и архив исходников через `rsync`, выпуск разборов через `publish_spetskurs`.
+- **[Банк ЕГЭ](../ege-bank-deploy.md)** – `media/ege/bank-*`, затем `load_ege`,
+  `seed_ege_tasks` и `ege_pools`;
+- **[Симуляции спецкурса](../spetskurs-deploy.md)** – собранные `.wasm` и архив
+  исходников, выпуск разборов через `publish_spetskurs`.
 
-Оба артефакта в git не хранятся: в `.gitignore` стоят `media/`, `fixtures/*`, собранные `static/spetskurs/wasm/*.{html,js,wasm}` и архив `static/spetskurs/*.zip`. Переносят их `rsync`/`scp` вручную.
-
----
+Оба артефакта в git не хранятся: в `.gitignore` стоят `media/`, `fixtures/*`,
+собранные `static/spetskurs/wasm/*.{html,js,wasm}` и архив
+`static/spetskurs/*.zip`. Переносят их вручную, на **оба** сервера: lbm-srv
+отдаёт их ученикам, ноутбук должен быть готов к аварии. Медиа на ноутбук,
+кроме того, каждые 10 минут подтягивает крон пользователя admin с lbm-srv.
 
 ## Откат
 
 При проблемах после деплоя:
 
 ```bash
-# 1. Откат кода
-cd /home/admin/site
+# 1. Откат кода на lbm-srv
+ssh lih@lbm-srv
+cd /home/lih/siteSchool
 git log --oneline -5          # найти предыдущий коммит
 git checkout <commit-hash>    # откатиться
 
 # 2. Откат миграции (если применена)
-python manage.py migrate <app_name> <previous_migration>
+venv/bin/python manage.py migrate <app_name> <previous_migration>
 
 # 3. Перезапуск
-sudo systemctl restart site celery celerybeat daphne
+sudo systemctl restart siteschool-web siteschool-daphne siteschool-celery siteschool-celerybeat
 ```
 
----
+Ноутбук откатывается так же, но без `migrate` и без перезапуска сервисов.
 
 ## Импорт тестов
 
@@ -153,30 +145,32 @@ python manage.py load_quiz fixtures/my_quiz.json
 
 Банки ЕГЭ грузятся отдельной командой – `python manage.py load_ege fixtures/bank-05.json`; её место в общем порядке выкладки описано в [выкладке банка ЕГЭ](../ege-bank-deploy.md).
 
----
-
 ## SSL-сертификат
 
-Certbot (Let's Encrypt) автоматически обновляет сертификат. Проверка:
+Сертификат Let's Encrypt стоит на ноутбуке, в nginx шлюза. Certbot обновляет
+его автоматически. Проверка:
 
 ```bash
+ssh admin@192.168.1.199 -p 2222
 sudo certbot renew --dry-run
 ```
 
----
-
 ## Окружение (.env)
 
-Секреты хранятся в `/home/admin/site/.env`:
+На lbm-srv секреты хранятся в `/home/lih/siteSchool/.env`:
 
 | Переменная | Описание |
 |------------|----------|
 | `SECRET_KEY` | Django secret key |
 | `DEBUG` | `False` на production (значение сравнивается со строкой `'True'`) |
-| `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT` | Подключение к PostgreSQL |
-| `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND` | Redis для Celery; по умолчанию `redis://localhost:6379/0` |
-| `REDIS_HOST`, `REDIS_PORT` | Redis для Channel Layer (Channels); по умолчанию `localhost:6379` |
+| `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT` | Подключение к PostgreSQL: кластер `16/siteschool`, порт 5433 |
+| `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND` | Redis для Celery, база 1 |
+| `CHANNELS_REDIS_URL` | Redis для Channels, база 2 |
 | `YANDEX_METRIKA_ID` | Номер счётчика Яндекс.Метрики. Задаётся только на production: пусто – счётчик не выводится |
+
+На ноутбуке свой `.env` в `/home/admin/site/.env`: `DB_NAME=siteschool`,
+`DB_USER=siteschool`, пароль тот же, что на lbm-srv, `DB_HOST=localhost`,
+`DB_PORT=5432` – это своя реплика. Роли приходят репликой.
 
 `ALLOWED_HOSTS` из `.env` не читается – список хостов задан прямо в `config/settings.py`.
 

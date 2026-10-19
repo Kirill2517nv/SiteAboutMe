@@ -215,54 +215,50 @@ eg x\)` as raw text while the same question on a variant page rendered fine. The
 - Dev server: `python manage.py runserver` → http://localhost:8000
 
 ### Production Server
-- **Host:** kirill-lab.ru
-- **Local IP:** 192.168.1.199
-- **OS:** Ubuntu 24.04
-- **User:** admin
-- **Connect:** `ssh admin@192.168.1.199 -p 2222`
-- **Project path:** `/home/admin/site`
+Two servers since the move: **lbm-srv** is primary, the laptop (the former prod)
+is the gateway and standby. Full procedure – `docs/two-servers.md`.
+- **lbm-srv:** Tailscale 100.65.27.51, Ubuntu 24.04, user `lih` (passwordless sudo), project `/home/lih/siteSchool`, connect `ssh lih@lbm-srv`. Own PostgreSQL cluster, Docker sandboxes, Celery Beat.
+- **Laptop – gateway and standby:** 192.168.1.199, user `admin` (sudo asks for a password), project `/home/admin/site`, connect `ssh admin@192.168.1.199 -p 2222`. nginx with the Let's Encrypt certificate proxies everything to lbm-srv over Tailscale; `site`, `daphne`, `celery`, `celerybeat` are stopped and disabled, `redis-server` runs. PostgreSQL `16/main` (5432) is a streaming replica of lbm-srv's `16/siteschool`; media is pulled from lbm-srv by cron every 10 minutes; `/home/admin/site/.failover` marks failover mode (cron and `deploy.sh` leave the laptop alone).
 
 ### Services
-- **Nginx:** `/etc/nginx/sites-available/site` (proxies HTTP to Gunicorn, WebSocket to Daphne)
-- **Gunicorn:** `site.service` (socket: `/run/gunicorn/site.sock`) – HTTP requests
-- **Daphne:** `daphne.service` (socket: `/run/daphne/site.sock`) – WebSocket requests
-- **Celery:** `celery.service` – async task worker for code execution
-- **Celery Beat:** `celerybeat.service` – periodic task scheduler (stale task cleanup, etc.)
-- **Redis:** `redis-server.service` – message broker for Celery and Channels
-- **PostgreSQL:** local database
-- **SSL:** Certbot (Let's Encrypt)
+- **Nginx (lbm-srv):** `/etc/nginx/sites-available/siteschool`, listens on 100.65.27.51:80 only; logs `siteschool.access.log` / `siteschool.error.log`
+- **Nginx (laptop):** `/etc/nginx/sites-available/site` – gateway config (`deploy/nginx-gateway.conf`), `site-local` – failover config (`deploy/nginx-local.conf`); 502/503/504 → `deploy/maintenance.html`
+- **Gunicorn:** `siteschool-web.service` (socket `/run/siteschool/web.sock`, 9 workers) – HTTP requests
+- **Daphne:** `siteschool-daphne.service` (socket `/run/siteschool/daphne.sock`) – WebSocket requests
+- **Celery:** `siteschool-celery.service` – async code execution, 12 processes, queues `code_execution,default`
+- **Celery Beat:** `siteschool-celerybeat.service` – periodic tasks; runs on lbm-srv only
+- **Redis:** `redis-server.service` – localhost:6379, DB 1 for Celery, DB 2 for Channels
+- **PostgreSQL:** cluster `16/siteschool` (`postgresql@16-siteschool.service`), port 5433
+- **SSL:** Certbot (Let's Encrypt) on the laptop
 
-### Deployment (on server)
+### Deployment (from dev)
 ```bash
-ssh admin@192.168.1.199 -p 2222
-cd /home/admin/site
-git pull
-source venv/bin/activate
-pip install -r requirements.txt
-python manage.py migrate
-python manage.py collectstatic --noinput
-docker build -t site-sandbox-cpp docker/sandbox-cpp   # после правки Dockerfile; без образа C++ не запускается
-sudo systemctl restart site celery celerybeat daphne
+bash scripts/deploy.sh   # Git Bash on dev; refuses to run while the laptop has .failover
 ```
+lbm-srv: `git pull`, pip, migrate, collectstatic, `docker build site-sandbox-cpp`, restart the four `siteschool-*` units. Laptop: `git pull`, pip, collectstatic, docker build – no migrate (the schema arrives by replication) and no restarts. Files git does not have (`.wasm`, the spetskurs archive) are still copied to both servers by hand.
+If lbm-srv is down: `ssh admin@192.168.1.199 -p 2222`, then `sudo bash /home/admin/site/scripts/failover.sh`; bringing the site back is a separate procedure in `docs/two-servers.md`.
 
-### Useful Commands (on server)
+### Useful Commands (on lbm-srv)
 ```bash
 # Status of all services
-sudo systemctl status redis-server celery celerybeat daphne site nginx
+sudo systemctl status siteschool-web siteschool-daphne siteschool-celery siteschool-celerybeat redis-server postgresql@16-siteschool nginx
 
 # Restart services
-sudo systemctl restart site celery celerybeat daphne  # App services
+sudo systemctl restart siteschool-web siteschool-daphne siteschool-celery siteschool-celerybeat
 sudo systemctl restart nginx               # Web server
 
 # Logs
-sudo journalctl -u site -f                 # Gunicorn (HTTP)
-sudo journalctl -u daphne -f               # Daphne (WebSocket)
-sudo journalctl -u celery -f               # Celery (async tasks)
-sudo journalctl -u celerybeat -f           # Celery Beat (periodic scheduler)
-sudo tail -f /var/log/nginx/error.log      # Nginx errors
+sudo journalctl -u siteschool-web -f       # Gunicorn (HTTP)
+sudo journalctl -u siteschool-daphne -f    # Daphne (WebSocket)
+sudo journalctl -u siteschool-celery -f    # Celery (async tasks)
+sudo journalctl -u siteschool-celerybeat -f  # Celery Beat (periodic scheduler)
+sudo tail -f /var/log/nginx/siteschool.error.log
 
 # Redis
 redis-cli ping                             # Should return PONG
+
+# Replica (run from dev)
+ssh lih@lbm-srv 'sudo -u postgres psql -p 5433 -c "select client_addr, state, write_lag, replay_lag from pg_stat_replication"'
 ```
 
 ## Как работать

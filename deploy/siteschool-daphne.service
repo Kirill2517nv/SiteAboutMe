@@ -1,0 +1,18 @@
+# lbm-srv: /etc/systemd/system/siteschool-daphne.service – Daphne (WebSocket).
+[Unit]
+Description=Siteschool – Daphne (WebSocket)
+After=network.target postgresql@16-siteschool.service redis-server.service
+
+[Service]
+User=lih
+Group=www-data
+UMask=0007
+WorkingDirectory=/home/lih/siteSchool
+EnvironmentFile=/home/lih/siteSchool/.env
+Environment="PATH=/home/lih/siteSchool/venv/bin"
+ExecStart=/home/lih/siteSchool/venv/bin/daphne -u /run/siteschool/daphne.sock config.asgi:application
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

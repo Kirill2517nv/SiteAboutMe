@@ -1,0 +1,19 @@
+# lbm-srv: /etc/systemd/system/siteschool-celerybeat.service.
+# Beat работает ровно на одном сервере: на ноутбуке celerybeat.service выключен
+# и включается только scripts/failover.sh.
+[Unit]
+Description=Siteschool – Celery Beat
+After=network.target redis-server.service
+
+[Service]
+User=lih
+Group=www-data
+WorkingDirectory=/home/lih/siteSchool
+EnvironmentFile=/home/lih/siteSchool/.env
+Environment="PATH=/home/lih/siteSchool/venv/bin"
+ExecStart=/home/lih/siteSchool/venv/bin/celery -A config beat -l info --schedule /home/lih/siteSchool/celerybeat-schedule
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
