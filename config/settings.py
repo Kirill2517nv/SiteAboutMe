@@ -185,7 +185,9 @@ CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
-            'hosts': [(os.getenv('REDIS_HOST', 'localhost'), int(os.getenv('REDIS_PORT', 6379)))],
+            # CHANNELS_REDIS_URL (redis://host:port/N) – свой номер базы в общем Redis.
+            'hosts': [os.getenv('CHANNELS_REDIS_URL')
+                      or (os.getenv('REDIS_HOST', 'localhost'), int(os.getenv('REDIS_PORT', 6379)))],
         },
     },
 }
