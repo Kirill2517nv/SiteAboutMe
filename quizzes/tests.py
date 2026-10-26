@@ -16,8 +16,8 @@ from textbook.models import EgeTask
 from textbook.templatetags.textbook_tags import plural
 
 from .models import (
-    CodeSubmission, ExamTaskProgress, PracticeItem, PracticeSession, Question,
-    QuestionFile, Quiz, QuizAssignment, UserResult,
+    Choice, ClassworkAttempt, CodeSubmission, ExamTaskProgress, PracticeItem, PracticeSession,
+    Question, QuestionFile, Quiz, QuizAssignment, UserAnswer, UserResult,
 )
 from .tasks import update_practice_item_from_submission as update_practice_from_submission
 from .management.commands.load_ege import _create_test_cases, fix_empty_sub_markers
@@ -4390,3 +4390,246 @@ class CodeAnswerFieldTests(TestCase):
             content_type='application/json').json()
         self.assertTrue(data['is_solved'])
         self.assertEqual(CodeSubmission.objects.get(question=q).answer, '100 5')
+
+
+class ClassworkTests(TestCase):
+    """
+    Самостоятельная работа на уроке: таймер, заморозка, черновик и сдача.
+
+    Страницы ещё нет, поэтому проверяется только серверная часть: обходные
+    пути закрыты, черновик переживает закрытую вкладку, а итог ложится в
+    обычные UserResult/UserAnswer – ради отчётов и разбора попытки.
+    """
+
+    def setUp(self):
+        from accounts.models import Profile, StudentGroup
+
+        User = get_user_model()
+        self.group = StudentGroup.objects.create(name='10В')
+        self.pupil = User.objects.create_user('pupil', password='pwd')
+        Profile.objects.create(user=self.pupil, group=self.group)
+        self.other = User.objects.create_user('other', password='pwd')
+        Profile.objects.create(user=self.other)
+        self.teacher = User.objects.create_superuser('teacher', password='pwd')
+
+        self.work = Quiz.objects.create(title='Самостоятельная', quiz_type='classwork',
+                                        check_minutes=30, slug='cw-1')
+        self.choice_q = Question.objects.create(
+            quiz=self.work, text='Выбери', question_type='choice', points=1)
+        self.right = Choice.objects.create(question=self.choice_q, text='да', is_correct=True)
+        Choice.objects.create(question=self.choice_q, text='нет')
+        self.text_q = Question.objects.create(
+            quiz=self.work, text='Посчитай', question_type='text',
+            correct_text_answer='42', points=2)
+        self.code_q = Question.objects.create(
+            quiz=self.work, text='Напиши', question_type='code', points=3)
+        self.code_q.test_cases.create(input_data='', output_data='42')
+
+    # --- помощники ---
+
+    def _open(self):
+        self.client.force_login(self.teacher)
+        self.client.post(f'/classwork/{self.work.pk}/control/',
+                         {'action': 'start', 'group': self.group.pk})
+
+    def _start(self, user=None):
+        self.client.force_login(user or self.pupil)
+        return self.client.post(f'/classwork/{self.work.pk}/start/')
+
+    def _attempt(self, user=None):
+        return ClassworkAttempt.objects.get(user=user or self.pupil, quiz=self.work)
+
+    def _save(self, attempt, answers):
+        return self.client.post(
+            f'/classwork/a/{attempt.pk}/save/',
+            data=json.dumps({'answers': answers}), content_type='application/json')
+
+    def _finish(self, attempt, answers):
+        return self.client.post(
+            f'/classwork/a/{attempt.pk}/finish/',
+            data=json.dumps({'answers': answers}), content_type='application/json')
+
+    # --- начало ---
+
+    def test_start_needs_open_window_and_keeps_time(self):
+        self.assertRedirects(self._start(), '/textbook/', fetch_redirect_response=False)
+        self.assertFalse(ClassworkAttempt.objects.exists())
+
+        self._open()
+        response = self._start()
+        attempt = self._attempt()
+        self.assertEqual(response.json()['attempt'], attempt.pk)
+        self.assertAlmostEqual(
+            (attempt.deadline - attempt.started_at).total_seconds(), 30 * 60, delta=2)
+
+        deadline = attempt.deadline
+        self.assertEqual(self._start().json()['attempt'], attempt.pk)
+        attempt.refresh_from_db()
+        self.assertEqual(attempt.deadline, deadline)
+
+    def test_side_doors_are_closed(self):
+        from .views import get_effective_quiz_settings
+
+        self.assertIsNone(get_effective_quiz_settings(self.pupil, self.work))
+        self.client.force_login(self.pupil)
+        self.assertEqual(self.client.get(f'/quizzes/{self.work.pk}/').status_code, 302)
+
+        self._open()
+        self._start()
+        self.client.force_login(self.other)
+        response = self.client.post(
+            f'/quizzes/question/{self.code_q.pk}/run/',
+            data=json.dumps({'code': 'print(1)'}), content_type='application/json')
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()['error'], 'Работа не идёт')
+
+    # --- заморозка ---
+
+    def test_leave_freezes_save_and_only_teacher_unfreezes(self):
+        self._open()
+        self._start()
+        attempt = self._attempt()
+        self.assertEqual(self._save(
+            attempt, {str(self.choice_q.pk): str(self.right.pk)}).status_code, 200)
+        attempt.refresh_from_db()
+        self.assertEqual(attempt.answers, {str(self.choice_q.pk): str(self.right.pk)})
+
+        self.assertEqual(self.client.post(
+            f'/classwork/a/{attempt.pk}/event/', {'kind': 'leave'}).status_code, 204)
+        attempt.refresh_from_db()
+        self.assertTrue(attempt.is_frozen)
+
+        response = self._save(attempt, {})
+        self.assertEqual(response.status_code, 409)
+        self.assertTrue(response.json()['frozen'])
+
+        self.client.force_login(self.teacher)
+        self.client.post(f'/classwork/a/{attempt.pk}/unfreeze/')
+
+        self.client.force_login(self.pupil)
+        self.assertEqual(self._save(attempt, {str(self.text_q.pk): '42'}).status_code, 200)
+        attempt.refresh_from_db()
+        self.assertFalse(attempt.is_frozen)
+        self.assertEqual([event['kind'] for event in attempt.events], ['leave', 'unfreeze'])
+
+    # --- сдача ---
+
+    def test_finish_writes_result_and_is_idempotent(self):
+        self._open()
+        self._start()
+        attempt = self._attempt()
+        payload = {str(self.choice_q.pk): str(self.right.pk), str(self.text_q.pk): '42'}
+        self.assertEqual(self._finish(attempt, payload).status_code, 200)
+
+        attempt.refresh_from_db()
+        self.assertIsNotNone(attempt.finished_at)
+        self.assertEqual(attempt.result.score, 3)
+        self.assertLessEqual(attempt.result.duration, timedelta(minutes=30))
+        self.assertEqual(UserAnswer.objects.filter(user_result=attempt.result).count(), 3)
+        # Пропущенный код виден в разборе как нерешённая задача.
+        self.assertFalse(UserAnswer.objects.get(
+            user_result=attempt.result, question=self.code_q).is_correct)
+
+        self._finish(attempt, payload)
+        self.assertEqual(UserResult.objects.filter(user=self.pupil, quiz=self.work).count(), 1)
+
+    def test_frozen_work_finishes_from_the_saved_draft(self):
+        from unittest import mock
+
+        self._open()
+        self._start()
+        attempt = self._attempt()
+        self.client.post(
+            f'/classwork/a/{attempt.pk}/save/',
+            data=json.dumps({
+                'answers': {str(self.choice_q.pk): str(self.right.pk),
+                            str(self.code_q.pk): 'print(42)'},
+                'languages': {str(self.code_q.pk): 'cpp'},
+            }),
+            content_type='application/json')
+        self.client.post(f'/classwork/a/{attempt.pk}/event/', {'kind': 'leave'})
+
+        with mock.patch('quizzes.tasks.check_code_task.delay') as delay:
+            delay.return_value.id = 'task-1'
+            # Проверка ставится в очередь после коммита, а не внутри транзакции.
+            with self.captureOnCommitCallbacks(execute=True):
+                self._finish(attempt, {str(self.text_q.pk): '42'})
+
+        attempt.refresh_from_db()
+        # Присланное после заморозки не приняли: балл только за выбор.
+        self.assertEqual(attempt.result.score, 1)
+        submission = CodeSubmission.objects.get(question=self.code_q)
+        self.assertEqual((submission.status, submission.language), ('pending', 'cpp'))
+        delay.assert_called_once_with(submission.pk)
+
+    # --- время ---
+
+    def test_expired_state_finalizes_and_grace_still_accepts(self):
+        self._open()
+        self._start()
+        attempt = self._attempt()
+        ClassworkAttempt.objects.filter(pk=attempt.pk).update(
+            started_at=timezone.now() - timedelta(minutes=31),
+            deadline=timezone.now() - timedelta(minutes=1))
+        self.assertTrue(self.client.get(f'/classwork/a/{attempt.pk}/state/').json()['finished'])
+        self.assertTrue(self._attempt().is_finished)
+
+        # Второй ученик – в пределах поблажки: ответ ещё принимается.
+        late = ClassworkAttempt.objects.create(
+            user=self.other, quiz=self.work,
+            deadline=timezone.now() - timedelta(seconds=10))
+        self.client.force_login(self.other)
+        self.assertEqual(self._save(
+            late, {str(self.choice_q.pk): str(self.right.pk)}).status_code, 200)
+
+    def test_close_finishes_the_class_and_releases_review(self):
+        self._open()
+        self._start()
+        attempt = self._attempt()
+        self._save(attempt, {str(self.text_q.pk): '42'})
+
+        self.client.force_login(self.teacher)
+        self.client.post(f'/classwork/{self.work.pk}/control/',
+                         {'action': 'close', 'group': self.group.pk})
+        attempt.refresh_from_db()
+        self.assertTrue(attempt.is_finished)
+        self.assertEqual(attempt.result.score, 2)
+        self.assertTrue(self.work.check_released())
+
+        self.client.force_login(self.pupil)
+        self.assertEqual(self.client.get(f'/classwork/a/{attempt.pk}/score/').json(),
+                         {'score': 2, 'max': 6, 'pending': False, 'released': True})
+
+    def test_score_is_closed_before_finish(self):
+        self._open()
+        self._start()
+        response = self.client.get(f'/classwork/a/{self._attempt().pk}/score/')
+        self.assertEqual(response.status_code, 409)
+
+    # --- оценка и решения ---
+
+    def test_auto_grade_scale_and_teacher_override(self):
+        from . import classwork
+
+        self.assertEqual([classwork.auto_grade(points, 100) for points in (100, 70, 50, 10)],
+                         [5, 4, 3, 2])
+        self.assertIsNone(classwork.auto_grade(0, 0))
+
+        attempt = ClassworkAttempt.objects.create(
+            user=self.pupil, quiz=self.work, deadline=timezone.now())
+        attempt.grade = 5
+        self.assertEqual(classwork.final_grade(attempt), 5)
+
+    def test_solutions_open_only_after_the_window_closes(self):
+        from . import solutions
+
+        self._open()
+        self._start()
+        attempt = self._attempt()
+        self._finish(attempt, {str(self.text_q.pk): '42'})
+        self.assertFalse(solutions.can_view(self.pupil, self.text_q))
+
+        self.client.force_login(self.teacher)
+        self.client.post(f'/classwork/{self.work.pk}/control/',
+                         {'action': 'close', 'group': self.group.pk})
+        self.assertTrue(solutions.can_view(self.pupil, self.text_q))

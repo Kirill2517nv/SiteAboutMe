@@ -26,7 +26,7 @@ class Quiz(models.Model):
     # До end_date они видны только в самом срезе, после – уходят в общий банк
     # (ege_constants.practice_pool_q): переносить ничего не нужно.
     QUIZ_TYPE_CHOICES = [('standard', 'Стандартный'), ('exam', 'ЕГЭ'), ('bank', 'Банк задач ЕГЭ'),
-                         ('check', 'Срез ЕГЭ')]
+                         ('check', 'Срез ЕГЭ'), ('classwork', 'Самостоятельная работа')]
     EXAM_MODE_CHOICES = [('exam', 'Экзамен'), ('practice', 'Тренировка')]
 
     title = models.CharField(max_length=200, verbose_name="Название теста")
@@ -43,8 +43,9 @@ class Quiz(models.Model):
     start_date = models.DateTimeField(null=True, blank=True, verbose_name="Начало доступа", help_text="Дата и время, с которого тест становится доступным")
     end_date = models.DateTimeField(null=True, blank=True, verbose_name="Конец доступа", help_text="Дата и время, после которого тест закрывается")
     check_minutes = models.PositiveSmallIntegerField(
-        null=True, blank=True, verbose_name="Минут на срез",
-        help_text="Только для среза. Пусто – сумма нормативов ЕГЭ по номерам его задач.",
+        null=True, blank=True, verbose_name="Минут на работу",
+        help_text="Срез и самостоятельная: минуты на работу. Пусто у среза – сумма "
+                  "нормативов ЕГЭ по номерам его задач, у самостоятельной – 40.",
     )
 
     class Meta:
@@ -640,6 +641,66 @@ class PracticeItem(models.Model):
         else:
             status = "неверно"
         return f"Сессия {self.session_id}, задача {self.question_id} ({status})"
+
+
+class ClassworkAttempt(models.Model):
+    """
+    Живое состояние самостоятельной одного ученика.
+
+    Таймер, заморозка, черновик ответов и журнал надзора – всё, что нужно,
+    пока работа идёт. Итог при сдаче пишется в обычные UserResult/UserAnswer
+    (поле result), чтобы отчёты и разбор попытки учителя работали как у
+    практикума, без второй статистики.
+
+    Черновик хранится на сервере, а не в браузере: закрытая вкладка не уносит
+    ответы, и сдача по часам берёт их отсюда.
+    """
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='classwork_attempts', verbose_name="Ученик")
+    quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE, related_name='classwork_attempts', verbose_name="Работа")
+    started_at = models.DateTimeField(auto_now_add=True, verbose_name="Начата")
+    deadline = models.DateTimeField(verbose_name="Конец личного времени")
+    finished_at = models.DateTimeField(null=True, blank=True, verbose_name="Сдана")
+    frozen_at = models.DateTimeField(null=True, blank=True, verbose_name="Заморожена с",
+                                     help_text="Ученик ушёл со страницы; снимает только учитель.")
+    answers = models.JSONField(default=dict, blank=True, verbose_name="Черновик ответов")  # {str(question_id): str}
+    languages = models.JSONField(default=dict, blank=True, verbose_name="Языки кода")  # {str(question_id): 'python'|'cpp'}
+    events = models.JSONField(default=list, blank=True, verbose_name="Журнал надзора")  # [{'kind', 'at', 'seconds'}]
+    result = models.OneToOneField(UserResult, null=True, blank=True, on_delete=models.SET_NULL,
+                                  related_name='classwork_attempt', verbose_name="Результат")
+    grade = models.PositiveSmallIntegerField(null=True, blank=True, verbose_name="Оценка учителя",
+                                             help_text="Пусто – действует автооценка по шкале.")
+
+    class Meta:
+        verbose_name = "Попытка самостоятельной"
+        verbose_name_plural = "Попытки самостоятельных"
+        unique_together = ('user', 'quiz')
+        ordering = ['-started_at']
+
+    def __str__(self):
+        return f'{self.user.username} – {self.quiz.title}'
+
+    @property
+    def is_finished(self):
+        return self.finished_at is not None
+
+    @property
+    def is_frozen(self):
+        return self.frozen_at is not None
+
+    @property
+    def leaves(self):
+        return sum(1 for event in self.events or [] if event.get('kind') == 'leave')
+
+    @property
+    def away_seconds(self):
+        """Сколько ученик провёл вне страницы: сумма секунд у событий 'return'."""
+        return sum(int(event.get('seconds') or 0) for event in self.events or []
+                   if event.get('kind') == 'return')
+
+    @property
+    def pastes(self):
+        return sum(1 for event in self.events or [] if event.get('kind') == 'paste')
 
 
 class SharedSolution(models.Model):

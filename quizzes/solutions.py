@@ -58,9 +58,10 @@ def solved_question_ids(user, question_ids):
 def can_view(user, question):
     if user.is_superuser:
         return True
-    # Задача среза до конца окна: сдавший первым прочёл бы чужой код, пока
-    # одноклассники ещё пишут ту же задачу.
-    if question.quiz.quiz_type == 'check':
+    # Задача среза и самостоятельной до конца окна: сдавший первым прочёл бы
+    # чужой код, пока одноклассники ещё пишут ту же задачу. Самостоятельная
+    # решается в классе, и «Решения других» – подсказка за соседней партой.
+    if question.quiz.quiz_type in ('check', 'classwork'):
         if not question.quiz.check_released():
             return False
     return question.id in solved_question_ids(user, [question.id])

@@ -319,9 +319,11 @@ def update_user_answer_from_submission(submission):
         )
         quiz = user_result.quiz
 
-        if quiz.quiz_type == 'exam':
-            # ЕГЭ: сумма баллов. За задания 26 и 27 балл бывает частичным –
-            # тогда он записан в самом ответе, а не выводится из question.points.
+        if quiz.quiz_type in ('exam', 'classwork'):
+            # Экзамен и самостоятельная: сумма баллов. За задания 26 и 27 балл
+            # бывает частичным – тогда он записан в самом ответе, а не
+            # выводится из question.points. У самостоятельной попытка одна,
+            # поэтому сумма по её ответам – и есть итог работы.
             total_score = sum(
                 answer.score if answer.score is not None
                 else (answer.question.points if answer.is_correct else 0)

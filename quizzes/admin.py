@@ -3,7 +3,7 @@ from django.db.models import Count, Q
 from django.http import HttpResponseRedirect
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
-from .models import Quiz, Question, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, QuestionImage, QuestionFile, ExamTaskProgress, SharedSolution, SolutionLike, CodeSubmission, PracticeSession, PracticeItem
+from .models import Quiz, Question, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, QuestionImage, QuestionFile, ExamTaskProgress, SharedSolution, SolutionLike, CodeSubmission, PracticeSession, PracticeItem, ClassworkAttempt
 from .forms import BulkQuizAssignmentForm
 
 
@@ -24,6 +24,7 @@ class QuizRoleFilter(admin.SimpleListFilter):
             ('bank', 'Банк ЕГЭ'),
             ('exam', 'Вариант ЕГЭ'),
             ('check', 'Срез ЕГЭ'),
+            ('classwork', 'Самостоятельная'),
         )
 
     def queryset(self, request, queryset):
@@ -40,7 +41,7 @@ class QuizRoleFilter(admin.SimpleListFilter):
         if value == 'standard':
             return queryset.filter(**{f'{p}quiz_type': 'standard',
                                       f'{p}is_self_check': False}).exclude(**practicum)
-        if value in ('bank', 'exam', 'check'):
+        if value in ('bank', 'exam', 'check', 'classwork'):
             return queryset.filter(**{f'{p}quiz_type': value})
         return queryset
 
@@ -144,24 +145,35 @@ class QuizAdmin(admin.ModelAdmin):
     )
     change_form_template = 'admin/quizzes/quiz/change_form.html'
 
-    # Срез назначают на сайте (/ege/checks/<id>/): окно у каждого класса своё и
-    # живёт только в назначении. Даты теста и инлайн назначений здесь были
-    # вторым местом с теми же датами – их и путали.
+    # Срез и самостоятельная живут по одному правилу: окно у каждого класса своё
+    # и живёт только в назначении. У среза его ставят на /ege/checks/<id>/, у
+    # самостоятельной – кнопкой «Начать». Даты теста и инлайн назначений здесь
+    # были вторым местом с теми же датами – их и путали.
     def _is_check(self, obj):
         return obj is not None and obj.quiz_type == 'check'
 
+    def _is_classwork(self, obj):
+        return obj is not None and obj.quiz_type == 'classwork'
+
     def get_fieldsets(self, request, obj=None):
-        if not self._is_check(obj):
-            return self.fieldsets
-        return ((None, {
-            'fields': ('title', 'description', 'quiz_type', 'slug', 'check_page'),
-        }),)
+        if self._is_check(obj):
+            return ((None, {
+                'fields': ('title', 'description', 'quiz_type', 'slug', 'check_page'),
+            }),)
+        if self._is_classwork(obj):
+            # Минуты – единственное, что правят здесь после заведения работы.
+            return ((None, {
+                'fields': ('title', 'description', 'quiz_type', 'slug', 'check_minutes'),
+            }),)
+        return self.fieldsets
 
     def get_readonly_fields(self, request, obj=None):
         return ('check_page',) if self._is_check(obj) else ()
 
     def get_inlines(self, request, obj):
-        return [QuestionInline] if self._is_check(obj) else self.inlines
+        if self._is_check(obj) or self._is_classwork(obj):
+            return [QuestionInline]
+        return self.inlines
 
     @admin.display(description='Назначение и отчёт')
     def check_page(self, obj):
@@ -322,7 +334,21 @@ class PracticeSessionAdmin(admin.ModelAdmin):
         return f'{obj._correct} / {obj._answered} из {obj._total}'
 
 
+class ClassworkAttemptAdmin(admin.ModelAdmin):
+    """Живые попытки самостоятельных.
+
+    Удаление разрешено намеренно: так учитель стирает попытку отсутствовавшего
+    ученика, и он пишет работу позже – уникальность (ученик, работа) иначе
+    второго захода не даст.
+    """
+    list_display = ('user', 'quiz', 'started_at', 'finished_at', 'frozen_at', 'grade')
+    list_filter = ('quiz',)
+    readonly_fields = ('events', 'answers', 'languages', 'result')
+    list_select_related = ('user', 'quiz')
+
+
 admin.site.register(ExamTaskProgress, ExamTaskProgressAdmin)
+admin.site.register(ClassworkAttempt, ClassworkAttemptAdmin)
 admin.site.register(SharedSolution, SharedSolutionAdmin)
 admin.site.register(CodeSubmission, CodeSubmissionAdmin)
 admin.site.register(SolutionLike, SolutionLikeAdmin)

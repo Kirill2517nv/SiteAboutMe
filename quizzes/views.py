@@ -86,6 +86,12 @@ def get_effective_quiz_settings(user, quiz):
     if quiz.quiz_type == 'check' and not user.is_superuser:
         return None
 
+    # Самостоятельная пишется только на своей странице: назначение классу
+    # открыло бы /quizzes/<id>/ с вердиктами, подсказками и проверкой ответа –
+    # то есть всю работу наизнанку посреди урока.
+    if quiz.quiz_type == 'classwork' and not user.is_superuser:
+        return None
+
     # Тесты-самопроверки учебника доступны любому авторизованному ученику
     # (доступ гейтится статьёй учебника, а не назначением на группу).
     if getattr(quiz, 'is_self_check', False) and user.is_authenticated:
@@ -137,6 +143,18 @@ def question_file_download_view(request, file_id):
     if qf.question.quiz.quiz_type == 'check':
         from .ege_practice import check_question_open
         if not check_question_open(request.user, qf.question):
+            raise Http404('Файл задачи не найден')
+
+    # Файл самостоятельной – часть условия: пока работа идёт, его видит только
+    # тот, кому она досталась. Сдавший попытку сохраняет доступ и после сдачи:
+    # разбор работы ученик смотрит по тем же файлам.
+    if qf.question.quiz.quiz_type == 'classwork':
+        from .models import ClassworkAttempt
+        allowed = (request.user.is_superuser
+                   or qf.question.quiz.check_released()
+                   or ClassworkAttempt.objects.filter(
+                       user=request.user, quiz_id=qf.question.quiz_id).exists())
+        if not allowed:
             raise Http404('Файл задачи не найден')
 
     # Запись в базе может пережить сам файл: seed-команды учебника сносят
@@ -1622,7 +1640,13 @@ def submit_code_view(request, quiz_id, question_id):
         return JsonResponse({'error': 'Дедлайн блока прошёл — решения больше не принимаются'},
                             status=403)
 
-    if quiz.quiz_type == 'check':
+    if quiz.quiz_type == 'classwork':
+        # Самостоятельная пишется только на своей странице: здесь код ушёл бы
+        # мимо черновика попытки. Проверка своя, а не через назначение, – иначе
+        # случайно отмеченный публичным тест открыл бы эту же дверь.
+        if not request.user.is_superuser:
+            return JsonResponse({'error': 'Работа пишется на своей странице'}, status=403)
+    elif quiz.quiz_type == 'check':
         from .ege_practice import check_code_allowed
         if not check_code_allowed(request.user, question):
             return JsonResponse({'error': 'Срез не назначен'}, status=403)
@@ -1751,9 +1775,21 @@ def run_code_view(request, question_id):
 
     question = get_object_or_404(
         Question.objects.select_related('quiz'), id=question_id,
-        question_type='code', quiz__quiz_type__in=EGE_QUIZ_TYPES,
+        question_type='code', quiz__quiz_type__in=EGE_QUIZ_TYPES + ('classwork',),
     )
-    if question.quiz.quiz_type == 'check':
+    if question.quiz.quiz_type == 'classwork':
+        # Самостоятельная: запуск живёт только внутри идущей попытки, иначе
+        # «Запустить» стал бы способом прогнать код в обход надзора.
+        from . import classwork
+        from .models import ClassworkAttempt
+        allowed = request.user.is_superuser
+        if not allowed:
+            attempt = ClassworkAttempt.objects.filter(
+                user=request.user, quiz_id=question.quiz_id).first()
+            allowed = bool(attempt and classwork.accepts_answers(attempt))
+        if not allowed:
+            return JsonResponse({'error': 'Работа не идёт'}, status=403)
+    elif question.quiz.quiz_type == 'check':
         from .ege_practice import check_question_open
         if not check_question_open(request.user, question):
             return JsonResponse({'error': 'Срез не назначен'}, status=403)
