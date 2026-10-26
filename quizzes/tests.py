@@ -12,7 +12,7 @@ from .ege_constants import (
     EXAM_MINUTES, MISTAKES_RED_AT, ege_mistakes_color, ege_score_color,
     ege_time_color, test_score_for,
 )
-from textbook.models import EgeTask
+from textbook.models import Article, EgeTask, Section
 from textbook.templatetags.textbook_tags import plural
 
 from .models import (
@@ -5198,3 +5198,136 @@ class ClassworkTeacherTests(TestCase):
         self.assertContains(response, 'её можно только закрыть')
         self.assertTrue(QuizAssignment.objects.filter(
             quiz=self.work, group=self.group).exists())
+
+
+@override_settings(STORAGES={
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+})
+class ClassworkSidebarTests(TestCase):
+    """Карточки самостоятельных блока в боковой панели статьи учебника."""
+
+    def setUp(self):
+        from accounts.models import Profile, StudentGroup
+
+        User = get_user_model()
+        self.group = StudentGroup.objects.create(name='10Г')
+        self.pupil = User.objects.create_user('sidebar_pupil', password='pwd')
+        Profile.objects.create(user=self.pupil, group=self.group)
+        self.loner = User.objects.create_user('sidebar_loner', password='pwd')
+        Profile.objects.create(user=self.loner)
+        self.teacher = User.objects.create_superuser('sidebar_teacher', password='pwd')
+
+        self.section = Section.objects.create(
+            title='Графы', slug='sidebar-graphs', order=1, is_published=True)
+        self.article = Article.objects.create(
+            section=self.section, slug='sidebar-lesson', title='Урок про графы',
+            order=1, is_published=True)
+        self.work = Quiz.objects.create(
+            title='Графы на уроке', quiz_type='classwork', section=self.section,
+            check_minutes=30, slug='cw-sidebar')
+        self.q1 = Question.objects.create(
+            quiz=self.work, text='Раз', question_type='text',
+            correct_text_answer='1', points=2)
+        self.q2 = Question.objects.create(
+            quiz=self.work, text='Два', question_type='text',
+            correct_text_answer='2', points=3)
+
+    # --- помощники ---
+
+    def _window(self, start=None, end=None):
+        return QuizAssignment.objects.create(
+            quiz=self.work, group=self.group,
+            start_date=start or timezone.now() - timedelta(minutes=1), end_date=end)
+
+    def _cards(self, user=None):
+        from . import classwork
+
+        return classwork.section_cards(user or self.pupil, self.section)
+
+    def _attempt(self, user=None, finished=False, result=None):
+        return ClassworkAttempt.objects.create(
+            user=user or self.pupil, quiz=self.work,
+            deadline=timezone.now() + timedelta(minutes=30),
+            finished_at=timezone.now() if finished else None, result=result)
+
+    # --- section_cards ---
+
+    def test_unassigned_work_is_hidden(self):
+        self.assertEqual(self._cards(), [])
+
+    def test_open_window_is_open(self):
+        self._window()
+        card, = self._cards()
+        self.assertEqual(card['state'], 'open')
+        self.assertEqual(card['url'], f'/classwork/{self.work.pk}/')
+        self.assertIsNone(card['score'])
+
+    def test_future_window_is_scheduled(self):
+        window = self._window(start=timezone.now() + timedelta(hours=2))
+        card, = self._cards()
+        self.assertEqual(card['state'], 'scheduled')
+        self.assertIsNone(card['url'])
+        self.assertEqual(card['starts_at'], window.start_date)
+
+    def test_started_attempt_is_writing(self):
+        self._window()
+        attempt = self._attempt()
+        card, = self._cards()
+        self.assertEqual(card['state'], 'writing')
+        self.assertEqual(card['url'], f'/classwork/a/{attempt.pk}/')
+
+    def test_finished_attempt_has_score_and_max(self):
+        from . import classwork
+
+        self._window()
+        result = UserResult.objects.create(user=self.pupil, quiz=self.work, score=0)
+        UserAnswer.objects.create(user_result=result, question=self.q2, is_correct=True)
+        attempt = self._attempt(finished=True, result=result)
+
+        card, = self._cards()
+        self.assertEqual(card['state'], 'finished')
+        self.assertEqual(card['url'], f'/classwork/a/{attempt.pk}/result/')
+        self.assertEqual(card['score'], 3)
+        self.assertEqual(card['max'], 5)
+        self.assertEqual(card['score'], classwork.score(result))
+
+    def test_closed_window_without_attempt_is_missed(self):
+        now = timezone.now()
+        self._window(start=now - timedelta(hours=2), end=now - timedelta(hours=1))
+        card, = self._cards()
+        self.assertEqual(card['state'], 'missed')
+        self.assertIsNone(card['url'])
+
+    def test_superuser_sees_the_work_without_assignment(self):
+        card, = self._cards(self.teacher)
+        self.assertEqual(card['role'], 'teacher')
+        self.assertEqual(card['count'], 2)
+        self.assertEqual(card['url'], f'/classwork/{self.work.pk}/panel/')
+        self.assertEqual(card['edit_url'], f'/classwork/{self.work.pk}/edit/')
+        self.assertEqual(card['preview_url'], f'/classwork/{self.work.pk}/preview/')
+
+    # --- страница статьи ---
+
+    def _html(self):
+        return self.client.get(self.article.get_absolute_url()).content.decode()
+
+    def test_student_sees_assigned_work_in_sidebar(self):
+        self._window()
+        self.client.force_login(self.pupil)
+        html = self._html()
+        self.assertIn('Графы на уроке', html)
+        self.assertIn('Идёт сейчас – начать', html)
+
+    def test_student_without_assignment_sees_no_card(self):
+        self.client.force_login(self.loner)
+        html = self._html()
+        self.assertNotIn('Графы на уроке', html)
+        self.assertNotIn('Самостоятельная работа', html)
+
+    def test_teacher_gets_the_create_link(self):
+        self.client.force_login(self.teacher)
+        html = self._html()
+        self.assertIn('+ Самостоятельная по блоку', html)
+        self.assertIn('?section=sidebar-graphs', html)
+        self.assertIn('Пульт', html)

@@ -309,6 +309,16 @@ def article_detail_view(request, slug):
             'grade_scale': article.section.grade_scale(done),
         }
 
+    # Самостоятельные блока – карточками под практикумом (см. classwork.section_cards).
+    # Без блока и без входа карточек нет: работы назначаются классу, а не гостю.
+    classworks = (
+        classwork.section_cards(request.user, article.section)
+        if request.user.is_authenticated and article.section_id else []
+    )
+    new_classwork_url = None
+    if request.user.is_superuser and article.section_id:
+        new_classwork_url = (reverse('classwork:list') + '?section=' + article.section.slug)
+
     current_index = siblings.index(article) if article in siblings else 0
     prev_article = siblings[current_index - 1] if current_index > 0 else None
     next_article = siblings[current_index + 1] if current_index < len(siblings) - 1 else None
@@ -342,6 +352,8 @@ def article_detail_view(request, slug):
         'frontier': frontier_here,
         'sidebar_items': sidebar_items,
         'practicum': practicum,
+        'classworks': classworks,
+        'new_classwork_url': new_classwork_url,
         'group_title': group_title,
         'article_number': article_number,
         'back_url': back_url,

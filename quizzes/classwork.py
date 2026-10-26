@@ -14,6 +14,7 @@ from datetime import timedelta
 
 from django.db import transaction
 from django.db.models import Sum
+from django.urls import reverse
 from django.utils import timezone
 
 from .ege_constants import EXAM_ANSWER_GRACE
@@ -53,6 +54,74 @@ def open_works(user):
         user=user, finished_at__isnull=False).values('quiz_id')
     works = Quiz.objects.filter(quiz_type='classwork').exclude(id__in=done)
     return [quiz for quiz in works if window_open(quiz, user)]
+
+
+def section_cards(user, section):
+    """
+    Самостоятельные блока для боковой панели статьи.
+
+    Учитель видит все работы блока, включая черновик, который ещё набирается.
+    Ученику показываем только назначенное: окно класса или начатую попытку.
+    Черновик учителя не светим – иначе ученик ждал бы работу, которой ещё нет,
+    и видел бы её название раньше времени.
+
+    Попытки достаются одним запросом на весь блок, а не по работе: карточек в
+    панели единицы, но лишние запросы на каждой статье ни к чему.
+    """
+    if section is None:
+        return []
+    quizzes = (Quiz.objects.filter(quiz_type='classwork', section=section)
+               .order_by('title'))
+
+    if user.is_superuser:
+        return [{
+            'quiz': quiz,
+            'role': 'teacher',
+            'url': reverse('classwork:panel', kwargs={'quiz_id': quiz.id}),
+            'edit_url': reverse('classwork:edit', kwargs={'quiz_id': quiz.id}),
+            'preview_url': reverse('classwork:preview', kwargs={'quiz_id': quiz.id}),
+            'count': quiz.questions.count(),
+        } for quiz in quizzes]
+
+    attempts = {
+        attempt.quiz_id: attempt
+        for attempt in (ClassworkAttempt.objects.filter(
+            user=user, quiz__section=section, quiz__quiz_type='classwork')
+            .select_related('result'))
+    }
+    now = timezone.now()
+    cards = []
+    for quiz in quizzes:
+        attempt = attempts.get(quiz.id)
+        window = None
+        if attempt is None:
+            window = quiz.check_window(user)
+            # Не назначенная работа ученику не видна: черновик – не задание.
+            if window is None:
+                continue
+
+        card = {'quiz': quiz, 'role': 'student', 'url': None,
+                'score': None, 'max': None, 'starts_at': None}
+        if attempt and attempt.finished_at:
+            card.update(
+                state='finished',
+                url=reverse('classwork:result', kwargs={'pk': attempt.pk}),
+                score=score(attempt.result),
+                # max_score нужен только сданной карточке: остальным он ни к чему.
+                max=max_score(quiz),
+            )
+        elif attempt:
+            card.update(state='writing',
+                        url=reverse('classwork:work', kwargs={'pk': attempt.pk}))
+        elif window.start_date and window.start_date > now:
+            card.update(state='scheduled', starts_at=window.start_date)
+        elif window.end_date and window.end_date <= now:
+            card.update(state='missed')
+        else:
+            card.update(state='open',
+                        url=reverse('classwork:intro', kwargs={'quiz_id': quiz.id}))
+        cards.append(card)
+    return cards
 
 
 def start(user, quiz):

@@ -79,6 +79,70 @@
                         </span>
                     </a>
                     {% endif %}
+
+                    {% comment %}
+                    Самостоятельные блока. Ученик видит только назначенные ему
+                    работы: черновик, который учитель ещё набирает, в панели не
+                    показываем – иначе название и объём утекли бы раньше, чем
+                    работа выпущена.
+
+                    Янтарная карточка – «идёт сейчас» (окно открыто или попытка
+                    начата), серая – всё остальное: сдана, запланирована или
+                    пропущена. Работу видно среди уроков, не читая подписи.
+                    {% endcomment %}
+                    {% if classworks or new_classwork_url %}
+                    <div class="mt-3 pt-3 border-t border-gray-200 dark:border-slate-700 flex flex-col gap-2">
+                        {% for card in classworks %}
+                        {% if card.role == 'teacher' %}
+                        {# Карточка – div: три ссылки внутри, вложенные <a> недопустимы. #}
+                        <div class="p-3 rounded-lg border bg-gray-50 dark:bg-slate-800 border-gray-200 dark:border-slate-700">
+                            <span class="flex items-center gap-2 text-xs uppercase tracking-wide text-gray-400 dark:text-slate-500">
+                                <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                                Самостоятельная работа
+                            </span>
+                            <span class="block mt-1 text-sm font-semibold text-gray-700 dark:text-slate-200">{{ card.quiz.title }}</span>
+                            <span class="block mt-1 text-xs text-gray-500 dark:text-slate-400">{{ card.count }} задач{{ card.count|plural:"а,и," }}</span>
+                            <span class="flex flex-wrap gap-x-2 gap-y-1 mt-1 text-xs">
+                                <a href="{{ card.url }}" class="text-brand-600 dark:text-cyan-400 hover:underline">Пульт</a>
+                                <a href="{{ card.edit_url }}" class="text-gray-500 dark:text-slate-400 hover:underline">задачи</a>
+                                <a href="{{ card.preview_url }}" class="text-gray-500 dark:text-slate-400 hover:underline">предпросмотр</a>
+                            </span>
+                        </div>
+                        {% else %}
+                        {% if card.url %}
+                        <a href="{{ card.url }}" class="block p-3 rounded-lg border transition-colors {% if card.state == 'open' or card.state == 'writing' %}bg-amber-50 dark:bg-amber-950/30 border-amber-400 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900/40{% else %}bg-gray-50 dark:bg-slate-800 border-gray-200 dark:border-slate-700 hover:bg-gray-100 dark:hover:bg-slate-700{% endif %}">
+                        {% else %}
+                        <div class="p-3 rounded-lg border bg-gray-50 dark:bg-slate-800 border-gray-200 dark:border-slate-700">
+                        {% endif %}
+                            <span class="flex items-center gap-2 text-xs uppercase tracking-wide {% if card.state == 'open' or card.state == 'writing' %}text-amber-700 dark:text-amber-400{% else %}text-gray-400 dark:text-slate-500{% endif %}">
+                                <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                                Самостоятельная работа
+                            </span>
+                            <span class="block mt-1 text-sm font-semibold {% if card.state == 'open' or card.state == 'writing' %}text-amber-800 dark:text-amber-300{% else %}text-gray-700 dark:text-slate-200{% endif %}">{{ card.quiz.title }}</span>
+                            <span class="block mt-1 text-xs {% if card.state == 'open' or card.state == 'writing' %}text-amber-700 dark:text-amber-400{% else %}text-gray-500 dark:text-slate-400{% endif %}">
+                                {% if card.state == 'open' %}Идёт сейчас – начать
+                                {% elif card.state == 'writing' %}Идёт – продолжить
+                                {% elif card.state == 'finished' %}Сдана · {{ card.score }} из {{ card.max }} балл{{ card.max|plural:",а,ов" }}
+                                {% elif card.state == 'scheduled' %}Будет {{ card.starts_at|date:"d.m" }} в {{ card.starts_at|time:"H:i" }}
+                                {% elif card.state == 'missed' %}Не писал(а)
+                                {% endif %}
+                            </span>
+                        {% if card.url %}
+                        </a>
+                        {% else %}
+                        </div>
+                        {% endif %}
+                        {% endif %}
+                        {% endfor %}
+                        {% if new_classwork_url %}
+                        <a href="{{ new_classwork_url }}" class="block px-2 py-1 text-xs text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200 hover:underline">+ Самостоятельная по блоку</a>
+                        {% endif %}
+                    </div>
+                    {% endif %}
                 </div>
             </div>
         </aside>
