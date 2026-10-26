@@ -28,7 +28,13 @@
         </div>
 
         {% if released %}
-        <div class="mt-8">
+        {% comment %}
+        Разбор после звонка – в стиле архива решённых (ege_solved.html):
+        аккордеон, в нём условие тем же партиалом, что на работе, своё решение
+        и «Решения других». Статус (кружок) приходит с опросом и открывается
+        только когда барабан встал – иначе выдавал бы балл раньше барабана.
+        {% endcomment %}
+        <div class="mt-8" x-data="{ open: null }">
             <div class="flex flex-wrap items-baseline justify-between gap-2 mb-4">
                 <h2 class="text-xl font-semibold text-gray-900 dark:text-white">Разбор задач</h2>
                 <p class="text-sm text-gray-500 dark:text-slate-400" x-show="revealed && tasks.length" x-cloak>
@@ -36,52 +42,76 @@
                         x-text="tasks.filter(t => t.status === 'ok').length"></span> из <span x-text="tasks.length"></span>
                 </p>
             </div>
-            {# Статусы приходят с опросом, но открываются только когда барабан встал – иначе список выдавал бы балл раньше барабана. #}
-            {% for question in review %}
-            <div class="mb-4 rounded-xl border border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800 p-5">
-                <div class="flex flex-wrap items-center gap-3">
-                    <span class="text-sm text-gray-400 dark:text-slate-500">{{ forloop.counter }}.</span>
-                    <span class="flex-1 text-base font-medium text-gray-900 dark:text-white">{{ question.get_title }}</span>
-                    <span x-show="statusOf({{ forloop.counter }}) === 'pending'" class="text-xs font-medium text-amber-600 dark:text-amber-400">проверяется…</span>
-                    <span x-show="statusOf({{ forloop.counter }}) === 'ok'" x-cloak class="text-xs font-semibold text-green-600 dark:text-green-400">&check; верно</span>
-                    <span x-show="statusOf({{ forloop.counter }}) === 'wrong'" x-cloak class="text-xs font-semibold text-red-600 dark:text-red-400">&times; неверно</span>
+
+            <div class="space-y-3">
+                {% for question in review %}
+                <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 overflow-hidden">
+                    <button type="button" @click="open = (open === {{ forloop.counter }} ? null : {{ forloop.counter }})"
+                            class="w-full flex items-center justify-between gap-4 p-4 text-left hover:bg-gray-50 dark:hover:bg-slate-700/40 transition-colors">
+                        <div class="flex items-center gap-3 min-w-0">
+                            <span class="shrink-0 w-8 h-8 rounded-full flex items-center justify-center"
+                                  :class="{
+                                      'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400': statusOf({{ forloop.counter }}) === 'ok',
+                                      'bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400': statusOf({{ forloop.counter }}) === 'wrong',
+                                      'bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400': statusOf({{ forloop.counter }}) === 'pending',
+                                      'bg-gray-100 dark:bg-slate-700 text-gray-400': statusOf({{ forloop.counter }}) === ''
+                                  }">
+                                <svg x-show="statusOf({{ forloop.counter }}) === 'ok'" x-cloak class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+                                </svg>
+                                <svg x-show="statusOf({{ forloop.counter }}) === 'wrong'" x-cloak class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                                </svg>
+                                <span x-show="statusOf({{ forloop.counter }}) !== 'ok' && statusOf({{ forloop.counter }}) !== 'wrong'"
+                                      class="text-sm font-semibold">{{ forloop.counter }}</span>
+                            </span>
+                            <div class="min-w-0">
+                                <div class="font-medium text-gray-900 dark:text-white truncate">{{ question.get_title }}</div>
+                                <div class="text-xs text-gray-400">
+                                    Задача {{ forloop.counter }}<span x-show="statusOf({{ forloop.counter }}) === 'pending'"> · проверяется…</span><span x-show="statusOf({{ forloop.counter }}) === 'ok'" x-cloak> · верно</span><span x-show="statusOf({{ forloop.counter }}) === 'wrong'" x-cloak> · неверно</span>
+                                </div>
+                            </div>
+                        </div>
+                        <svg class="shrink-0 w-5 h-5 text-gray-400 transition-transform"
+                             :class="open === {{ forloop.counter }} ? 'rotate-180' : ''"
+                             fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                    </button>
+
+                    <div x-show="open === {{ forloop.counter }}" x-cloak
+                         class="px-4 pb-4 border-t border-gray-100 dark:border-slate-700">
+                        <div class="pt-4">
+                            {% include 'quizzes/_classwork_question_body.html' %}
+                            {% if question.files.all %}
+                            <p class="text-sm text-gray-500 dark:text-slate-400 mb-4">
+                                Файлы задачи: {% for file in question.files.all %}<span class="font-mono">{{ file.get_filename }}</span>{% if not forloop.last %}, {% endif %}{% endfor %}
+                            </p>
+                            {% endif %}
+                        </div>
+
+                        {% with answer=question.my_answer %}
+                        <div class="mt-2">
+                            {% if answer.code_answer %}
+                            <div class="text-xs font-medium text-gray-500 dark:text-slate-400 mb-1.5">Ваше решение{% if answer.submission %} · {{ answer.submission.get_language_display }}{% endif %}</div>
+                            <pre class="p-3 rounded-lg bg-slate-900 text-slate-100 text-xs overflow-x-auto"><code class="language-{{ answer.submission.language|default:'python' }}">{{ answer.code_answer }}</code></pre>
+                            {% elif answer.text_answer %}
+                            <div class="text-xs font-medium text-gray-500 dark:text-slate-400 mb-1.5">Ваш ответ</div>
+                            <div class="inline-block px-3 py-1.5 rounded-lg bg-gray-50 dark:bg-slate-900 text-gray-800 dark:text-slate-200 font-medium">{{ answer.text_answer }}</div>
+                            {% else %}
+                            <p class="text-sm text-gray-400">Решение не сдано.</p>
+                            {% endif %}
+                        </div>
+                        {% endwith %}
+
+                        {# Галерея открывается решившему верно – то же правило, что у всех задач (solutions.can_view). #}
+                        <div class="mt-4" x-show="statusOf({{ forloop.counter }}) === 'ok'" x-cloak>
+                            {% include 'quizzes/_solutions_link.html' with question_id=question.id %}
+                        </div>
+                    </div>
                 </div>
-
-                <details class="mt-3">
-                    <summary class="cursor-pointer text-sm text-brand-600 dark:text-brand-400 hover:underline">Условие</summary>
-                    {% if question.get_body %}
-                    <div class="task-text mt-3 text-base leading-relaxed text-gray-700 dark:text-slate-300 bg-gray-50 dark:bg-slate-900 rounded-lg p-4">{{ question.get_body|markdownify }}</div>
-                    {% endif %}
-                    {% for img in question.images.all %}
-                    <img src="{{ img.image.url }}" alt="{{ img.alt_text|default:'Изображение к вопросу' }}" class="mt-3 max-w-full rounded-lg border border-gray-200 dark:border-slate-700">
-                    {% endfor %}
-                    {% if question.files.all %}
-                    <p class="mt-3 text-sm text-gray-500 dark:text-slate-400">
-                        Файлы задачи: {% for file in question.files.all %}<span class="font-mono">{{ file.get_filename }}</span>{% if not forloop.last %}, {% endif %}{% endfor %}
-                    </p>
-                    {% endif %}
-                </details>
-
-                {% with answer=question.my_answer %}
-                <details class="mt-2">
-                    <summary class="cursor-pointer text-sm text-brand-600 dark:text-brand-400 hover:underline">Моё решение</summary>
-                    {% if answer.code_answer %}
-                    {% if answer.submission %}<p class="mt-3 text-xs text-gray-400 dark:text-slate-500">{{ answer.submission.get_language_display }}</p>{% endif %}
-                    <pre class="mt-1 overflow-x-auto rounded-lg bg-gray-50 dark:bg-slate-900 p-4 text-sm font-mono text-gray-800 dark:text-slate-200">{{ answer.code_answer }}</pre>
-                    {% elif answer.text_answer %}
-                    <p class="mt-3 font-mono text-sm text-gray-800 dark:text-slate-200">{{ answer.text_answer }}</p>
-                    {% else %}
-                    <p class="mt-3 text-sm text-gray-500 dark:text-slate-400">Решение не сдано.</p>
-                    {% endif %}
-                </details>
-                {% endwith %}
-
-                {# Галерея открывается решившему верно – то же правило, что у всех задач (solutions.can_view). #}
-                <div class="mt-3" x-show="statusOf({{ forloop.counter }}) === 'ok'" x-cloak>
-                    {% include 'quizzes/_solutions_link.html' with question_id=question.id compact=True %}
-                </div>
+                {% endfor %}
             </div>
-            {% endfor %}
         </div>
         {% else %}
         <p class="mt-8 text-sm text-gray-500 dark:text-slate-400">
@@ -98,7 +128,7 @@
 {% endblock content %}
 
 {% block pre_alpine_js %}
-{% if released %}{% include 'quizzes/_mathjax.html' %}{% endif %}
+{% if released %}{% include 'quizzes/_mathjax.html' %}{% include 'quizzes/_code_highlight.html' %}{% endif %}
 <script>
 function classworkResult() {
     return {
