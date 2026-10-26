@@ -19,6 +19,7 @@ from textbook.templatetags.textbook_tags import plural
 from .models import (
     Choice, ClassworkAttempt, CodeSubmission, ExamTaskProgress, PracticeItem, PracticeSession,
     Question, QuestionFile, Quiz, QuizAssignment, UserAnswer, UserResult,
+    normalize_text_answer,
 )
 from .tasks import update_practice_item_from_submission as update_practice_from_submission
 from .management.commands.load_ege import _create_test_cases, fix_empty_sub_markers
@@ -5623,7 +5624,7 @@ class ClassworkBankTests(TestCase):
 
 
 class ClassworkSeedBlock6Tests(TestCase):
-    """Первый банк самостоятельной: 20 задач, 4 темы, каждому 6."""
+    """Первый банк самостоятельной: 20 задач с кодом, 4 темы, каждому 6."""
 
     def setUp(self):
         self.section = Section.objects.create(slug='blok-6', title='Блок 6')
@@ -5637,8 +5638,8 @@ class ClassworkSeedBlock6Tests(TestCase):
         self.assertEqual(
             set(questions.values_list('topic', flat=True)),
             {'AND, OR, XOR, NOT', 'Сдвиги', 'Маски', 'Быстрые вычисления'})
-        self.assertEqual(questions.filter(question_type='text').count(), 12)
-        self.assertEqual(questions.filter(question_type='code').count(), 8)
+        self.assertEqual(questions.filter(question_type='code').count(), 20)
+        self.assertEqual(questions.filter(question_type='text').count(), 0)
         self.assertEqual(
             sum(questions.values_list('points', flat=True)), 28)
         self.assertEqual(quiz.classwork_size, 6)
@@ -5648,14 +5649,34 @@ class ClassworkSeedBlock6Tests(TestCase):
         self.assertEqual(Quiz.objects.filter(slug='classwork-blok-6').count(), 1)
         self.assertEqual(quiz.questions.count(), 20)
 
-    def test_text_answer_is_computed_and_code_tests_run(self):
+    def test_short_tasks_have_one_test_without_input(self):
         call_command('seed_classwork_block6')
         quiz = Quiz.objects.get(slug='classwork-blok-6')
 
-        self.assertEqual(
-            quiz.questions.get(title='Побитовое И').correct_text_answer, '9')
+        question = quiz.questions.get(title='Побитовое И')
+        self.assertEqual(question.question_type, 'code')
+        self.assertIsNone(question.correct_text_answer)
+        self.assertIsNone(question.alternative_answers)
+        tests = list(question.test_cases.all())
+        self.assertEqual(len(tests), 1)
+        self.assertEqual(tests[0].input_data, '')
+        self.assertTrue(ege_scoring.outputs_match(
+            tests[0].output_data, '9\n0b1001'))
+        self.assertNotIn(tests[0].output_data, question.text)
+
+        self.assertTrue(ege_scoring.outputs_match(
+            quiz.questions.get(
+                title='Умножение сдвигом').test_cases.get().output_data, '5 3'))
+        self.assertTrue(ege_scoring.outputs_match(
+            quiz.questions.get(
+                title='Сдвиг вправо').test_cases.get().output_data, '8'))
+
+    def test_input_tasks_keep_four_tests(self):
+        call_command('seed_classwork_block6')
+        quiz = Quiz.objects.get(slug='classwork-blok-6')
 
         question = quiz.questions.get(title='Общие флаги')
+        self.assertEqual(question.test_cases.count(), 4)
         first = question.test_cases.order_by('id').first()
         self.assertEqual(
             first.output_data, _run(CODE['Общие флаги'], first.input_data))
