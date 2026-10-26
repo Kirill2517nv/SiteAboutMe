@@ -45,7 +45,10 @@
         {% if is_ege %}
         {% include 'quizzes/_ege_question_body.html' with question=question %}
         {% else %}
-        {% if question.quiz.is_self_check %}
+        {% if question.quiz.quiz_type == 'classwork' %}
+        {# Самостоятельная – тем же партиалом, что на работе ученика и в разборе после звонка. #}
+        {% include 'quizzes/_classwork_question_body.html' %}
+        {% elif question.quiz.is_self_check %}
         <div class="task-text bg-gray-50 dark:bg-slate-900 rounded-lg p-4">{{ question.get_body|markdownify }}</div>
         {% else %}
         <div class="text-gray-700 dark:text-slate-300 whitespace-pre-wrap font-mono text-sm">{{ question.get_body }}</div>

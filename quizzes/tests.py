@@ -4895,7 +4895,10 @@ class ClassworkStudentPagesTests(TestCase):
         self.assertContains(response, 'SECRET-42')
         solutions = f'/quizzes/question/{self.text_q.pk}/solutions/'
         self.assertContains(response, solutions)
-        self.assertEqual(self.client.get(solutions).status_code, 200)
+        gallery = self.client.get(solutions)
+        self.assertEqual(gallery.status_code, 200)
+        # Условие в галерее – Markdown, как на работе, а не сырой текст в pre-wrap.
+        self.assertContains(gallery, 'class="task-text')
 
     def test_textbook_banner_follows_the_window(self):
         self.client.force_login(self.pupil)
