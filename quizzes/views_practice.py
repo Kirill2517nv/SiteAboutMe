@@ -950,7 +950,13 @@ def practice_finish_view(request, pk):
             or timezone.now() <= session.deadline + EXAM_CODES_GRACE):
         _save_exam_codes(request, session)
     if not session.is_finished:
-        session.finished_at = timezone.now()
+        # Финиш в поблажку: время вышло, и в статистику сессия идёт дедлайном,
+        # а не «сейчас» – поблажка только на доставку ответов.
+        now = timezone.now()
+        if session.deadline and now > session.deadline:
+            session.finished_at = session.deadline
+        else:
+            session.finished_at = now
         session.save(update_fields=['finished_at'])
     if beacon:
         return HttpResponse(status=204)

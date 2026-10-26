@@ -8,9 +8,9 @@ from django.utils import timezone
 
 from . import ege_practice, ege_scoring, ege_stats
 from .ege_constants import (
-    EGE_MAX_PRIMARY, EGE_RECOMMENDED_TIME, EGE_TASK_POINTS, EXAM_MINUTES,
-    MISTAKES_RED_AT, ege_mistakes_color, ege_score_color, ege_time_color,
-    test_score_for,
+    EGE_MAX_PRIMARY, EGE_RECOMMENDED_TIME, EGE_TASK_POINTS, EXAM_ANSWER_GRACE,
+    EXAM_MINUTES, MISTAKES_RED_AT, ege_mistakes_color, ege_score_color,
+    ege_time_color, test_score_for,
 )
 from textbook.models import EgeTask
 from textbook.templatetags.textbook_tags import plural
@@ -1308,9 +1308,9 @@ class ExamDeadlineTests(TestCase):
         )
         self.client.force_login(self.user)
 
-    def _age(self, minutes):
+    def _age(self, minutes, seconds=0):
         """Сдвигает начало сессии в прошлое (created_at – auto_now_add)."""
-        started = timezone.now() - timedelta(minutes=minutes)
+        started = timezone.now() - timedelta(minutes=minutes, seconds=seconds)
         PracticeSession.objects.filter(pk=self.session.pk).update(created_at=started)
         self.session.refresh_from_db()
 
@@ -1333,6 +1333,47 @@ class ExamDeadlineTests(TestCase):
 
     def test_expired_exam_rejects_answers(self):
         self._age(EXAM_MINUTES + 1)
+        resp = self.client.post(
+            f'/ege/practice/{self.session.pk}/answer/',
+            data=json.dumps({'item_id': self.item.pk, 'answer': '4'}),
+            content_type='application/json',
+        )
+        self.assertEqual(resp.status_code, 403)
+        self.item.refresh_from_db()
+        self.assertIsNone(self.item.is_correct)
+
+    def test_answer_in_grace_is_accepted(self):
+        # Дедлайн прошёл 10 секунд назад – страница как раз досылает ответы.
+        self._age(EXAM_MINUTES, seconds=10)
+        resp = self.client.post(
+            f'/ege/practice/{self.session.pk}/answer/',
+            data=json.dumps({'item_id': self.item.pk, 'answer': '4'}),
+            content_type='application/json',
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.item.refresh_from_db()
+        self.assertTrue(self.item.is_correct)
+        self.session.refresh_from_db()
+        self.assertIsNone(self.session.finished_at)
+
+    def test_result_closed_during_grace(self):
+        # Разбор печатает верные ответы, а они ещё принимаются – нельзя.
+        self._age(EXAM_MINUTES, seconds=10)
+        resp = self.client.get(f'/ege/practice/{self.session.pk}/result/')
+        self.assertRedirects(resp, f'/ege/practice/{self.session.pk}/',
+                             fetch_redirect_response=False)
+
+    def test_finish_in_grace_stamps_deadline(self):
+        self._age(EXAM_MINUTES, seconds=10)
+        resp = self.client.post(f'/ege/practice/{self.session.pk}/finish/')
+        self.assertRedirects(resp, f'/ege/practice/{self.session.pk}/result/',
+                             fetch_redirect_response=False)
+        self.session.refresh_from_db()
+        # В статистику времени поблажка не идёт – сессия закрыта дедлайном.
+        self.assertEqual(self.session.finished_at, self.session.deadline)
+
+    def test_answer_after_grace_rejected(self):
+        self._age(EXAM_MINUTES, seconds=EXAM_ANSWER_GRACE.seconds + 1)
         resp = self.client.post(
             f'/ege/practice/{self.session.pk}/answer/',
             data=json.dumps({'item_id': self.item.pk, 'answer': '4'}),

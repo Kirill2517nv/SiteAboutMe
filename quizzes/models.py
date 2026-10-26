@@ -546,9 +546,18 @@ class PracticeSession(models.Model):
 
     @property
     def is_expired(self):
-        """Время экзамена вышло, а сессия всё ещё открыта."""
+        """
+        Время экзамена вышло, а сессия всё ещё открыта.
+
+        «Вышло» – это дедлайн плюс EXAM_ANSWER_GRACE: страница сама жмёт
+        «Завершить» на нуле и досылает несохранённые ответы отдельными
+        запросами, и без поблажки они приходили бы в уже закрытую сессию.
+        """
+        from .ege_constants import EXAM_ANSWER_GRACE
+
         deadline = self.deadline
-        return bool(deadline and not self.finished_at and timezone.now() >= deadline)
+        return bool(deadline and not self.finished_at
+                    and timezone.now() >= deadline + EXAM_ANSWER_GRACE)
 
 
 class PracticeItem(models.Model):
