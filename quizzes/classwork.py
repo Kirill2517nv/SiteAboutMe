@@ -512,8 +512,15 @@ def cancel(quiz, group):
 
 
 def has_answers(quiz):
-    """Работу уже писали: задачи убирать нельзя, ответы учеников ушли бы каскадом."""
-    return ClassworkAttempt.objects.filter(quiz=quiz).exists()
+    """
+    Работу уже писали: задачи убирать нельзя, ответы учеников ушли бы каскадом.
+
+    Проба учителя («Пройти как ученик») – не ответы учеников: она не должна
+    запирать ни удаление задачи на странице «Задачи», ни пересоздание тестов
+    сидом.
+    """
+    return ClassworkAttempt.objects.filter(
+        quiz=quiz, user__is_superuser=False).exists()
 
 
 def copy_question(question, quiz):

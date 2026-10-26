@@ -5105,6 +5105,28 @@ class ClassworkTeacherTests(TestCase):
         self.assertContains(response, 'Работу уже писали')
         self.assertTrue(Question.objects.filter(pk=kept.pk).exists())
 
+    def test_teacher_probe_does_not_count_as_answers(self):
+        from . import classwork
+
+        copy = classwork.copy_question(self.practicum_q, self.work)
+        self._login()
+        self.client.post(f'/classwork/{self.work.pk}/try/')
+
+        # Проба учителя – не ответы учеников: задача убирается.
+        self.assertFalse(classwork.has_answers(self.work))
+        response = self.client.post(f'/classwork/{self.work.pk}/edit/', {
+            'action': 'remove', 'question': copy.pk,
+        })
+        self.assertRedirects(response, f'/classwork/{self.work.pk}/edit/',
+                             fetch_redirect_response=False)
+        self.assertFalse(Question.objects.filter(pk=copy.pk).exists())
+
+        # Попытка ученика запирает банк.
+        ClassworkAttempt.objects.create(
+            user=self.pupil, quiz=self.work,
+            deadline=timezone.now() + timedelta(minutes=10))
+        self.assertTrue(classwork.has_answers(self.work))
+
     def test_preview_shows_the_answers(self):
         from . import classwork
 
@@ -5660,8 +5682,9 @@ class ClassworkSeedBlock6Tests(TestCase):
         tests = list(question.test_cases.all())
         self.assertEqual(len(tests), 1)
         self.assertEqual(tests[0].input_data, '')
-        self.assertTrue(ege_scoring.outputs_match(
-            tests[0].output_data, '9\n0b1001'))
+        # Столбик из 45, 27 и 45 & 27: ожидание собираем format, а не руками.
+        self.assertEqual(tests[0].output_data, '\n'.join(
+            format(value, '08b') for value in (45, 27, 45 & 27)))
         self.assertNotIn(tests[0].output_data, question.text)
 
         self.assertTrue(ege_scoring.outputs_match(
@@ -5680,3 +5703,46 @@ class ClassworkSeedBlock6Tests(TestCase):
         first = question.test_cases.order_by('id').first()
         self.assertEqual(
             first.output_data, _run(CODE['Общие флаги'], first.input_data))
+
+    def test_hint_tasks_print_the_bit_columns(self):
+        call_command('seed_classwork_block6')
+        quiz = Quiz.objects.get(slug='classwork-blok-6')
+
+        outputs = {
+            'Исключающее ИЛИ': '00110100\n00010011\n00100111',
+            'Побитовое НЕ': '00100101\n11011010',
+            'Погасить младшую единицу': '01101100\n01100000',
+        }
+        for title, expected in outputs.items():
+            with self.subTest(title=title):
+                question = quiz.questions.get(title=title)
+                self.assertEqual(question.test_cases.get().output_data, expected)
+                self.assertIn("format(x, '08b')", question.text)
+
+    def test_flags_task_explains_itself_without_the_neighbour(self):
+        call_command('seed_classwork_block6')
+        question = Quiz.objects.get(slug='classwork-blok-6').questions.get(
+            title='Флаги не у всех')
+        self.assertNotIn('Теперь', question.text)
+
+    def test_teacher_probe_does_not_freeze_the_tests(self):
+        call_command('seed_classwork_block6')
+        quiz = Quiz.objects.get(slug='classwork-blok-6')
+        old = quiz.questions.get(title='Побитовое И').test_cases.get()
+
+        User = get_user_model()
+        ClassworkAttempt.objects.create(
+            user=User.objects.create_superuser('seed_teacher', password='pwd'),
+            quiz=quiz, deadline=timezone.now() + timedelta(minutes=10))
+        call_command('seed_classwork_block6')
+        question = quiz.questions.get(title='Побитовое И')
+        self.assertNotEqual(question.test_cases.get().pk, old.pk)
+
+        ClassworkAttempt.objects.create(
+            user=User.objects.create_user('seed_pupil', password='pwd'),
+            quiz=quiz, deadline=timezone.now() + timedelta(minutes=10))
+        current = question.test_cases.get().pk
+        call_command('seed_classwork_block6')
+        self.assertEqual(
+            quiz.questions.get(title='Побитовое И').test_cases.get().pk,
+            current)
