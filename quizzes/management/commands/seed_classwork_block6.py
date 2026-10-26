@@ -2,7 +2,7 @@
 
 Работа «Побитовые операции» – банк из 20 задач: четыре темы по пять задач,
 все решаются программой. В каждой теме три коротких задачи «посчитать и
-напечатать» и две программы с вводом. Каждому ученику работа выдаёт 6 задач
+напечатать» и две программы с вводом. Каждому ученику работа выдаёт 5 задач
 из банка по темам (quizzes.classwork.pick), поэтому заголовки не нумеруются:
 у соседей своя нумерация и свой порядок задач.
 
@@ -252,7 +252,7 @@ def _code(title, lead, input_line, output_line, inputs):
     return {
         'title': title,
         'question_type': 'code',
-        'points': 2,
+        'points': 1,
         'text': _code_text(lead, input_line, output_line,
                            inputs[0], tests[0][1]),
         'test_cases': tests,
@@ -601,8 +601,8 @@ def _check(quiz, bank):
                           'разбор примера в условии разошёлся с тестом')
 
     total = sum(question.points for question in questions)
-    if total != 28:
-        errors.append(f'сумма баллов {total}, а нужно 28')
+    if total != 20:
+        errors.append(f'сумма баллов {total}, а нужно 20')
 
     if errors:
         raise CommandError('Проверка банка не сошлась: ' + '; '.join(errors))
@@ -623,12 +623,12 @@ class Command(BaseCommand):
             slug=SLUG,
             defaults={
                 'title': 'Самостоятельная: побитовые операции',
-                'description': ('Каждому – 6 задач из банка в 20: по темам '
+                'description': ('Каждому – 5 задач из банка в 20: по темам '
                                 'блока, все решаются программой.'),
                 'quiz_type': 'classwork',
                 'section': section,
                 'check_minutes': 30,
-                'classwork_size': 6,
+                'classwork_size': 5,
                 'max_attempts': 1,
             },
         )

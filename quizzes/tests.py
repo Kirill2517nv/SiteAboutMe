@@ -4877,6 +4877,7 @@ class ClassworkStudentPagesTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Разбор задач появится')
         self.assertNotIn('Задача про файл', response.content.decode())
+        self.assertNotIn('Посчитай', response.content.decode())
 
         self.client.force_login(self.teacher)
         self.client.post(f'/classwork/{self.work.pk}/control/',
@@ -4889,6 +4890,12 @@ class ClassworkStudentPagesTests(TestCase):
         self.assertIn('Задача про файл', [task['title'] for task in tasks])
         self.assertIn('ok', [task['status'] for task in tasks])
         self.assertContains(response, 'верно')
+        # После звонка – условие, свой ответ и вход в «Решения других».
+        self.assertContains(response, 'Посчитай')
+        self.assertContains(response, 'SECRET-42')
+        solutions = f'/quizzes/question/{self.text_q.pk}/solutions/'
+        self.assertContains(response, solutions)
+        self.assertEqual(self.client.get(solutions).status_code, 200)
 
     def test_textbook_banner_follows_the_window(self):
         self.client.force_login(self.pupil)
@@ -5662,7 +5669,7 @@ class ClassworkBankTests(TestCase):
 
 
 class ClassworkSeedBlock6Tests(TestCase):
-    """Первый банк самостоятельной: 20 задач с кодом, 4 темы, каждому 6."""
+    """Первый банк самостоятельной: 20 задач с кодом, 4 темы, каждому 5."""
 
     def setUp(self):
         self.section = Section.objects.create(slug='blok-6', title='Блок 6')
@@ -5679,8 +5686,8 @@ class ClassworkSeedBlock6Tests(TestCase):
         self.assertEqual(questions.filter(question_type='code').count(), 20)
         self.assertEqual(questions.filter(question_type='text').count(), 0)
         self.assertEqual(
-            sum(questions.values_list('points', flat=True)), 28)
-        self.assertEqual(quiz.classwork_size, 6)
+            sum(questions.values_list('points', flat=True)), 20)
+        self.assertEqual(quiz.classwork_size, 5)
         self.assertEqual(quiz.section, self.section)
 
         call_command('seed_classwork_block6')

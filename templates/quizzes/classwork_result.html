@@ -3,6 +3,8 @@
 
 {% block title %}{{ quiz.title }} – итог{% endblock title %}
 
+{% block extra_css %}{% include 'quizzes/_task_text_css.html' %}{% endblock extra_css %}
+
 {% block content %}
 <div class="min-h-screen bg-gray-50 dark:bg-slate-900">
     <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-10" x-data="classworkResult()">
@@ -26,24 +28,60 @@
         </div>
 
         {% if released %}
-        <div class="mt-8 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 p-6">
-            <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Разбор задач</h2>
+        <div class="mt-8">
+            <div class="flex flex-wrap items-baseline justify-between gap-2 mb-4">
+                <h2 class="text-xl font-semibold text-gray-900 dark:text-white">Разбор задач</h2>
+                <p class="text-sm text-gray-500 dark:text-slate-400" x-show="revealed && tasks.length" x-cloak>
+                    Решено верно: <span class="font-semibold text-gray-900 dark:text-white"
+                        x-text="tasks.filter(t => t.status === 'ok').length"></span> из <span x-text="tasks.length"></span>
+                </p>
+            </div>
             {# Статусы приходят с опросом, но открываются только когда барабан встал – иначе список выдавал бы балл раньше барабана. #}
-            <ul class="space-y-2">
-                <template x-for="task in shownTasks" :key="task.number">
-                <li class="flex items-center gap-3 text-sm">
-                    <span class="w-6 text-gray-400 dark:text-slate-500" x-text="task.number + '.'"></span>
-                    <span class="flex-1 text-gray-700 dark:text-slate-300" x-text="task.title"></span>
-                    <span x-show="task.status === 'pending'" class="text-xs font-medium text-amber-600 dark:text-amber-400">проверяется…</span>
-                    <span x-show="task.status === 'ok'" class="text-xs font-semibold text-green-600 dark:text-green-400">&check; верно</span>
-                    <span x-show="task.status === 'wrong'" class="text-xs font-semibold text-red-600 dark:text-red-400">&times; неверно</span>
-                </li>
-                </template>
-            </ul>
-            <p class="mt-4 text-sm text-gray-500 dark:text-slate-400" x-show="revealed && tasks.length" x-cloak>
-                Решено верно: <span class="font-semibold text-gray-900 dark:text-white"
-                    x-text="tasks.filter(t => t.status === 'ok').length"></span> из <span x-text="tasks.length"></span>
-            </p>
+            {% for question in review %}
+            <div class="mb-4 rounded-xl border border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800 p-5">
+                <div class="flex flex-wrap items-center gap-3">
+                    <span class="text-sm text-gray-400 dark:text-slate-500">{{ forloop.counter }}.</span>
+                    <span class="flex-1 text-base font-medium text-gray-900 dark:text-white">{{ question.get_title }}</span>
+                    <span x-show="statusOf({{ forloop.counter }}) === 'pending'" class="text-xs font-medium text-amber-600 dark:text-amber-400">проверяется…</span>
+                    <span x-show="statusOf({{ forloop.counter }}) === 'ok'" x-cloak class="text-xs font-semibold text-green-600 dark:text-green-400">&check; верно</span>
+                    <span x-show="statusOf({{ forloop.counter }}) === 'wrong'" x-cloak class="text-xs font-semibold text-red-600 dark:text-red-400">&times; неверно</span>
+                </div>
+
+                <details class="mt-3">
+                    <summary class="cursor-pointer text-sm text-brand-600 dark:text-brand-400 hover:underline">Условие</summary>
+                    {% if question.get_body %}
+                    <div class="task-text mt-3 text-base leading-relaxed text-gray-700 dark:text-slate-300 bg-gray-50 dark:bg-slate-900 rounded-lg p-4">{{ question.get_body|markdownify }}</div>
+                    {% endif %}
+                    {% for img in question.images.all %}
+                    <img src="{{ img.image.url }}" alt="{{ img.alt_text|default:'Изображение к вопросу' }}" class="mt-3 max-w-full rounded-lg border border-gray-200 dark:border-slate-700">
+                    {% endfor %}
+                    {% if question.files.all %}
+                    <p class="mt-3 text-sm text-gray-500 dark:text-slate-400">
+                        Файлы задачи: {% for file in question.files.all %}<span class="font-mono">{{ file.get_filename }}</span>{% if not forloop.last %}, {% endif %}{% endfor %}
+                    </p>
+                    {% endif %}
+                </details>
+
+                {% with answer=question.my_answer %}
+                <details class="mt-2">
+                    <summary class="cursor-pointer text-sm text-brand-600 dark:text-brand-400 hover:underline">Моё решение</summary>
+                    {% if answer.code_answer %}
+                    {% if answer.submission %}<p class="mt-3 text-xs text-gray-400 dark:text-slate-500">{{ answer.submission.get_language_display }}</p>{% endif %}
+                    <pre class="mt-1 overflow-x-auto rounded-lg bg-gray-50 dark:bg-slate-900 p-4 text-sm font-mono text-gray-800 dark:text-slate-200">{{ answer.code_answer }}</pre>
+                    {% elif answer.text_answer %}
+                    <p class="mt-3 font-mono text-sm text-gray-800 dark:text-slate-200">{{ answer.text_answer }}</p>
+                    {% else %}
+                    <p class="mt-3 text-sm text-gray-500 dark:text-slate-400">Решение не сдано.</p>
+                    {% endif %}
+                </details>
+                {% endwith %}
+
+                {# Галерея открывается решившему верно – то же правило, что у всех задач (solutions.can_view). #}
+                <div class="mt-3" x-show="statusOf({{ forloop.counter }}) === 'ok'" x-cloak>
+                    {% include 'quizzes/_solutions_link.html' with question_id=question.id compact=True %}
+                </div>
+            </div>
+            {% endfor %}
         </div>
         {% else %}
         <p class="mt-8 text-sm text-gray-500 dark:text-slate-400">
@@ -60,6 +98,7 @@
 {% endblock content %}
 
 {% block pre_alpine_js %}
+{% if released %}{% include 'quizzes/_mathjax.html' %}{% endif %}
 <script>
 function classworkResult() {
     return {
@@ -74,11 +113,13 @@ function classworkResult() {
         // проверенных выдавали бы балл раньше барабана. В режиме без анимации
         // stopped выставлен сразу, поэтому решает второе условие.
         get revealed() { return this.stopped && !this.pending; },
-        get shownTasks() {
-            if (this.revealed) return this.tasks;
-            return this.tasks.map(task => ({ ...task, status: 'pending' }));
+        statusOf(number) {
+            if (!this.revealed) return 'pending';
+            const task = this.tasks.find(t => t.number === number);
+            return task ? task.status : '';
         },
         scoreUrl: '{% url "classwork:score" attempt.pk %}',
+        _seenKey: 'classwork-drum-{{ attempt.pk }}',
         offset: 0,
         numbers: [],
         stopped: false,
@@ -102,7 +143,9 @@ function classworkResult() {
             for (let k = 0; k < 3; k++) {
                 for (let n = 0; n <= this.max; n++) this.numbers.push(n);
             }
-            this._reduce = !!(window.matchMedia
+            // Барабан крутится один раз – в момент сдачи. Вернувшийся на
+            // страницу или открывший её уже после звонка сразу видит число.
+            this._reduce = this._seen() || (this.wasReleased && !this.pending) || !!(window.matchMedia
                 && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
             if (this._reduce) {
@@ -117,6 +160,15 @@ function classworkResult() {
             this.poll();
             this._poll = setInterval(() => this.poll(), 2000);
             if (this._reduce && !this.pending) this._slowPoll();
+        },
+
+        // localStorage – удобство одного браузера: в приватном окне или на
+        // другом устройстве барабан просто прокрутится ещё раз.
+        _seen() {
+            try { return localStorage.getItem(this._seenKey) === '1'; } catch (e) { return false; }
+        },
+        _markSeen() {
+            try { localStorage.setItem(this._seenKey, '1'); } catch (e) {}
         },
 
         // Сдавшие держат вкладку открытой до звонка: тридцать человек по
@@ -147,6 +199,7 @@ function classworkResult() {
                     this.offset = this._to;
                     this._done = true;
                     this.stopped = true;
+                    this._markSeen();
                     this._raf = null;
                     this._slowPoll();
                     return;

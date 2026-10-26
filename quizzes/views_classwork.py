@@ -135,7 +135,27 @@ def result_view(request, pk):
         'pending': classwork.pending(attempt.result),
         'released': released,
         'tasks_json': js_json(_task_rows(attempt) if released else []),
+        'review': _review(attempt) if released else [],
     })
+
+
+def _review(attempt):
+    """
+    Задачи попытки с ответом ученика: условие, свой код, вход в «Решения других».
+
+    Только после закрытия работы – то же правило, что у списка статусов и у
+    самой галереи (solutions.can_view): пока класс пишет, условие с кодом
+    соседа по парте – готовая подсказка.
+    """
+    questions = classwork.attempt_questions(attempt)
+    prefetch_related_objects(questions, 'images', 'files')
+    answers = {}
+    if attempt.result_id:
+        answers = {answer.question_id: answer for answer
+                   in attempt.result.answers.select_related('submission')}
+    for question in questions:
+        question.my_answer = answers.get(question.id)
+    return questions
 
 
 def _task_rows(attempt):
