@@ -58,6 +58,11 @@ class Quiz(models.Model):
         help_text="Только у самостоятельной: сколько задач банка получает каждый "
                   "ученик. Пусто – все.",
     )
+    classwork_brainrot = models.BooleanField(
+        default=False, verbose_name="Ленту видео",
+        help_text="Только у самостоятельной: вертикальные ролики из media/brainrot/ "
+                  "рядом с номерами задач. Включает учитель на пульте.",
+    )
 
     class Meta:
         verbose_name = "Тест"

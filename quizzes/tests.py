@@ -4900,6 +4900,32 @@ class ClassworkStudentPagesTests(TestCase):
         # Условие в галерее – Markdown, как на работе, а не сырой текст в pre-wrap.
         self.assertContains(gallery, 'class="task-text')
 
+    def test_brainrot_feed_follows_the_teacher(self):
+        import os
+
+        folder = os.path.join(self.media, 'brainrot')
+        os.makedirs(folder)
+        for name in ('a.mp4', 'source.webm'):
+            open(os.path.join(folder, name), 'wb').close()
+
+        self._open()
+        attempt = self._start()
+        response = self.client.get(f'/classwork/a/{attempt.pk}/')
+        self.assertFalse(response.context['brainrot'])
+        # В ленту идут только .mp4: исходник рядом в неё не попадает.
+        self.assertEqual(json.loads(response.context['videos_json']), ['/media/brainrot/a.mp4'])
+
+        self.client.force_login(self.teacher)
+        self.client.post(f'/classwork/{self.work.pk}/control/', {'action': 'brainrot', 'on': '1'})
+        self.client.force_login(self.pupil)
+        state = self.client.get(f'/classwork/a/{attempt.pk}/state/').json()
+        self.assertTrue(state['brainrot'])
+
+        self.client.force_login(self.teacher)
+        self.client.post(f'/classwork/{self.work.pk}/control/', {'action': 'brainrot', 'on': '0'})
+        self.client.force_login(self.pupil)
+        self.assertFalse(self.client.get(f'/classwork/a/{attempt.pk}/state/').json()['brainrot'])
+
     def test_textbook_banner_follows_the_window(self):
         self.client.force_login(self.pupil)
         self.assertNotContains(self.client.get('/textbook/'), 'Идёт самостоятельная работа')

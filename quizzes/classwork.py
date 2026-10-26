@@ -22,6 +22,27 @@ from .ege_constants import EXAM_ANSWER_GRACE
 from .models import ClassworkAttempt, Quiz, QuizAssignment
 
 DEFAULT_MINUTES = 40
+BRAINROT_DIR = 'brainrot'
+
+
+def brainrot_videos():
+    """
+    Ролики ленты рядом с номерами задач – все .mp4 из media/brainrot/.
+
+    Папку наполняет учитель руками (в git её нет), поэтому список читается с
+    диска при каждом открытии работы: положил файл – он в ленте. Только .mp4:
+    исходники в других форматах могут лежать рядом, не попадая в ленту.
+    """
+    import os
+
+    from django.conf import settings
+
+    folder = os.path.join(settings.MEDIA_ROOT, BRAINROT_DIR)
+    try:
+        names = sorted(n for n in os.listdir(folder) if n.lower().endswith('.mp4'))
+    except OSError:
+        return []
+    return [f'{settings.MEDIA_URL}{BRAINROT_DIR}/{name}' for name in names]
 # Шкала одна на все работы; править здесь.
 GRADE_SCALE = ((85, 5), (65, 4), (45, 3))  # процент от максимума -> оценка, ниже – 2
 DRAFT_LIMIT = 20000

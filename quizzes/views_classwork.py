@@ -115,6 +115,8 @@ def work_view(request, pk):
         'drafts_json': js_json({'answers': attempt.answers, 'languages': attempt.languages}),
         'left': max(0, int((attempt.deadline - timezone.now()).total_seconds())),
         'frozen': attempt.is_frozen,
+        'brainrot': quiz.classwork_brainrot,
+        'videos_json': js_json(classwork.brainrot_videos()),
     })
 
 
@@ -242,6 +244,8 @@ def state_view(request, pk):
         'frozen': attempt.is_frozen,
         'finished': attempt.is_finished,
         'left': max(0, left),
+        # Учитель выключил ленту на пульте – открытые страницы гасят её с опросом.
+        'brainrot': attempt.quiz.classwork_brainrot,
     })
 
 
@@ -309,6 +313,9 @@ def control_view(request, quiz_id):
         value = request.POST.get('minutes', '').strip()
         quiz.check_minutes = int(value) if value.isdigit() and 1 <= int(value) <= 235 else None
         quiz.save(update_fields=['check_minutes'])
+    elif action == 'brainrot':
+        quiz.classwork_brainrot = request.POST.get('on') == '1'
+        quiz.save(update_fields=['classwork_brainrot'])
 
     # Возврат туда, откуда пришли. Протокол-относительный // не пускаем.
     next_url = request.POST.get('next') or ''
