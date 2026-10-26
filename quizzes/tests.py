@@ -3,6 +3,7 @@ import re
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from django.test import SimpleTestCase, TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
@@ -21,6 +22,7 @@ from .models import (
 )
 from .tasks import update_practice_item_from_submission as update_practice_from_submission
 from .management.commands.load_ege import _create_test_cases, fix_empty_sub_markers
+from .management.commands.seed_classwork_block6 import CODE, _run
 from .templatetags.ege_filters import render_question_text
 from .utils import js_json
 
@@ -5618,3 +5620,42 @@ class ClassworkBankTests(TestCase):
         first, second = quiz.questions.order_by('id')
         self.assertEqual((first.topic, first.points), ('Графы', 3))
         self.assertEqual((second.topic, second.points), ('', 1))
+
+
+class ClassworkSeedBlock6Tests(TestCase):
+    """Первый банк самостоятельной: 20 задач, 4 темы, каждому 6."""
+
+    def setUp(self):
+        self.section = Section.objects.create(slug='blok-6', title='Блок 6')
+
+    def test_bank_is_complete_and_idempotent(self):
+        call_command('seed_classwork_block6')
+        quiz = Quiz.objects.get(slug='classwork-blok-6')
+        questions = quiz.questions.all()
+
+        self.assertEqual(questions.count(), 20)
+        self.assertEqual(
+            set(questions.values_list('topic', flat=True)),
+            {'AND, OR, XOR, NOT', 'Сдвиги', 'Маски', 'Быстрые вычисления'})
+        self.assertEqual(questions.filter(question_type='text').count(), 12)
+        self.assertEqual(questions.filter(question_type='code').count(), 8)
+        self.assertEqual(
+            sum(questions.values_list('points', flat=True)), 28)
+        self.assertEqual(quiz.classwork_size, 6)
+        self.assertEqual(quiz.section, self.section)
+
+        call_command('seed_classwork_block6')
+        self.assertEqual(Quiz.objects.filter(slug='classwork-blok-6').count(), 1)
+        self.assertEqual(quiz.questions.count(), 20)
+
+    def test_text_answer_is_computed_and_code_tests_run(self):
+        call_command('seed_classwork_block6')
+        quiz = Quiz.objects.get(slug='classwork-blok-6')
+
+        self.assertEqual(
+            quiz.questions.get(title='Побитовое И').correct_text_answer, '9')
+
+        question = quiz.questions.get(title='Общие флаги')
+        first = question.test_cases.order_by('id').first()
+        self.assertEqual(
+            first.output_data, _run(CODE['Общие флаги'], first.input_data))
