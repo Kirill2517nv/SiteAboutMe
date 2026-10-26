@@ -127,25 +127,6 @@ def result_view(request, pk):
 
     quiz = attempt.quiz
     released = quiz.check_released()
-    answers = []
-    if released and attempt.result_id:
-        questions = classwork.attempt_questions(attempt)
-        rows = {
-            answer.question_id: answer
-            for answer in attempt.result.answers.select_related('question', 'submission')
-        }
-        for number, question in enumerate(questions, 1):
-            answer = rows.get(question.id)
-            if answer is None:
-                continue
-            answers.append({
-                'number': number,
-                'title': question.get_title(),
-                'is_correct': answer.is_correct,
-                'pending': bool(answer.submission_id
-                                and answer.submission.status in ('pending', 'running')),
-            })
-
     return render(request, 'quizzes/classwork_result.html', {
         'quiz': quiz,
         'attempt': attempt,
@@ -153,8 +134,36 @@ def result_view(request, pk):
         'max': classwork.attempt_max(attempt),
         'pending': classwork.pending(attempt.result),
         'released': released,
-        'answers': answers,
+        'tasks_json': js_json(_task_rows(attempt) if released else []),
     })
+
+
+def _task_rows(attempt):
+    """
+    Разбор попытки по задачам: номер, заголовок, статус ok / wrong / pending.
+
+    Отдаётся и при открытии страницы, и в каждом ответе score_view: код
+    проверяется после сдачи, и список, нарисованный один раз, оставался с
+    «проверяется» у задач, которые давно проверены, – рядом с барабаном,
+    уже вставшим на итоговом балле.
+    """
+    if not attempt.result_id:
+        return []
+    rows = {
+        answer.question_id: answer
+        for answer in attempt.result.answers.select_related('submission')
+    }
+    tasks = []
+    for number, question in enumerate(classwork.attempt_questions(attempt), 1):
+        answer = rows.get(question.id)
+        if answer is None:
+            continue
+        if answer.submission_id and answer.submission.status in ('pending', 'running'):
+            status = 'pending'
+        else:
+            status = 'ok' if answer.is_correct else 'wrong'
+        tasks.append({'number': number, 'title': question.get_title(), 'status': status})
+    return tasks
 
 
 @login_required
@@ -237,11 +246,14 @@ def score_view(request, pk):
     attempt = _attempt(request, pk)
     if not attempt.is_finished:
         return JsonResponse({'error': 'Работа не сдана'}, status=409)
+    released = attempt.quiz.check_released()
     return JsonResponse({
         'score': classwork.score(attempt.result),
         'max': classwork.attempt_max(attempt),
         'pending': classwork.pending(attempt.result),
-        'released': attempt.quiz.check_released(),
+        'released': released,
+        # Разбор – только после закрытия работы, как и на самой странице.
+        'tasks': _task_rows(attempt) if released else [],
     })
 
 

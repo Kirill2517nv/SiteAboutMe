@@ -29,6 +29,12 @@ NUMBER_RE = re.compile(r'-?\d+')
 # не тот формат, который спрашивают в бланке, и придираться к нему честно.
 NUMBERS_ONLY_RE = re.compile(r'^[\s\d-]*$')
 
+# Целое число в выводе программы: «13», «-5», а также «13.0» – так печатает
+# целое значение, посчитанное через `/`. По смыслу это то же 13, и снимать за
+# него балл значит проверять не задачу, а тип переменной. «13.5» сюда не
+# подходит: это другое число.
+INTEGER_TOKEN_RE = re.compile(r'-?\d+(?:\.0+)?')
+
 
 def normalize_output(text):
     """Вывод программы без хвостовых пробелов и пустых краёв."""
@@ -46,13 +52,24 @@ def outputs_match(output, expected):
     же два числа в две строки одинаково верны. Раскладка вывода – не то, что
     проверяет задача.
 
-    Порядок при этом важен: «293 98» останется неверным ответом. Всё, что
-    содержит хоть что-то кроме чисел, сравнивается как текст.
+    Порядок при этом важен: «293 98» останется неверным ответом. Целое,
+    напечатанное с нулевой дробной частью («13.0»), считается тем же числом.
+    Всё, что содержит хоть что-то кроме чисел, сравнивается как текст.
     """
     expected, output = expected or '', output or ''
-    if NUMBERS_ONLY_RE.match(expected) and NUMBERS_ONLY_RE.match(output):
-        return _numbers(output) == _numbers(expected)
+    if NUMBERS_ONLY_RE.match(expected):
+        got = _integers(output)
+        if got is not None:
+            return got == _numbers(expected)
     return normalize_output(output) == normalize_output(expected)
+
+
+def _integers(text):
+    """Целые числа вывода по порядку или None, если в выводе есть что-то ещё."""
+    tokens = (text or '').split()
+    if not all(INTEGER_TOKEN_RE.fullmatch(token) for token in tokens):
+        return None
+    return [int(token.split('.')[0]) for token in tokens]
 
 
 def is_partial_task(question):

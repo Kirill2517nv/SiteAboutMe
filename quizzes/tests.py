@@ -227,6 +227,15 @@ class OutputMatchTests(SimpleTestCase):
         self.assertTrue(ege_scoring.outputs_match('-5\n7', '-5 7'))
         self.assertFalse(ege_scoring.outputs_match('5 7', '-5 7'))
 
+    def test_integer_printed_as_float(self):
+        # «13.0» – целое, посчитанное через «/»: то же число, что «13».
+        for output in ('13.0', '13.00', '13', ' 13.0\n'):
+            with self.subTest(output=output):
+                self.assertTrue(ege_scoring.outputs_match(output, '13'))
+        self.assertTrue(ege_scoring.outputs_match('9.0\n-2.0', '9 -2'))
+        self.assertFalse(ege_scoring.outputs_match('13.5', '13'))
+        self.assertFalse(ege_scoring.outputs_match('5-3', '5 -3'))
+
 
 class PartialScoreFlowTests(TestCase):
     """Частичный балл в сессии: задача не решена, но половина засчитана."""
@@ -4603,8 +4612,12 @@ class ClassworkTests(TestCase):
         self.assertTrue(self.work.check_released())
 
         self.client.force_login(self.pupil)
-        self.assertEqual(self.client.get(f'/classwork/a/{attempt.pk}/score/').json(),
+        data = self.client.get(f'/classwork/a/{attempt.pk}/score/').json()
+        self.assertEqual({key: data[key] for key in ('score', 'max', 'pending', 'released')},
                          {'score': 2, 'max': 6, 'pending': False, 'released': True})
+        # После закрытия опрос несёт и разбор: список на странице живой.
+        self.assertTrue(data['tasks'])
+        self.assertNotIn('pending', [task['status'] for task in data['tasks']])
 
     def test_score_is_closed_before_finish(self):
         self._open()
@@ -4871,8 +4884,11 @@ class ClassworkStudentPagesTests(TestCase):
 
         self.client.force_login(self.pupil)
         response = self.client.get(f'/classwork/a/{attempt.pk}/result/')
-        self.assertContains(response, 'Задача про файл')
-        self.assertContains(response, '&check;')
+        # Разбор приходит данными (его же потом обновляет опрос барабана).
+        tasks = json.loads(response.context['tasks_json'])
+        self.assertIn('Задача про файл', [task['title'] for task in tasks])
+        self.assertIn('ok', [task['status'] for task in tasks])
+        self.assertContains(response, 'верно')
 
     def test_textbook_banner_follows_the_window(self):
         self.client.force_login(self.pupil)
