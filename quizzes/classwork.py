@@ -11,6 +11,7 @@
 check_released работают без правок, а «разбор открыт» = quiz.check_released().
 """
 from datetime import timedelta
+import random
 
 from django.db import transaction
 from django.db.models import Sum
@@ -29,6 +30,111 @@ DRAFT_LIMIT = 20000
 def minutes(quiz):
     """Минуты на работу: заданные учителем или 40 по умолчанию."""
     return quiz.check_minutes or DEFAULT_MINUTES
+
+
+def pick(quiz, rng=random):
+    """
+    Набор задач банка для одного ученика – n разных, по темам как можно ровнее.
+
+    Берём по одной задаче из каждой темы по кругу, а не «перемешать всё и
+    взять n»: при простом перемешивании одному ученику могло достаться пять
+    задач одной темы и ни одной другой, и соседи по парте решали бы не разное,
+    а несопоставимое. Круг даёт всем варианты одной трудности, пока темы не
+    кончились; когда тема опустела, её просто пропускаем, а лишние задачи
+    догоняются следующими кругами по оставшимся темам.
+
+    Результат – в порядке банка (_sort_questions), а не в порядке выбора:
+    нумерация «Задача 1..n» у ученика должна идти как в банке, иначе две
+    работы с одним набором выглядели бы по-разному и сверять их было бы не с
+    чем. Пустая тема – тоже тема: задачи без темы перемешиваются между собой.
+    """
+    from .views import _sort_questions
+
+    questions = list(quiz.questions.all())
+    _sort_questions(quiz, questions)
+    n = quiz.classwork_size
+    if not n or n >= len(questions):
+        return [question.id for question in questions]
+
+    groups = {}
+    for question in questions:
+        groups.setdefault((question.topic or '').strip(), []).append(question)
+
+    topics = list(groups)
+    rng.shuffle(topics)
+    for topic in topics:
+        rng.shuffle(groups[topic])
+
+    chosen = []
+    depth = 0
+    while len(chosen) < n:
+        added = False
+        for topic in topics:
+            bucket = groups[topic]
+            if depth < len(bucket):
+                chosen.append(bucket[depth])
+                added = True
+                if len(chosen) == n:
+                    break
+        if not added:
+            break
+        depth += 1
+
+    position = {question.id: index for index, question in enumerate(questions)}
+    return sorted((question.id for question in chosen), key=position.get)
+
+
+def attempt_questions(attempt):
+    """
+    Задачи попытки в её порядке – единственное место, где это решается.
+
+    Пустой список – попытка до банка: у неё были все задачи работы. Задачу,
+    которую успели удалить из банка, пропускаем: ответ на неё уже никому не
+    нужен, а падать из-за неё странице незачем.
+    """
+    from .views import _sort_questions
+
+    quiz = attempt.quiz
+    ids = []
+    for value in attempt.questions or []:
+        try:
+            ids.append(int(value))
+        except (TypeError, ValueError):
+            continue
+
+    if not ids:
+        questions = list(quiz.questions.all())
+        _sort_questions(quiz, questions)
+        return questions
+
+    found = {
+        question.id: question
+        for question in quiz.questions.filter(id__in=ids)
+    }
+    return [found[pk] for pk in ids if pk in found]
+
+
+def attempt_max(attempt):
+    """Максимум попытки – сумма баллов доставшихся задач, а не всего банка."""
+    return sum(question.points for question in attempt_questions(attempt))
+
+
+def topic_counts(quiz):
+    """
+    Темы банка по числу задач – для подписей учителю на «Задачах» и в
+    предпросмотре. Порядок – как в банке, чтобы подпись не прыгала между
+    страницами; задачи без темы идут под своей строкой.
+    """
+    from .views import _sort_questions
+
+    questions = list(quiz.questions.all())
+    _sort_questions(quiz, questions)
+    counts = {}
+    for question in questions:
+        topic = (question.topic or '').strip()
+        counts[topic] = counts.get(topic, 0) + 1
+    return [{'topic': topic, 'label': topic or 'без темы', 'count': count}
+            for topic, count in counts.items()]
 
 
 def window_open(quiz, user):
@@ -108,7 +214,8 @@ def section_cards(user, section):
                 url=reverse('classwork:result', kwargs={'pk': attempt.pk}),
                 score=score(attempt.result),
                 # max_score нужен только сданной карточке: остальным он ни к чему.
-                max=max_score(quiz),
+                # Считаем по набору попытки: у каждого ученика свой максимум.
+                max=attempt_max(attempt),
             )
         elif attempt:
             card.update(state='writing',
@@ -133,7 +240,10 @@ def start(user, quiz):
         return None
     attempt, _ = ClassworkAttempt.objects.get_or_create(
         user=user, quiz=quiz,
-        defaults={'deadline': timezone.now() + timedelta(minutes=minutes(quiz))},
+        defaults={
+            'deadline': timezone.now() + timedelta(minutes=minutes(quiz)),
+            'questions': pick(quiz),
+        },
     )
     return attempt
 
@@ -165,7 +275,7 @@ def final_grade(attempt):
         return attempt.grade
     if not attempt.result_id:
         return None
-    return auto_grade(score(attempt.result), max_score(attempt.quiz))
+    return auto_grade(score(attempt.result), attempt_max(attempt))
 
 
 def accepts_answers(attempt, now=None):
@@ -236,7 +346,7 @@ def save_draft(attempt, answers, languages):
         answers = {}
     if not isinstance(languages, dict):
         languages = {}
-    valid = {str(pk) for pk in attempt.quiz.questions.values_list('id', flat=True)}
+    valid = {str(question.id) for question in attempt_questions(attempt)}
     clean_answers = {
         key: value[:DRAFT_LIMIT]
         for key, value in answers.items()
@@ -301,7 +411,7 @@ def finalize(attempt, now=None):
         languages = row.languages or {}
         batch = []
         queued = []
-        for question in row.quiz.questions.all():
+        for question in attempt_questions(row):
             value = str(answers.get(str(question.id)) or '')
             selected = None
             text_answer = None
@@ -503,6 +613,7 @@ def try_as_teacher(user, quiz):
         return ClassworkAttempt.objects.create(
             user=user, quiz=quiz,
             deadline=timezone.now() + timedelta(minutes=minutes(quiz)),
+            questions=pick(quiz),
         )
 
 

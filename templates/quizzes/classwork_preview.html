@@ -31,6 +31,12 @@
                 {{ max_score }} балл{{ max_score|plural:",а,ов" }} ·
                 {{ minutes }} мин · ответы видны только учителю
             </p>
+            {% if drawn %}
+            <p class="text-sm text-gray-500 dark:text-slate-400 mt-1">
+                Каждому ученику – {{ drawn }} из {{ questions|length }} задач, по темам:
+                {% for topic in topics %}{{ topic.label }} ({{ topic.count }}){% if not forloop.last %}, {% endif %}{% endfor %}.
+            </p>
+            {% endif %}
         </div>
         <div class="flex flex-wrap gap-2">
             <a href="{% url 'classwork:edit' quiz.id %}"

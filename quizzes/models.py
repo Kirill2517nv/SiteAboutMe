@@ -53,6 +53,11 @@ class Quiz(models.Model):
         help_text="Только у самостоятельной: к какой теме работа. Из блока "
                   "набираются задачи и на его странице показывается работа.",
     )
+    classwork_size = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name="Задач каждому",
+        help_text="Только у самостоятельной: сколько задач банка получает каждый "
+                  "ученик. Пусто – все.",
+    )
 
     class Meta:
         verbose_name = "Тест"
@@ -669,6 +674,11 @@ class ClassworkAttempt(models.Model):
     finished_at = models.DateTimeField(null=True, blank=True, verbose_name="Сдана")
     frozen_at = models.DateTimeField(null=True, blank=True, verbose_name="Заморожена с",
                                      help_text="Ученик ушёл со страницы; снимает только учитель.")
+    questions = models.JSONField(
+        default=list, blank=True, verbose_name="Задачи ученика",
+        help_text="id задач, вытянутых при старте, по порядку. Пусто – все "
+                  "задачи работы (попытки до банка).",
+    )
     answers = models.JSONField(default=dict, blank=True, verbose_name="Черновик ответов")  # {str(question_id): str}
     languages = models.JSONField(default=dict, blank=True, verbose_name="Языки кода")  # {str(question_id): 'python'|'cpp'}
     events = models.JSONField(default=list, blank=True, verbose_name="Журнал надзора")  # [{'kind', 'at', 'seconds'}]

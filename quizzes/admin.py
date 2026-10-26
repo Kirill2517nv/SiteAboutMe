@@ -165,7 +165,7 @@ class QuizAdmin(admin.ModelAdmin):
             # здесь остаётся то, что могло понадобиться в админке.
             return ((None, {
                 'fields': ('title', 'description', 'quiz_type', 'slug', 'section',
-                           'check_minutes'),
+                           'check_minutes', 'classwork_size'),
             }),)
         return self.fieldsets
 
@@ -345,7 +345,7 @@ class ClassworkAttemptAdmin(admin.ModelAdmin):
     """
     list_display = ('user', 'quiz', 'started_at', 'finished_at', 'frozen_at', 'grade')
     list_filter = ('quiz',)
-    readonly_fields = ('events', 'answers', 'languages', 'result')
+    readonly_fields = ('questions', 'events', 'answers', 'languages', 'result')
     list_select_related = ('user', 'quiz')
 
 

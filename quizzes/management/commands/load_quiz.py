@@ -9,6 +9,41 @@ from quizzes.models import Quiz, Question, Choice, TestCase, QuestionImage, Ques
 VALID_TYPES = {'choice', 'text', 'code'}
 
 
+def _classwork_size(quiz_data):
+    """
+    «Задач каждому» из JSON – только если ключ вообще есть.
+
+    Пустое или нечисловое значение значит «все задачи»: формат общий с
+    load_quiz, и мусор в необязательном поле не должен ронять импорт.
+    """
+    if 'classwork_size' not in quiz_data:
+        return None
+    value = str(quiz_data.get('classwork_size') or '').strip()
+    if not value.isdigit():
+        return None
+    number = int(value)
+    return number if 1 <= number <= 32767 else None
+
+
+def _question_extra(q_data):
+    """
+    Необязательные topic/points задачи, если ключ есть в JSON.
+
+    Отдаём словарём и подмешиваем в create: обычный load_quiz этих ключей не
+    пишет, и его задачи создаются ровно как раньше.
+    """
+    extra = {}
+    if 'topic' in q_data:
+        extra['topic'] = str(q_data.get('topic') or '').strip()[:200]
+    if 'points' in q_data:
+        try:
+            points = int(q_data.get('points'))
+        except (TypeError, ValueError):
+            points = 1
+        extra['points'] = max(1, points)
+    return extra
+
+
 def load_quiz_from_data(data):
     quiz_data = data["quiz"]
     questions_data = data["questions"]
@@ -20,6 +55,9 @@ def load_quiz_from_data(data):
             max_attempts=quiz_data.get("max_attempts", 3),
             start_date=quiz_data.get("start_date"),
             end_date=quiz_data.get("end_date"),
+            # Необязательное поле самостоятельной: сколько задач банка
+            # получает каждый ученик. Обычный load_quiz его не пишет.
+            classwork_size=_classwork_size(quiz_data),
         )
 
         for q_data in questions_data:
@@ -33,6 +71,7 @@ def load_quiz_from_data(data):
                 text=q_data["text"],
                 question_type=q_type,
                 correct_text_answer=q_data.get("correct_text_answer"),
+                **_question_extra(q_data),
             )
 
             # Изображения

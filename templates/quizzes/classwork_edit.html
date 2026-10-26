@@ -70,6 +70,12 @@
                        placeholder="{{ minutes }}"
                        class="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white">
             </label>
+            <label class="w-28 text-gray-500 dark:text-slate-400">
+                Задач каждому
+                <input type="number" name="classwork_size" min="1" value="{{ quiz.classwork_size|default:'' }}"
+                       placeholder="все"
+                       class="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white">
+            </label>
             <button type="submit" class="px-4 py-2 rounded-lg bg-brand-600 text-white font-medium hover:bg-brand-700">
                 Сохранить
             </button>
@@ -90,6 +96,22 @@
         {% endif %}
 
         {% if questions %}
+        <p class="mb-3 text-sm text-gray-500 dark:text-slate-400">
+            Банк: {{ questions|length }} задач{{ questions|length|plural:"а,и," }},
+            каждому – {% if drawn %}{{ drawn }}{% else %}все{% endif %}.
+            По темам:
+            {% for topic in topics %}{{ topic.label }} ({{ topic.count }}){% if not forloop.last %}, {% endif %}{% endfor %}.
+        </p>
+        {% if drawn and drawn < topics|length %}
+        <p class="mb-3 rounded-lg border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
+            Задач каждому меньше, чем тем: кому-то не достанется какая-то тема.
+        </p>
+        {% endif %}
+
+        <form id="topics-form" method="post" action="{% url 'classwork:edit' quiz.id %}">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="topics">
+        </form>
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
                 <thead>
@@ -97,6 +119,7 @@
                         <th class="px-3 py-2 font-medium text-gray-500 dark:text-slate-400">№</th>
                         <th class="px-3 py-2 font-medium text-gray-500 dark:text-slate-400">Тип</th>
                         <th class="px-3 py-2 font-medium text-gray-500 dark:text-slate-400">Заголовок</th>
+                        <th class="px-3 py-2 font-medium text-gray-500 dark:text-slate-400">Тема</th>
                         <th class="px-3 py-2 font-medium text-gray-500 dark:text-slate-400 text-center">Баллы</th>
                         <th class="px-3 py-2"></th>
                     </tr>
@@ -114,7 +137,16 @@
                             <a href="{% url 'admin:quizzes_question_change' question.id %}"
                                class="text-gray-900 dark:text-white hover:text-brand-600 dark:hover:text-cyan-400">{{ question }}</a>
                         </td>
-                        <td class="px-3 py-2 text-center text-gray-700 dark:text-slate-300">{{ question.points }}</td>
+                        <td class="px-3 py-2">
+                            <input type="text" name="topic_{{ question.id }}" value="{{ question.topic }}"
+                                   maxlength="200" form="topics-form" placeholder="без темы"
+                                   class="w-40 px-2 py-1 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white">
+                        </td>
+                        <td class="px-3 py-2 text-center">
+                            <input type="number" name="points_{{ question.id }}" value="{{ question.points }}"
+                                   min="1" max="10" form="topics-form"
+                                   class="w-16 px-2 py-1 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white">
+                        </td>
                         <td class="px-3 py-2 text-right">
                             {% if not has_answers %}
                             <form method="post" action="{% url 'classwork:edit' quiz.id %}"
@@ -130,6 +162,15 @@
                     {% endfor %}
                 </tbody>
             </table>
+        </div>
+        <div class="mt-3 flex flex-wrap items-center gap-3">
+            <button type="submit" form="topics-form"
+                    class="px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700">
+                Сохранить темы
+            </button>
+            <span class="text-xs text-gray-500 dark:text-slate-400">
+                Темы и баллы можно править и после начала работы: балл сданной попытки уже посчитан.
+            </span>
         </div>
         {% else %}
         <p class="text-sm text-gray-500 dark:text-slate-400">Задач пока нет – наберите их из блока ниже.</p>

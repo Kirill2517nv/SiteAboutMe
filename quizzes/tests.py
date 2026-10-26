@@ -5331,3 +5331,290 @@ class ClassworkSidebarTests(TestCase):
         self.assertIn('+ Самостоятельная по блоку', html)
         self.assertIn('?section=sidebar-graphs', html)
         self.assertIn('Пульт', html)
+
+
+@override_settings(STORAGES={
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+})
+class ClassworkBankTests(TestCase):
+    """
+    Банк задач и жеребьёвка самостоятельной.
+
+    У работы есть банк, а каждый ученик получает свой случайный набор из n
+    задач, разложенный по темам как можно ровнее. Набор фиксируется при старте
+    и не меняется при перезагрузке: соседи по парте решают разное, и сверять
+    работы можно по одним и тем же номерам.
+    """
+
+    def setUp(self):
+        from accounts.models import Profile, StudentGroup
+
+        User = get_user_model()
+        self.group = StudentGroup.objects.create(name='10Б')
+        self.pupil = User.objects.create_user('bank_pupil', password='pwd')
+        Profile.objects.create(user=self.pupil, group=self.group)
+        self.other = User.objects.create_user('bank_other', password='pwd')
+        Profile.objects.create(user=self.other, group=self.group)
+        self.teacher = User.objects.create_superuser('bank_teacher', password='pwd')
+
+        self.work = Quiz.objects.create(title='Банк', quiz_type='classwork',
+                                        check_minutes=30, slug='cw-bank')
+        self.questions = []
+        # Четыре темы по пять задач – ровно столько, чтобы круговой отбор было
+        # на чём проверить. Баллы разные: максимум попытки – сумма её задач.
+        for topic in ('AND/OR', 'Сдвиги', 'Циклы', 'Строки'):
+            for index in range(5):
+                self.questions.append(Question.objects.create(
+                    quiz=self.work, title=f'{topic} {index}', text=f'{topic} {index}',
+                    question_type='text', correct_text_answer=str(index),
+                    topic=topic, points=index + 1))
+
+    # --- помощники ---
+
+    def _open(self):
+        self.client.force_login(self.teacher)
+        self.client.post(f'/classwork/{self.work.pk}/control/',
+                         {'action': 'start', 'group': self.group.pk})
+
+    def _start(self, user=None, seed=None):
+        from unittest import mock
+
+        from . import classwork
+
+        self.client.force_login(user or self.pupil)
+        if seed is not None:
+            import random
+
+            rng = random.Random(seed)
+            with mock.patch.object(classwork.random, 'shuffle', new=rng.shuffle):
+                self.client.post(f'/classwork/{self.work.pk}/start/')
+        else:
+            self.client.post(f'/classwork/{self.work.pk}/start/')
+        return ClassworkAttempt.objects.get(user=user or self.pupil, quiz=self.work)
+
+    def _bank_order(self):
+        from .views import _sort_questions
+
+        questions = list(self.work.questions.all())
+        _sort_questions(self.work, questions)
+        return [question.id for question in questions]
+
+    def _topic_of(self, ids):
+        from collections import Counter
+
+        topics = dict(self.work.questions.values_list('id', 'topic'))
+        return Counter(topics[pk] for pk in ids)
+
+    def _size(self, number):
+        """Размер жеребьёвки – в базу: вьюха читает работу заново."""
+        self.work.classwork_size = number
+        self.work.save(update_fields=['classwork_size'])
+
+    # --- pick ---
+
+    def test_pick_spreads_the_six_tasks_over_the_topics(self):
+        import random
+
+        from . import classwork
+
+        self._size(6)
+        ids = classwork.pick(self.work, random.Random(1))
+
+        self.assertEqual(len(ids), 6)
+        self.assertEqual(len(set(ids)), 6)
+        # Четыре темы по одной плюс две темы по второй задаче.
+        self.assertEqual(sorted(self._topic_of(ids).values()), [1, 1, 2, 2])
+
+    def test_pick_one_per_topic_when_size_equals_the_topic_count(self):
+        import random
+
+        from . import classwork
+
+        self._size(4)
+        ids = classwork.pick(self.work, random.Random(1))
+
+        self.assertEqual(sorted(self._topic_of(ids).values()), [1, 1, 1, 1])
+
+    def test_pick_returns_the_whole_bank_in_bank_order(self):
+        import random
+
+        from . import classwork
+
+        self._size(None)
+        self.assertEqual(classwork.pick(self.work, random.Random(1)), self._bank_order())
+
+        # Больше банка – тоже весь банк: число правят до того, как он набран.
+        self._size(25)
+        self.assertEqual(classwork.pick(self.work, random.Random(1)), self._bank_order())
+
+    def test_questions_without_topic_are_their_own_group(self):
+        import random
+
+        from . import classwork
+
+        quiz = Quiz.objects.create(title='Без тем', quiz_type='classwork')
+        for topic in ('A', 'B'):
+            for index in range(2):
+                Question.objects.create(quiz=quiz, text=f'{topic}{index}',
+                                        question_type='text', topic=topic)
+        for index in range(2):
+            Question.objects.create(quiz=quiz, text=f'нет{index}',
+                                    question_type='text', topic='')
+        quiz.classwork_size = 3
+
+        ids = classwork.pick(quiz, random.Random(3))
+        topics = dict(quiz.questions.values_list('id', 'topic'))
+        self.assertEqual(sorted(topics[pk] for pk in ids), ['', 'A', 'B'])
+
+    # --- старт и страница работы ---
+
+    def test_start_fixes_the_set_and_reloading_does_not_change_it(self):
+        self._size(6)
+        self._open()
+        attempt = self._start(seed=1)
+        chosen = list(attempt.questions)
+        self.assertEqual(len(chosen), 6)
+
+        self.client.force_login(self.pupil)
+        self.client.get(f'/classwork/a/{attempt.pk}/')
+        self.client.get(f'/classwork/a/{attempt.pk}/')
+        attempt.refresh_from_db()
+        self.assertEqual(attempt.questions, chosen)
+
+    def test_two_students_get_different_sets(self):
+        self._size(6)
+        self._open()
+        first = self._start(self.pupil, seed=1)
+        second = self._start(self.other, seed=2)
+        self.assertNotEqual(set(first.questions), set(second.questions))
+
+    def test_work_page_shows_only_the_students_own_tasks(self):
+        self._size(6)
+        self._open()
+        attempt = self._start(seed=1)
+        own = set(attempt.questions)
+
+        self.client.force_login(self.pupil)
+        html = self.client.get(f'/classwork/a/{attempt.pk}/').content.decode()
+        for question in self.questions:
+            with self.subTest(question=question.title):
+                if question.id in own:
+                    self.assertIn(question.get_title(), html)
+                else:
+                    self.assertNotIn(question.get_title(), html)
+
+    # --- черновик, сдача и балл ---
+
+    def test_draft_discards_the_answer_to_a_task_outside_the_set(self):
+        self._size(6)
+        self._open()
+        attempt = self._start(seed=1)
+        foreign = next(question for question in self.questions
+                       if question.id not in attempt.questions)
+
+        self.client.force_login(self.pupil)
+        self.client.post(
+            f'/classwork/a/{attempt.pk}/save/',
+            data=json.dumps({'answers': {str(foreign.pk): '42'}}),
+            content_type='application/json')
+
+        attempt.refresh_from_db()
+        self.assertEqual(attempt.answers, {})
+
+    def test_finish_writes_answers_only_for_the_set_and_max_counts_them(self):
+        from . import classwork
+
+        self._size(6)
+        self._open()
+        attempt = self._start(seed=1)
+        questions = classwork.attempt_questions(attempt)
+        expected_max = sum(question.points for question in questions)
+
+        answers = {str(question.id): question.correct_text_answer for question in questions}
+        self.client.force_login(self.pupil)
+        self.client.post(f'/classwork/a/{attempt.pk}/finish/',
+                         data=json.dumps({'answers': answers}),
+                         content_type='application/json')
+
+        attempt.refresh_from_db()
+        rows = UserAnswer.objects.filter(user_result=attempt.result)
+        self.assertEqual(rows.count(), len(questions))
+        self.assertEqual(set(rows.values_list('question_id', flat=True)),
+                         set(attempt.questions))
+
+        payload = self.client.get(f'/classwork/a/{attempt.pk}/score/').json()
+        self.assertEqual(payload['max'], expected_max)
+
+    def test_old_attempt_without_a_set_uses_the_whole_work(self):
+        self._open()
+        attempt = ClassworkAttempt.objects.create(
+            user=self.other, quiz=self.work,
+            deadline=timezone.now() + timedelta(minutes=10))
+
+        self.client.force_login(self.other)
+        self.client.post(f'/classwork/a/{attempt.pk}/finish/',
+                         data=json.dumps({'answers': {}}),
+                         content_type='application/json')
+
+        attempt.refresh_from_db()
+        self.assertEqual(
+            UserAnswer.objects.filter(user_result=attempt.result).count(), 20)
+
+    # --- учительская страница задач ---
+
+    def test_edit_saves_the_draw_size(self):
+        self.client.force_login(self.teacher)
+        response = self.client.post(f'/classwork/{self.work.pk}/edit/', {
+            'action': 'meta', 'title': 'Банк', 'minutes': '30', 'classwork_size': '6',
+        })
+        self.assertRedirects(response, f'/classwork/{self.work.pk}/edit/',
+                             fetch_redirect_response=False)
+        self.work.refresh_from_db()
+        self.assertEqual(self.work.classwork_size, 6)
+
+        # 0 и мусор значат «все».
+        self.client.post(f'/classwork/{self.work.pk}/edit/', {
+            'action': 'meta', 'title': 'Банк', 'classwork_size': '0',
+        })
+        self.work.refresh_from_db()
+        self.assertIsNone(self.work.classwork_size)
+
+    def test_edit_saves_topics_and_points(self):
+        first, second = self.questions[0], self.questions[1]
+        self.client.force_login(self.teacher)
+        response = self.client.post(f'/classwork/{self.work.pk}/edit/', {
+            'action': 'topics',
+            f'topic_{first.pk}': '  Новая тема  ',
+            f'points_{first.pk}': '7',
+            f'topic_{second.pk}': '',
+            f'points_{second.pk}': '10',
+        })
+        self.assertRedirects(response, f'/classwork/{self.work.pk}/edit/',
+                             fetch_redirect_response=False)
+        first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual(first.topic, 'Новая тема')
+        self.assertEqual(first.points, 7)
+        self.assertEqual(second.topic, '')
+        self.assertEqual(second.points, 10)
+
+    # --- импорт ---
+
+    def test_import_reads_topic_points_and_the_draw_size(self):
+        from . import classwork
+
+        payload = {
+            'quiz': {'title': 'Из JSON с банком', 'classwork_size': 2},
+            'questions': [
+                {'text': 'Один', 'question_type': 'text',
+                 'correct_text_answer': '1', 'topic': 'Графы', 'points': 3},
+                {'text': 'Два', 'question_type': 'text',
+                 'correct_text_answer': '2'},
+            ],
+        }
+        quiz = classwork.import_json(payload, None)
+        self.assertEqual(quiz.classwork_size, 2)
+        first, second = quiz.questions.order_by('id')
+        self.assertEqual((first.topic, first.points), ('Графы', 3))
+        self.assertEqual((second.topic, second.points), ('', 1))

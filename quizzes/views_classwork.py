@@ -12,6 +12,7 @@ import os
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.db.models import Count, Q
+from django.db.models import prefetch_related_objects
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -57,11 +58,16 @@ def intro_view(request, quiz_id):
         if attempt.is_finished:
             return redirect('classwork:result', pk=attempt.pk)
         return redirect('classwork:work', pk=attempt.pk)
+    count = quiz.questions.count()
+    drawn = quiz.classwork_size
+    if drawn and drawn >= count:
+        drawn = None
     return render(request, 'quizzes/classwork_intro.html', {
         'quiz': quiz,
         'open': classwork.window_open(quiz, request.user),
         'minutes': classwork.minutes(quiz),
-        'count': quiz.questions.count(),
+        'count': count,
+        'drawn': drawn,
     })
 
 
@@ -78,8 +84,6 @@ def start_view(request, quiz_id):
 @login_required
 def work_view(request, pk):
     """Сама работа. Правильных ответов в странице нет – только условия."""
-    from .views import _sort_questions
-
     attempt = _attempt(request, pk)
     if classwork.is_expired(attempt):
         classwork.finalize(attempt)
@@ -87,8 +91,12 @@ def work_view(request, pk):
         return redirect('classwork:result', pk=attempt.pk)
 
     quiz = attempt.quiz
-    questions = list(quiz.questions.prefetch_related('choices', 'images', 'files'))
-    _sort_questions(quiz, questions)
+    # Набор зафиксирован при старте: перезагрузка страницы не перемешивает
+    # задачи заново, и сосед по парте видит другой набор.
+    questions = classwork.attempt_questions(attempt)
+    # Варианты, картинки и файлы – тремя запросами на весь набор: шаблон
+    # обходит их у каждой задачи, и без предзагрузки это был бы N+1.
+    prefetch_related_objects(questions, 'choices', 'images', 'files')
     tasks = []
     for question in questions:
         # Имена как их кладёт песочница рядом с программой (quizzes/tasks.py).
@@ -113,8 +121,6 @@ def work_view(request, pk):
 @login_required
 def result_view(request, pk):
     """Итог: барабан с баллом; разбор задач – только после закрытия работы."""
-    from .views import _sort_questions
-
     attempt = _attempt(request, pk)
     if not attempt.is_finished:
         return redirect('classwork:work', pk=attempt.pk)
@@ -123,8 +129,7 @@ def result_view(request, pk):
     released = quiz.check_released()
     answers = []
     if released and attempt.result_id:
-        questions = list(quiz.questions.all())
-        _sort_questions(quiz, questions)
+        questions = classwork.attempt_questions(attempt)
         rows = {
             answer.question_id: answer
             for answer in attempt.result.answers.select_related('question', 'submission')
@@ -145,7 +150,7 @@ def result_view(request, pk):
         'quiz': quiz,
         'attempt': attempt,
         'score': classwork.score(attempt.result),
-        'max': classwork.max_score(quiz),
+        'max': classwork.attempt_max(attempt),
         'pending': classwork.pending(attempt.result),
         'released': released,
         'answers': answers,
@@ -234,7 +239,7 @@ def score_view(request, pk):
         return JsonResponse({'error': 'Работа не сдана'}, status=409)
     return JsonResponse({
         'score': classwork.score(attempt.result),
-        'max': classwork.max_score(attempt.quiz),
+        'max': classwork.attempt_max(attempt),
         'pending': classwork.pending(attempt.result),
         'released': attempt.quiz.check_released(),
     })
@@ -313,6 +318,19 @@ def _minutes(value):
     return int(value) if value.isdigit() and 1 <= int(value) <= 235 else None
 
 
+def _size(value):
+    """«Задач каждому» из формы: целое ≥1 или None (все задачи).
+
+    Больше банка – допустимо и значит «все»: число правят до того, как банк
+    набран, и запрещать заранее завышенное значение было бы вредно.
+    """
+    value = (value or '').strip()
+    if not value.isdigit():
+        return None
+    number = int(value)
+    return number if 1 <= number <= 32767 else None
+
+
 @login_required
 @user_passes_test(_teacher)
 @require_POST
@@ -369,8 +387,24 @@ def edit_view(request, quiz_id):
                 quiz.title = title
                 quiz.section = _section(request.POST.get('section'))
                 quiz.check_minutes = _minutes(request.POST.get('minutes'))
-                quiz.save(update_fields=['title', 'section', 'check_minutes'])
+                quiz.classwork_size = _size(request.POST.get('classwork_size'))
+                quiz.save(update_fields=['title', 'section', 'check_minutes',
+                                         'classwork_size'])
                 messages.success(request, 'Сохранено.')
+        elif action == 'topics':
+            # Темы и баллы правятся и после начала работы: балл сданной
+            # попытки уже посчитан и в UserAnswer записан, поэтому прошлые
+            # работы не пересчитываются.
+            questions = list(quiz.questions.all())
+            for question in questions:
+                topic = request.POST.get(f'topic_{question.id}')
+                if topic is not None:
+                    question.topic = topic.strip()[:200]
+                points = (request.POST.get(f'points_{question.id}') or '').strip()
+                if points.isdigit() and 1 <= int(points) <= 10:
+                    question.points = int(points)
+            Question.objects.bulk_update(questions, ['topic', 'points'])
+            messages.success(request, 'Темы и баллы сохранены.')
         elif action == 'remove':
             value = request.POST.get('question', '')
             if classwork.has_answers(quiz):
@@ -396,6 +430,9 @@ def edit_view(request, quiz_id):
 
     questions = list(quiz.questions.all())
     _sort_questions(quiz, questions)
+    drawn = quiz.classwork_size
+    if drawn and drawn >= len(questions):
+        drawn = None
     return render(request, 'quizzes/classwork_edit.html', {
         'quiz': quiz,
         'questions': questions,
@@ -404,6 +441,8 @@ def edit_view(request, quiz_id):
         'sections': Section.objects.order_by('order', 'title'),
         'max_score': classwork.max_score(quiz),
         'minutes': classwork.minutes(quiz),
+        'topics': classwork.topic_counts(quiz),
+        'drawn': drawn,
     })
 
 
@@ -417,11 +456,16 @@ def preview_view(request, quiz_id):
     quiz = get_object_or_404(Quiz, id=quiz_id, quiz_type='classwork')
     questions = list(quiz.questions.prefetch_related('choices', 'test_cases', 'images', 'files'))
     _sort_questions(quiz, questions)
+    drawn = quiz.classwork_size
+    if drawn and drawn >= len(questions):
+        drawn = None
     return render(request, 'quizzes/classwork_preview.html', {
         'quiz': quiz,
         'questions': questions,
         'max_score': classwork.max_score(quiz),
         'minutes': classwork.minutes(quiz),
+        'topics': classwork.topic_counts(quiz),
+        'drawn': drawn,
     })
 
 
@@ -453,7 +497,6 @@ def _rows(quiz, students):
     """
     students = list(students)
     now = timezone.now()
-    maximum = classwork.max_score(quiz)
     attempts = {
         attempt.user_id: attempt
         for attempt in ClassworkAttempt.objects.filter(quiz=quiz, user__in=students)
@@ -485,7 +528,7 @@ def _rows(quiz, students):
             'away': '0:00',
             'pastes': 0,
             'score': None,
-            'max': maximum,
+            'max': None,
             'pending': False,
             'auto': None,
             'grade': None,
@@ -505,9 +548,12 @@ def _rows(quiz, students):
                 row['left'] = _mmss(row['left_seconds'])
             elif state == 'finished':
                 points = classwork.score(attempt.result)
+                # Максимум у каждой попытки свой: задачи достались разные.
+                maximum = classwork.attempt_max(attempt)
                 auto = classwork.auto_grade(points, maximum)
                 row.update({
                     'score': points,
+                    'max': maximum,
                     'pending': classwork.pending(attempt.result),
                     'auto': auto,
                     'final': attempt.grade if attempt.grade is not None else auto,
