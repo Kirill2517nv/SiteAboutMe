@@ -28,9 +28,9 @@
         {% if released %}
         <div class="mt-8 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 p-6">
             <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Разбор задач</h2>
-            {# Список живой: статусы приходят с каждым опросом барабана, пока проверяется код. #}
+            {# Статусы приходят с опросом, но открываются только когда барабан встал – иначе список выдавал бы балл раньше барабана. #}
             <ul class="space-y-2">
-                <template x-for="task in tasks" :key="task.number">
+                <template x-for="task in shownTasks" :key="task.number">
                 <li class="flex items-center gap-3 text-sm">
                     <span class="w-6 text-gray-400 dark:text-slate-500" x-text="task.number + '.'"></span>
                     <span class="flex-1 text-gray-700 dark:text-slate-300" x-text="task.title"></span>
@@ -40,10 +40,9 @@
                 </li>
                 </template>
             </ul>
-            <p class="mt-4 text-sm text-gray-500 dark:text-slate-400" x-show="tasks.length" x-cloak>
+            <p class="mt-4 text-sm text-gray-500 dark:text-slate-400" x-show="revealed && tasks.length" x-cloak>
                 Решено верно: <span class="font-semibold text-gray-900 dark:text-white"
                     x-text="tasks.filter(t => t.status === 'ok').length"></span> из <span x-text="tasks.length"></span>
-                <span x-show="tasks.some(t => t.status === 'pending')"> – остальные ещё проверяются</span>
             </p>
         </div>
         {% else %}
@@ -69,6 +68,16 @@ function classworkResult() {
         pending: {{ pending|yesno:"true,false" }},
         wasReleased: {{ released|yesno:"true,false" }},
         tasks: {{ tasks_json|safe }},
+
+        // Итог открывается разом – барабан встал, и код проверен весь. До этого
+        // у всех задач «проверяется»: два зелёных статуса при двух ещё не
+        // проверенных выдавали бы балл раньше барабана. В режиме без анимации
+        // stopped выставлен сразу, поэтому решает второе условие.
+        get revealed() { return this.stopped && !this.pending; },
+        get shownTasks() {
+            if (this.revealed) return this.tasks;
+            return this.tasks.map(task => ({ ...task, status: 'pending' }));
+        },
         scoreUrl: '{% url "classwork:score" attempt.pk %}',
         offset: 0,
         numbers: [],
