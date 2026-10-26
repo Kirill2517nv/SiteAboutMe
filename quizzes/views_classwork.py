@@ -1,11 +1,13 @@
 """
 Эндпоинты самостоятельной работы: ученик пишет, учитель ведёт.
 
-Для ученика – начать, автосохранение черновика, журнал надзора, сдача и
-балл. Для учителя – открыть и закрыть работу класса, минуты на неё,
-разморозка и оценка. Всё JSON/POST, без своих шаблонов.
+Для ученика – вход, сама работа, автосохранение черновика, журнал надзора,
+сдача, балл и итог. Для учителя – открыть и закрыть работу класса, минуты на
+неё, разморозка и оценка. Ученику отдаются три страницы, учителю – пульт;
+остальное – JSON/POST.
 """
 import json
+import os
 
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.db.models import Count, Q
@@ -19,6 +21,7 @@ from accounts.templatetags.profile_tags import surname_first
 
 from . import classwork
 from .models import ClassworkAttempt, Quiz
+from .utils import js_json
 
 MAX_SECONDS = 36000  # десять часов: больше за урок не бывает, а опечатку срезаем
 
@@ -42,13 +45,109 @@ def _teacher(user):
 
 
 @login_required
+def intro_view(request, quiz_id):
+    """Вход в работу: правила и кнопка «Начать»."""
+    quiz = get_object_or_404(Quiz, id=quiz_id, quiz_type='classwork')
+    if request.user.is_superuser:
+        return redirect('classwork:panel', quiz_id=quiz.id)
+    attempt = ClassworkAttempt.objects.filter(user=request.user, quiz=quiz).first()
+    if attempt:
+        if attempt.is_finished:
+            return redirect('classwork:result', pk=attempt.pk)
+        return redirect('classwork:work', pk=attempt.pk)
+    return render(request, 'quizzes/classwork_intro.html', {
+        'quiz': quiz,
+        'open': classwork.window_open(quiz, request.user),
+        'minutes': classwork.minutes(quiz),
+        'count': quiz.questions.count(),
+    })
+
+
+@login_required
 @require_POST
 def start_view(request, quiz_id):
     quiz = get_object_or_404(Quiz, id=quiz_id, quiz_type='classwork')
     attempt = classwork.start(request.user, quiz)
     if attempt is None:
-        return redirect('textbook:home')
-    return JsonResponse({'attempt': attempt.id})
+        return redirect('classwork:intro', quiz_id=quiz.id)
+    return redirect('classwork:work', pk=attempt.pk)
+
+
+@login_required
+def work_view(request, pk):
+    """Сама работа. Правильных ответов в странице нет – только условия."""
+    from .views import _sort_questions
+
+    attempt = _attempt(request, pk)
+    if classwork.is_expired(attempt):
+        classwork.finalize(attempt)
+    if attempt.is_finished:
+        return redirect('classwork:result', pk=attempt.pk)
+
+    quiz = attempt.quiz
+    questions = list(quiz.questions.prefetch_related('choices', 'images', 'files'))
+    _sort_questions(quiz, questions)
+    tasks = []
+    for question in questions:
+        # Имена как их кладёт песочница рядом с программой (quizzes/tasks.py).
+        question.file_names = [os.path.basename(f.file.name) for f in question.files.all()]
+        tasks.append({
+            'id': question.id,
+            'type': question.question_type,
+            'title': question.get_title(),
+            'files': question.file_names,
+        })
+    return render(request, 'quizzes/classwork_work.html', {
+        'quiz': quiz,
+        'attempt': attempt,
+        'questions': questions,
+        'tasks_json': js_json(tasks),
+        'drafts_json': js_json({'answers': attempt.answers, 'languages': attempt.languages}),
+        'left': max(0, int((attempt.deadline - timezone.now()).total_seconds())),
+        'frozen': attempt.is_frozen,
+    })
+
+
+@login_required
+def result_view(request, pk):
+    """Итог: барабан с баллом; разбор задач – только после закрытия работы."""
+    from .views import _sort_questions
+
+    attempt = _attempt(request, pk)
+    if not attempt.is_finished:
+        return redirect('classwork:work', pk=attempt.pk)
+
+    quiz = attempt.quiz
+    released = quiz.check_released()
+    answers = []
+    if released and attempt.result_id:
+        questions = list(quiz.questions.all())
+        _sort_questions(quiz, questions)
+        rows = {
+            answer.question_id: answer
+            for answer in attempt.result.answers.select_related('question', 'submission')
+        }
+        for number, question in enumerate(questions, 1):
+            answer = rows.get(question.id)
+            if answer is None:
+                continue
+            answers.append({
+                'number': number,
+                'title': question.get_title(),
+                'is_correct': answer.is_correct,
+                'pending': bool(answer.submission_id
+                                and answer.submission.status in ('pending', 'running')),
+            })
+
+    return render(request, 'quizzes/classwork_result.html', {
+        'quiz': quiz,
+        'attempt': attempt,
+        'score': classwork.score(attempt.result),
+        'max': classwork.max_score(quiz),
+        'pending': classwork.pending(attempt.result),
+        'released': released,
+        'answers': answers,
+    })
 
 
 @login_required

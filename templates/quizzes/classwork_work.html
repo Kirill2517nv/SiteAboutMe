@@ -1,0 +1,566 @@
+{% extends 'base.html' %}
+{% load static textbook_tags %}
+
+{% block title %}{{ quiz.title }}{% endblock title %}
+
+{% comment %}
+Сама работа с надзором.
+
+Почему уход со страницы замораживает: работа идёт на уроке, и у ученика
+не должно быть возможности уйти в другую вкладку и вернуться с готовым
+решением. Заморозку снимает только учитель, а часы при этом не стоят.
+
+Почему нет native-диалогов (confirm/alert) и beforeunload: браузерный
+диалог забирает фокус у окна, и это засчиталось бы уходом со страницы.
+Поэтому подтверждение сдачи – своя модалка на Alpine.
+
+Почему вставка своего текста разрешена: запрещён только чужой буфер обмена.
+Текст, скопированный на этой же странице (своё условие, имя файла), вставить
+можно – иначе ученик не смог бы перенести набранное.
+
+Почему файлы задачи не скачиваются: скачивание на телефоне уводит со
+страницы и замораживает работу. Файлы и так лежат рядом с программой,
+ученик открывает их по имени – кнопка вставляет имя в редактор.
+
+Почему черновик на сервере, а не в браузере: закрытая вкладка не должна
+уносить ответы, а сдача по часам берёт их из этого же черновика.
+{% endcomment %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/theme/material-darker.min.css">
+<link rel="stylesheet" href="{% static 'css/codemirror-vscode.css' %}">
+<style>
+    .CodeMirror {
+        border: 1px solid #374151;
+        border-radius: 8px;
+        font-size: 0.875rem;
+        height: 25rem;
+    }
+    .CodeMirror-gutters { border-right: 1px solid #374151; }
+    .CodeMirror-scroll { overflow-x: hidden !important; }
+
+    .task-btn {
+        width: 100%; aspect-ratio: 1 / 1;
+        border-radius: 8px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 14px; font-weight: 600;
+        cursor: pointer; transition: all 0.15s;
+        border: 2px solid transparent;
+    }
+    .task-btn.default { background: #f1f5f9; color: #64748b; }
+    .task-btn.answered { background: #dbeafe; color: #2563eb; }
+    .task-btn.active { border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37,99,235,0.2); }
+
+    html.dark .task-btn.default { background: #334155; color: #94a3b8; }
+    html.dark .task-btn.answered { background: #1e3a8a; color: #93c5fd; }
+</style>
+{% include 'quizzes/_task_text_css.html' %}
+{% endblock extra_css %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6" x-data="classworkWork()">
+
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <div class="min-w-0">
+            <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white truncate">{{ quiz.title }}</h1>
+            <div class="text-sm text-gray-500 dark:text-slate-400">
+                Отвечено <span x-text="answeredCount"></span> из {{ questions|length }}
+                <span class="ml-2 text-gray-400 dark:text-slate-500"
+                      x-show="saveState === 'saving'" x-cloak>сохраняем...</span>
+                <span class="ml-2 text-red-500 dark:text-red-400"
+                      x-show="saveState === 'error'" x-cloak>не сохранилось, проверьте связь</span>
+            </div>
+        </div>
+        <div class="flex items-center gap-3">
+            <div class="text-sm font-semibold tabular-nums px-3 py-1.5 rounded-lg"
+                 :class="left < 300
+                     ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
+                     : 'bg-gray-100 text-gray-700 dark:bg-slate-800 dark:text-slate-300'">
+                <span x-text="clock"></span>
+                <span class="font-normal opacity-70">осталось</span>
+            </div>
+            <button type="button" @click="showConfirm = true" :disabled="finishing"
+                    class="px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                Сдать работу
+            </button>
+        </div>
+    </div>
+
+    <div class="flex gap-6">
+        <aside class="hidden md:block w-52 shrink-0">
+            <div class="sticky top-24 bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 p-3">
+                <div class="text-xs font-medium text-gray-400 dark:text-slate-500 mb-2 px-1">Задачи</div>
+                <div class="grid grid-cols-4 gap-2">
+                    <template x-for="(task, i) in tasks" :key="task.id">
+                        <button type="button" @click="goTo(i)" class="task-btn"
+                                :class="taskBtnClass(i)" x-text="i + 1"></button>
+                    </template>
+                </div>
+            </div>
+        </aside>
+
+        <div class="flex-1 min-w-0">
+            {% for question in questions %}
+            <div x-show="current === {{ forloop.counter0 }}" x-cloak
+                 class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 p-6">
+                <div class="text-sm font-medium text-gray-400 dark:text-slate-500 mb-2">Задача {{ forloop.counter }}</div>
+                <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">{{ question.get_title }}</h2>
+
+                {% if question.get_body %}
+                <div class="task-text text-base leading-relaxed text-gray-700 dark:text-slate-300 bg-gray-50 dark:bg-slate-900 rounded-lg p-4 mb-4">{{ question.get_body|markdownify }}</div>
+                {% endif %}
+
+                {% for img in question.images.all %}
+                <div class="mb-4">
+                    <img src="{{ img.image.url }}" alt="{{ img.alt_text|default:'Изображение к вопросу' }}" class="max-w-full rounded-lg border border-gray-200 dark:border-slate-700">
+                </div>
+                {% endfor %}
+
+                {% if question.file_names %}
+                <p class="text-sm text-gray-500 dark:text-slate-400 mb-4">
+                    Файлы задачи: {% for name in question.file_names %}<span class="font-mono">{{ name }}</span>{% if not forloop.last %}, {% endif %}{% endfor %} – лежат рядом с программой, открывайте их по имени.
+                </p>
+                {% endif %}
+
+                {% if question.question_type == 'choice' %}
+                <div class="mt-4 space-y-2">
+                    {% for choice in question.choices.all %}
+                    <label class="flex items-center p-3 border rounded-lg cursor-pointer border-gray-200 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors">
+                        <input type="radio"
+                               name="question_{{ question.id }}"
+                               value="{{ choice.id }}"
+                               x-model="answers[{{ question.id }}]"
+                               autocomplete="off"
+                               class="w-4 h-4 text-brand-600 border-gray-300 focus:ring-brand-500">
+                        <span class="ml-3 text-gray-700 dark:text-slate-300">{{ choice.text }}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+
+                {% elif question.question_type == 'text' %}
+                <div class="mt-4">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Ответ:</label>
+                    <input type="text"
+                           x-model="answers[{{ question.id }}]"
+                           autocomplete="off"
+                           placeholder="Введите ответ..."
+                           class="w-full max-w-md px-4 py-2.5 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500 transition-colors">
+                </div>
+
+                {% elif question.question_type == 'code' %}
+                <div class="mt-4">
+                    <div class="flex items-center justify-between gap-3 mb-2">
+                        <span class="text-sm font-medium text-gray-700 dark:text-slate-300">Код:</span>
+                        {% include 'quizzes/_code_lang_switch.html' with key=question.id %}
+                    </div>
+                    <div id="codemirror-wrap-{{ question.id }}"></div>
+
+                    {% if question.file_names %}
+                    <div class="flex flex-wrap items-center gap-2 mt-2">
+                        {% for name in question.file_names %}
+                        <button type="button"
+                                @click="insertFileName({{ question.id }}, '{{ name|escapejs }}')"
+                                class="px-3 py-2 bg-gray-50 dark:bg-slate-700 hover:bg-gray-100 dark:hover:bg-slate-600 rounded-lg text-sm text-gray-700 dark:text-slate-300 transition-colors">
+                            Вставить имя файла «{{ name }}»
+                        </button>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
+                    {% include 'quizzes/_ege_code_run.html' with question_id=question.id key=question.id %}
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+
+            <div class="flex items-center justify-between mt-4">
+                <button type="button" @click="goTo(current - 1)" :disabled="current === 0"
+                        class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-slate-800 rounded-lg hover:bg-gray-200 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                    &larr; Назад
+                </button>
+                <span class="text-sm text-gray-400 dark:text-slate-500" x-text="(current + 1) + ' / ' + tasks.length"></span>
+                <button type="button" @click="goTo(current + 1)" :disabled="current === tasks.length - 1"
+                        class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-slate-800 rounded-lg hover:bg-gray-200 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                    Далее &rarr;
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div x-show="showConfirm" x-cloak class="fixed inset-0 z-40 flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-black/40" @click="showConfirm = false"></div>
+        <div class="relative bg-white dark:bg-slate-800 rounded-xl shadow-xl max-w-sm w-full p-6">
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">Сдать работу?</h3>
+            <p class="text-sm text-gray-600 dark:text-slate-400 mb-5">
+                <span x-show="unansweredCount > 0"
+                      x-text="'Без ответа осталось задач: ' + unansweredCount + '.'"></span>
+                <span x-show="unansweredCount === 0">Все задачи отвечены.</span>
+                После сдачи дополнить работу нельзя.
+            </p>
+            <div class="flex gap-2 justify-end">
+                <button type="button" @click="showConfirm = false"
+                        class="px-4 py-2 text-sm text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white">
+                    Продолжить решать
+                </button>
+                <button type="button" @click="finish()"
+                        class="px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700">
+                    Сдать
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div x-show="frozen" x-cloak class="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full p-6 text-center">
+            <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-2">Работа заморожена</h2>
+            <p class="text-sm text-gray-600 dark:text-slate-400 mb-3">
+                Вы ушли со страницы – позовите учителя. Время идёт.
+            </p>
+            <div class="text-2xl font-bold tabular-nums text-red-600 dark:text-red-400" x-text="clock"></div>
+        </div>
+    </div>
+
+    <div x-show="pasteHint" x-cloak
+         class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium shadow-lg">
+        Вставка запрещена – наберите текст сами
+    </div>
+</div>
+{% endblock content %}
+
+{% block pre_alpine_js %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/python/python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/clike/clike.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/edit/matchbrackets.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/edit/closebrackets.min.js"></script>
+<script src="{% static 'js/code-lang.js' %}"></script>
+<script src="{% static 'js/code-run.js' %}"></script>
+{% include 'quizzes/_mathjax.html' %}
+
+<script>
+function classworkWork() {
+    return {
+        tasks: {{ tasks_json|safe }},
+        drafts: {{ drafts_json|safe }},
+        answers: {},
+        langs: {},
+        current: 0,
+        left: {{ left }},
+        frozen: {{ frozen|yesno:"true,false" }},
+        finishing: false,
+        showConfirm: false,
+        saveState: 'saved',
+        pasteHint: false,
+
+        saveUrl: '{% url "classwork:save" attempt.pk %}',
+        stateUrl: '{% url "classwork:state" attempt.pk %}',
+        eventUrl: '{% url "classwork:event" attempt.pk %}',
+        finishUrl: '{% url "classwork:finish" attempt.pk %}',
+        resultUrl: '{% url "classwork:result" attempt.pk %}',
+        csrf: '{{ csrf_token }}',
+
+        codeMirrors: {},
+        _end: null,
+        _leftAt: null,
+        _leaveAt: null,
+        _clip: '',
+        _tick: null,
+        _pollTimer: null,
+        _saveTimer: null,
+        _pasteTimer: null,
+
+        init() {
+            Object.assign(this.answers, this.drafts.answers || {});
+            Object.assign(this.langs, this.drafts.languages || {});
+            this._end = Date.now() + this.left * 1000;
+
+            this._tick = setInterval(() => this.tick(), 1000);
+            this._schedulePoll();
+
+            this.$watch('answers', () => this.scheduleSave());
+            this.$watch('langs', () => this.scheduleSave());
+            this.$watch('frozen', () => this._schedulePoll());
+
+            this._onVisibility = () => { document.hidden ? this.onLeave() : this.onReturn(); };
+            this._onBlur = () => this.onLeave();
+            this._onFocus = () => this.onReturn();
+            this._onCopy = () => {
+                const selection = window.getSelection();
+                this._clip = selection ? selection.toString() : '';
+            };
+            this._onPaste = (e) => this.onPaste(e);
+            this._onDrop = (e) => this.onDrop(e);
+
+            document.addEventListener('visibilitychange', this._onVisibility);
+            window.addEventListener('blur', this._onBlur);
+            window.addEventListener('focus', this._onFocus);
+            document.addEventListener('copy', this._onCopy, true);
+            document.addEventListener('cut', this._onCopy, true);
+            document.addEventListener('paste', this._onPaste, true);
+            document.addEventListener('drop', this._onDrop, true);
+
+            this.$nextTick(() => this.ensureEditor());
+        },
+
+        destroy() {
+            clearInterval(this._tick);
+            clearInterval(this._pollTimer);
+            clearTimeout(this._saveTimer);
+            clearTimeout(this._pasteTimer);
+            document.removeEventListener('visibilitychange', this._onVisibility);
+            window.removeEventListener('blur', this._onBlur);
+            window.removeEventListener('focus', this._onFocus);
+            document.removeEventListener('copy', this._onCopy, true);
+            document.removeEventListener('cut', this._onCopy, true);
+            document.removeEventListener('paste', this._onPaste, true);
+            document.removeEventListener('drop', this._onDrop, true);
+        },
+
+        // --- таймер ---
+
+        get clock() {
+            const seconds = Math.max(0, this.left);
+            return Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0');
+        },
+
+        tick() {
+            this.left = Math.max(0, Math.round((this._end - Date.now()) / 1000));
+            if (this.left === 0 && !this.finishing) this.finish(true);
+        },
+
+        // --- ответы ---
+
+        get answeredCount() {
+            return this.tasks.filter(t => String(this.answers[t.id] || '').trim()).length;
+        },
+
+        get unansweredCount() {
+            return this.tasks.length - this.answeredCount;
+        },
+
+        taskBtnClass(i) {
+            let cls = i === this.current ? ' active' : '';
+            const task = this.tasks[i];
+            if (String(this.answers[task.id] || '').trim()) return 'answered' + cls;
+            return 'default' + cls;
+        },
+
+        scheduleSave() {
+            if (this.frozen || this.finishing) return;
+            this.saveState = 'saving';
+            clearTimeout(this._saveTimer);
+            this._saveTimer = setTimeout(() => this.save(), 1500);
+        },
+
+        async save() {
+            if (this.frozen || this.finishing) return;
+            try {
+                const resp = await fetch(this.saveUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.csrf },
+                    body: JSON.stringify({ answers: this.answers, languages: this.langs }),
+                });
+                if (resp.status === 409) {
+                    const data = await resp.json();
+                    if (data.finished) { location.href = this.resultUrl; return; }
+                    if (data.frozen) { this.frozen = true; return; }
+                }
+                this.saveState = resp.ok ? 'saved' : 'error';
+            } catch (e) {
+                this.saveState = 'error';
+            }
+        },
+
+        // --- опрос состояния ---
+
+        _schedulePoll() {
+            clearInterval(this._pollTimer);
+            this._pollTimer = setInterval(() => this.poll(), this.frozen ? 3000 : 10000);
+        },
+
+        async poll() {
+            if (this.finishing) return;
+            // Ответ, отправленный до ухода со страницы, может прийти уже после
+            // onLeave(): сервер к тому моменту ещё не знает об уходе и отвечает
+            // frozen=false. Такой ответ применяем только если он новее ухода.
+            const sentAt = Date.now();
+            try {
+                const resp = await fetch(this.stateUrl);
+                if (!resp.ok) return;
+                const data = await resp.json();
+                if (data.finished) { location.href = this.resultUrl; return; }
+                if (!(data.frozen === false && this._leaveAt > sentAt)) {
+                    this.frozen = data.frozen;
+                }
+                this._end = Date.now() + data.left * 1000;
+                this.left = data.left;
+            } catch (e) {
+                // Сеть вернётся – следующий опрос догонит; часы считаем по своему концу.
+            }
+        },
+
+        // --- надзор ---
+
+        onLeave() {
+            if (this.finishing || this.frozen || this._leftAt != null) return;
+            this._leftAt = Date.now();
+            this._leaveAt = this._leftAt;
+            this.frozen = true;
+            // Оверлей перекрывает поля мышью, но не клавиатурой: без этого
+            // фокус оставался в поле, и текст продолжал бы набираться.
+            if (document.activeElement && document.activeElement.blur) {
+                document.activeElement.blur();
+            }
+            this.beacon('leave');
+        },
+
+        onReturn() {
+            if (this._leftAt == null) return;
+            const seconds = Math.round((Date.now() - this._leftAt) / 1000);
+            this._leftAt = null;
+            this.beacon('return', seconds);
+        },
+
+        beacon(kind, seconds) {
+            const data = new FormData();
+            data.append('csrfmiddlewaretoken', this.csrf);
+            data.append('kind', kind);
+            if (seconds != null) data.append('seconds', seconds);
+            navigator.sendBeacon(this.eventUrl, data);
+        },
+
+        // --- вставка ---
+
+        norm(text) {
+            return String(text == null ? '' : text).replace(/\r\n/g, '\n');
+        },
+
+        onPaste(e) {
+            if (!e.target || !e.target.matches || !e.target.matches('input, textarea')) return;
+            if (e.target.closest('.CodeMirror')) return;
+            const text = e.clipboardData ? e.clipboardData.getData('text') : '';
+            if (this.norm(text) !== this.norm(this._clip)) {
+                e.preventDefault();
+                this.logPaste();
+            }
+        },
+
+        onDrop(e) {
+            if (e.target && e.target.matches && e.target.matches('input, textarea')) e.preventDefault();
+        },
+
+        logPaste() {
+            clearTimeout(this._pasteTimer);
+            this.pasteHint = true;
+            this._pasteTimer = setTimeout(() => { this.pasteHint = false; }, 3000);
+            const data = new FormData();
+            data.append('csrfmiddlewaretoken', this.csrf);
+            data.append('kind', 'paste');
+            fetch(this.eventUrl, { method: 'POST', body: data, keepalive: true }).catch(() => {});
+        },
+
+        // --- сдача ---
+
+        async finish(auto) {
+            if (this.finishing) return;
+            if (!auto) this.showConfirm = false;
+            this.finishing = true;
+            clearInterval(this._tick);
+            clearInterval(this._pollTimer);
+            clearTimeout(this._saveTimer);
+            try {
+                await fetch(this.finishUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this.csrf },
+                    body: JSON.stringify({ answers: this.answers, languages: this.langs }),
+                    keepalive: true,
+                });
+            } catch (e) {
+                // Сеть упала – сервер сдаст по последнему черновику.
+            }
+            location.href = this.resultUrl;
+        },
+
+        // --- редактор ---
+
+        codeOf(id) {
+            const cm = this.codeMirrors[id];
+            return cm ? Alpine.raw(cm).getValue() : (this.answers[id] || '');
+        },
+
+        langOf(id) {
+            return this.langs[id] || 'python';
+        },
+
+        setLang(id, lang) {
+            this.langs[id] = lang;
+            codeLangApply(this.codeMirrors[id], lang);
+        },
+
+        insertFileName(id, name) {
+            const cm = this.codeMirrors[id];
+            if (!cm) return;
+            const raw = Alpine.raw(cm);
+            raw.replaceSelection('"' + name + '"');
+            raw.focus();
+        },
+
+        goTo(i) {
+            if (i < 0 || i >= this.tasks.length) return;
+            this.current = i;
+            this.$nextTick(() => this.ensureEditor());
+        },
+
+        _createCodeMirror(task) {
+            const wrap = document.getElementById('codemirror-wrap-' + task.id);
+            if (!wrap || wrap.offsetParent === null) return;
+
+            // x-show прячет задачу через display:none, а CodeMirror 5 после этого
+            // портит внутреннее состояние – редактор пересоздаётся с нуля.
+            const old = wrap.querySelector('.CodeMirror');
+            if (old) old.remove();
+
+            const cm = CodeMirror(wrap, {
+                value: this.answers[task.id] || '',
+                mode: codeLangMode(this.langOf(task.id)),
+                theme: codeLangTheme(this.langOf(task.id)),
+                lineNumbers: true,
+                matchBrackets: true,
+                autoCloseBrackets: true,
+                indentUnit: 4,
+                tabSize: 4,
+                indentWithTabs: false,
+                lineWrapping: true,
+                extraKeys: { Tab: (editor) => editor.replaceSelection('    ', 'end') },
+            });
+            cm.on('change', () => { this.answers[task.id] = cm.getValue(); });
+            cm.on('copy', () => { this._clip = cm.getSelection(); });
+            cm.on('cut', () => { this._clip = cm.getSelection(); });
+            cm.on('beforeChange', (editor, change) => {
+                if (change.origin !== 'paste' && change.origin !== 'drop') return;
+                if (this.norm(change.text.join('\n')) !== this.norm(this._clip)) {
+                    change.cancel();
+                    this.logPaste();
+                }
+            });
+            this.codeMirrors[task.id] = cm;
+        },
+
+        ensureEditor() {
+            const task = this.tasks[this.current];
+            if (!task || task.type !== 'code') return;
+            if (this.codeMirrors[task.id]) {
+                this.answers[task.id] = Alpine.raw(this.codeMirrors[task.id]).getValue();
+                delete this.codeMirrors[task.id];
+            }
+            setTimeout(() => {
+                if (this.codeMirrors[task.id]) return;
+                this._createCodeMirror(task);
+                if (this.codeMirrors[task.id]) Alpine.raw(this.codeMirrors[task.id]).focus();
+            }, 80);
+        },
+    };
+}
+</script>
+{% endblock pre_alpine_js %}

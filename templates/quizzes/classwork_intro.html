@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% load textbook_tags %}
+
+{% block title %}{{ quiz.title }}{% endblock title %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 dark:bg-slate-900">
+    <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-2">{{ quiz.title }}</h1>
+        <p class="text-base text-gray-600 dark:text-slate-400">
+            Самостоятельная работа на уроке: {{ count }} задач{{ count|plural:"а,и," }}, {{ minutes }} минут{{ minutes|plural:"а,ы," }}.
+        </p>
+
+        {% if not open %}
+        <div class="mt-6 rounded-xl border border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-900/20 p-5">
+            <p class="text-base font-medium text-amber-800 dark:text-amber-200">
+                Работа сейчас не идёт. Она откроется, когда учитель нажмёт «Начать».
+            </p>
+        </div>
+        {% else %}
+        <div class="mt-6 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 p-6">
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-3">Правила</h2>
+            <ul class="list-disc pl-5 space-y-2 text-base text-gray-700 dark:text-slate-300">
+                <li>На работу {{ minutes }} минут{{ minutes|plural:"а,ы," }}. Время идёт с момента «Начать работу» и не останавливается.</li>
+                <li>Уход со страницы (другая вкладка, другое приложение, свёрнутый браузер, перезагрузка страницы) замораживает работу – продолжить можно только после учителя, а время при этом идёт.</li>
+                <li>Вставлять текст из буфера нельзя – только то, что скопировано на этой же странице.</li>
+                <li>Ответы сохраняются сами; когда время выйдет, работа сдастся сама со всем, что введено.</li>
+                <li>Результат – после сдачи, разбор задач – когда учитель закроет работу.</li>
+            </ul>
+
+            <form method="post" action="{% url 'classwork:start' quiz.id %}" class="mt-6">
+                {% csrf_token %}
+                <button type="submit"
+                        class="px-6 py-3 bg-brand-600 text-white font-medium rounded-lg hover:bg-brand-700 transition-colors">
+                    Начать работу
+                </button>
+            </form>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock content %}

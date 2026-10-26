@@ -11,6 +11,7 @@ from django.views.decorators.http import require_POST
 
 from accounts.models import StudentGroup
 from accounts.templatetags.profile_tags import surname_first
+from quizzes import classwork
 from quizzes.models import CodeSubmission, Question, Quiz, UserAnswer, UserResult
 
 from .models import Article, ArticleBlock, ArticleProgress, ArticleQuiz, ArticleRating, Section
@@ -173,6 +174,10 @@ def textbook_home_view(request):
         'total_lessons': total_lessons,
         'total_done': total_done,
         'progress_pct': round(total_done / total_lessons * 100) if total_lessons else 0,
+        # Плашка «идёт самостоятельная работа» – только ученику с открытым окном.
+        'open_classworks': (
+            classwork.open_works(request.user) if request.user.is_authenticated else []
+        ),
     }
     return render(request, 'textbook/textbook_home.html', context)
 

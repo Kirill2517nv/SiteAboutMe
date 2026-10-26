@@ -4452,18 +4452,21 @@ class ClassworkTests(TestCase):
     # --- начало ---
 
     def test_start_needs_open_window_and_keeps_time(self):
-        self.assertRedirects(self._start(), '/textbook/', fetch_redirect_response=False)
+        self.assertRedirects(self._start(), f'/classwork/{self.work.pk}/',
+                             fetch_redirect_response=False)
         self.assertFalse(ClassworkAttempt.objects.exists())
 
         self._open()
         response = self._start()
         attempt = self._attempt()
-        self.assertEqual(response.json()['attempt'], attempt.pk)
+        self.assertRedirects(response, f'/classwork/a/{attempt.pk}/',
+                             fetch_redirect_response=False)
         self.assertAlmostEqual(
             (attempt.deadline - attempt.started_at).total_seconds(), 30 * 60, delta=2)
 
         deadline = attempt.deadline
-        self.assertEqual(self._start().json()['attempt'], attempt.pk)
+        self.assertRedirects(self._start(), f'/classwork/a/{attempt.pk}/',
+                             fetch_redirect_response=False)
         attempt.refresh_from_db()
         self.assertEqual(attempt.deadline, deadline)
 
@@ -4733,3 +4736,151 @@ class ClassworkPanelTests(TestCase):
         html = self._rows().content.decode()
         self.assertIn('из', html)
         self.assertIn(f'/quizzes/attempt/{attempt.result_id}/', html)
+
+
+@override_settings(STORAGES={
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+})
+class ClassworkStudentPagesTests(TestCase):
+    """Страницы ученика: вход, работа с надзором и итог с барабаном."""
+
+    def setUp(self):
+        import shutil
+        import tempfile
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        from accounts.models import Profile, StudentGroup
+
+        # Свой MEDIA_ROOT: иначе вопрос получает имя data_XXXX.txt, если
+        # такой файл уже лежит в media от прошлого прогона.
+        self.media = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.media, ignore_errors=True)
+        media_override = override_settings(MEDIA_ROOT=self.media)
+        media_override.enable()
+        self.addCleanup(media_override.disable)
+
+        User = get_user_model()
+        self.group = StudentGroup.objects.create(name='10В')
+        self.pupil = User.objects.create_user('pupil', password='pwd')
+        Profile.objects.create(user=self.pupil, group=self.group)
+        self.other = User.objects.create_user('other', password='pwd')
+        Profile.objects.create(user=self.other)
+        self.teacher = User.objects.create_superuser('teacher', password='pwd')
+
+        self.work = Quiz.objects.create(title='Контрольная на уроке',
+                                        quiz_type='classwork', check_minutes=30,
+                                        slug='cw-pages')
+        self.text_q = Question.objects.create(
+            quiz=self.work, title='Задача про файл', text='Посчитай',
+            question_type='text', correct_text_answer='SECRET-42', points=2)
+        QuestionFile.objects.create(
+            question=self.text_q,
+            file=SimpleUploadedFile('data.txt', b'123'))
+
+    def _open(self):
+        self.client.force_login(self.teacher)
+        self.client.post(f'/classwork/{self.work.pk}/control/',
+                         {'action': 'start', 'group': self.group.pk})
+
+    def _start(self):
+        self.client.force_login(self.pupil)
+        self.client.post(f'/classwork/{self.work.pk}/start/')
+        return ClassworkAttempt.objects.get(user=self.pupil, quiz=self.work)
+
+    def _finish(self, attempt, answers=None):
+        return self.client.post(
+            f'/classwork/a/{attempt.pk}/finish/',
+            data=json.dumps({'answers': answers or {}}),
+            content_type='application/json')
+
+    def test_intro_depends_on_the_window_and_sends_the_teacher_to_the_panel(self):
+        self.client.force_login(self.pupil)
+        response = self.client.get(f'/classwork/{self.work.pk}/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Работа сейчас не идёт')
+        self.assertNotContains(response, 'Начать работу')
+
+        self._open()
+        self.client.force_login(self.pupil)
+        response = self.client.get(f'/classwork/{self.work.pk}/')
+        self.assertContains(response, 'Правила')
+        self.assertContains(response, 'Начать работу')
+        self.assertContains(response, f'/classwork/{self.work.pk}/start/')
+
+    def test_teacher_does_not_see_the_student_intro(self):
+        self.client.force_login(self.teacher)
+        self.assertRedirects(self.client.get(f'/classwork/{self.work.pk}/'),
+                             f'/classwork/{self.work.pk}/panel/',
+                             fetch_redirect_response=False)
+
+    def test_start_redirects_to_work_and_the_page_keeps_answers_secret(self):
+        self._open()
+        self.client.force_login(self.pupil)
+        response = self.client.post(f'/classwork/{self.work.pk}/start/')
+        attempt = ClassworkAttempt.objects.get(user=self.pupil, quiz=self.work)
+        self.assertRedirects(response, f'/classwork/a/{attempt.pk}/',
+                             fetch_redirect_response=False)
+
+        response = self.client.get(f'/classwork/a/{attempt.pk}/')
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn('Задача про файл', html)
+        self.assertIn('data.txt', html)
+        # Правильный ответ и признак верности в страницу не попадают.
+        self.assertNotIn('SECRET-42', html)
+        self.assertNotIn('is_correct', html)
+
+    def test_foreign_attempt_is_not_found(self):
+        self._open()
+        attempt = self._start()
+        self.client.force_login(self.other)
+        self.assertEqual(self.client.get(f'/classwork/a/{attempt.pk}/').status_code, 404)
+        self.assertEqual(
+            self.client.get(f'/classwork/a/{attempt.pk}/result/').status_code, 404)
+
+    def test_expired_work_is_finished_and_sent_to_the_result(self):
+        self._open()
+        attempt = self._start()
+        ClassworkAttempt.objects.filter(pk=attempt.pk).update(
+            deadline=timezone.now() - timedelta(minutes=1))
+
+        response = self.client.get(f'/classwork/a/{attempt.pk}/')
+        self.assertRedirects(response, f'/classwork/a/{attempt.pk}/result/',
+                             fetch_redirect_response=False)
+        attempt.refresh_from_db()
+        self.assertTrue(attempt.is_finished)
+
+    def test_result_hides_the_review_until_the_teacher_closes(self):
+        self._open()
+        attempt = self._start()
+        self._finish(attempt, {str(self.text_q.pk): 'SECRET-42'})
+
+        response = self.client.get(f'/classwork/a/{attempt.pk}/result/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Разбор задач появится')
+        self.assertNotIn('Задача про файл', response.content.decode())
+
+        self.client.force_login(self.teacher)
+        self.client.post(f'/classwork/{self.work.pk}/control/',
+                         {'action': 'close', 'group': self.group.pk})
+
+        self.client.force_login(self.pupil)
+        response = self.client.get(f'/classwork/a/{attempt.pk}/result/')
+        self.assertContains(response, 'Задача про файл')
+        self.assertContains(response, '&check;')
+
+    def test_textbook_banner_follows_the_window(self):
+        self.client.force_login(self.pupil)
+        self.assertNotContains(self.client.get('/textbook/'), 'Идёт самостоятельная работа')
+
+        self._open()
+        self.client.force_login(self.pupil)
+        response = self.client.get('/textbook/')
+        self.assertContains(response, 'Идёт самостоятельная работа')
+        self.assertContains(response, 'Контрольная на уроке')
+
+        attempt = self._start()
+        self._finish(attempt)
+        self.assertNotContains(self.client.get('/textbook/'), 'Идёт самостоятельная работа')

@@ -1,0 +1,197 @@
+{% extends 'base.html' %}
+{% load textbook_tags %}
+
+{% block title %}{{ quiz.title }} – итог{% endblock title %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 dark:bg-slate-900">
+    <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-10" x-data="classworkResult()">
+
+        <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-2">{{ quiz.title }}</h1>
+        <p class="text-base text-gray-600 dark:text-slate-400 mb-8">Работа сдана.</p>
+
+        <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 p-8 text-center">
+            <div class="h-20 overflow-hidden relative select-none">
+                <div :style="{ transform: 'translateY(-' + offset + 'px)' }">
+                    <template x-for="(number, i) in numbers" :key="i">
+                        <div class="h-20 flex items-center justify-center text-6xl font-bold tabular-nums text-brand-600 dark:text-brand-400"
+                             x-text="number"></div>
+                    </template>
+                </div>
+            </div>
+            <p class="mt-3 text-sm text-gray-500 dark:text-slate-400" x-show="pending" x-cloak>Проверяем код...</p>
+            <p class="mt-3 text-base text-gray-700 dark:text-slate-300" x-show="!pending && stopped" x-cloak>
+                <span class="font-semibold" x-text="score"></span> из {{ max }} балл{{ max|plural:",а,ов" }}
+            </p>
+        </div>
+
+        {% if released %}
+        <div class="mt-8 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 p-6">
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Разбор задач</h2>
+            <ul class="space-y-2">
+                {% for row in answers %}
+                <li class="flex items-center gap-3 text-sm">
+                    <span class="w-6 text-gray-400 dark:text-slate-500">{{ row.number }}.</span>
+                    <span class="flex-1 text-gray-700 dark:text-slate-300">{{ row.title }}</span>
+                    {% if row.pending %}
+                    <span class="text-xs font-medium text-amber-600 dark:text-amber-400">проверяется</span>
+                    {% elif row.is_correct %}
+                    <span class="font-bold text-green-600 dark:text-green-400">&check;</span>
+                    {% else %}
+                    <span class="font-bold text-red-600 dark:text-red-400">&times;</span>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% else %}
+        <p class="mt-8 text-sm text-gray-500 dark:text-slate-400">
+            Разбор задач появится, когда учитель закроет работу.
+        </p>
+        {% endif %}
+
+        <a href="{% url 'textbook:home' %}"
+           class="inline-flex items-center mt-8 px-6 py-3 bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-300 font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-slate-700 transition-colors">
+            В учебник
+        </a>
+    </div>
+</div>
+{% endblock content %}
+
+{% block pre_alpine_js %}
+<script>
+function classworkResult() {
+    return {
+        score: {{ score }},
+        max: {{ max }},
+        pending: {{ pending|yesno:"true,false" }},
+        wasReleased: {{ released|yesno:"true,false" }},
+        scoreUrl: '{% url "classwork:score" attempt.pk %}',
+        offset: 0,
+        numbers: [],
+        stopped: false,
+
+        _H: 80,
+        _cycle: 0,
+        _raf: null,
+        _poll: null,
+        _last: 0,
+        _wantsStop: false,
+        _stopping: false,
+        _done: false,
+        _stopStart: 0,
+        _from: 0,
+        _to: 0,
+        _reduce: false,
+        _slow: false,
+
+        init() {
+            this._cycle = (this.max + 1) * this._H;
+            for (let k = 0; k < 3; k++) {
+                for (let n = 0; n <= this.max; n++) this.numbers.push(n);
+            }
+            this._reduce = !!(window.matchMedia
+                && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+            if (this._reduce) {
+                this._done = true;
+                this.stopped = true;
+                this.offset = this._cycle + this.score * this._H;
+            } else {
+                this._last = performance.now();
+                this._raf = requestAnimationFrame((t) => this._frame(t));
+            }
+
+            this.poll();
+            this._poll = setInterval(() => this.poll(), 2000);
+            if (this._reduce && !this.pending) this._slowPoll();
+        },
+
+        // Сдавшие держат вкладку открытой до звонка: тридцать человек по
+        // запросу в 2 с – лишняя нагрузка. После остановки барабана опрос
+        // нужен только чтобы узнать о закрытии работы учителем.
+        _slowPoll() {
+            if (this._slow) return;
+            this._slow = true;
+            clearInterval(this._poll);
+            this._poll = setInterval(() => this.poll(), 15000);
+        },
+
+        destroy() {
+            clearInterval(this._poll);
+            if (this._raf) cancelAnimationFrame(this._raf);
+        },
+
+        _frame(now) {
+            const dt = Math.min(50, now - this._last);
+            this._last = now;
+
+            if (this._stopping) {
+                const k = Math.min(1, (now - this._stopStart) / 2500);
+                // ease-out sine: начинается со скорости прокрутки и плавно гаснет.
+                const ease = 1 - Math.cos(k * Math.PI / 2);
+                this.offset = this._from + (this._to - this._from) * ease;
+                if (k >= 1) {
+                    this.offset = this._to;
+                    this._done = true;
+                    this.stopped = true;
+                    this._raf = null;
+                    this._slowPoll();
+                    return;
+                }
+            } else {
+                this.offset += dt * 0.45;
+                if (this.offset >= this._cycle) this.offset -= this._cycle;
+                if (this._wantsStop) this._beginStop(now);
+            }
+            this._raf = requestAnimationFrame((t) => this._frame(t));
+        },
+
+        _beginStop(now) {
+            this._stopping = true;
+            this._stopStart = now;
+            this._from = this.offset;
+            this._to = this._target(this.score);
+        },
+
+        // Ближайшее впереди место с числом баллов; если до него меньше
+        // четверти оборота – прокручиваем ещё круг, иначе остановка выглядит
+        // как рывок на месте.
+        _target(score) {
+            const stop = score * this._H;
+            let target = stop >= this._from ? stop : stop + this._cycle;
+            if (target - this._from < this._cycle * 0.25) target += this._cycle;
+            return target;
+        },
+
+        async poll() {
+            try {
+                const resp = await fetch(this.scoreUrl);
+                if (!resp.ok) return;
+                const data = await resp.json();
+                this.score = data.score;
+                this.pending = data.pending;
+
+                if (data.released && !this.wasReleased) {
+                    // Учитель закрыл работу, пока страница была открыта, – список
+                    // задач сервер не отрисовал, перечитываем страницу.
+                    location.reload();
+                    return;
+                }
+
+                if (this._reduce || this._done) {
+                    this.offset = this._cycle + this.score * this._H;
+                    if (!this.pending) this._slowPoll();
+                } else if (this._stopping) {
+                    this._to = this._target(this.score);
+                } else if (!data.pending) {
+                    this._wantsStop = true;
+                }
+            } catch (e) {
+                // Сеть вернётся – следующий опрос догонит; барабан продолжает идти.
+            }
+        },
+    };
+}
+</script>
+{% endblock pre_alpine_js %}

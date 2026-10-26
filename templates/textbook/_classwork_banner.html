@@ -1,0 +1,16 @@
+{% comment %}Плашка «идёт самостоятельная работа» на главной учебника. Список даёт classwork.open_works: только незакрытые окна классов ученика, сданные работы выпадают, учителю список пуст.{% endcomment %}
+{% if open_classworks %}
+<div class="mb-6 rounded-xl border border-orange-200 dark:border-orange-900/40 bg-orange-50 dark:bg-orange-900/20 p-5">
+    {% for quiz in open_classworks %}
+    <div class="flex flex-wrap items-center justify-between gap-3{% if not forloop.first %} mt-3 pt-3 border-t border-orange-200 dark:border-orange-900/40{% endif %}">
+        <p class="text-base font-semibold text-orange-900 dark:text-orange-200">
+            Идёт самостоятельная работа: {{ quiz.title }}
+        </p>
+        <a href="{% url 'classwork:intro' quiz.id %}"
+           class="px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors">
+            Перейти
+        </a>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
