@@ -87,6 +87,12 @@
         </div>
     </div>
 
+    {% if user.is_superuser %}
+    <div class="mb-4 rounded-lg border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-900/20 px-4 py-2 text-sm text-amber-800 dark:text-amber-300">
+        Вы проходите работу как ученик – в пульте и отчётах этой попытки нет.
+    </div>
+    {% endif %}
+
     <div class="flex gap-6">
         <aside class="hidden md:block w-52 shrink-0">
             <div class="sticky top-24 bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 p-3">
@@ -218,6 +224,12 @@
                 Вы ушли со страницы – позовите учителя. Время идёт.
             </p>
             <div class="text-2xl font-bold tabular-nums text-red-600 dark:text-red-400" x-text="clock"></div>
+            {% if user.is_superuser %}
+            <button type="button" @click="unfreezeTeacher()"
+                    class="mt-4 px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700">
+                Разморозить (вы учитель)
+            </button>
+            {% endif %}
         </div>
     </div>
 
@@ -301,6 +313,20 @@ function classworkWork() {
             document.addEventListener('drop', this._onDrop, true);
 
             this.$nextTick(() => this.ensureEditor());
+        },
+
+        async unfreezeTeacher() {
+            // Учитель проходит работу как ученик: его же переключение вкладки
+            // не должно требовать второго человека с пультом.
+            try {
+                await fetch('{% url "classwork:unfreeze" attempt.pk %}', {
+                    method: 'POST',
+                    headers: {'X-CSRFToken': this.csrf},
+                });
+                this.frozen = false;
+            } catch (error) {
+                // Сеть моргнула – кнопка на месте, можно нажать ещё раз.
+            }
         },
 
         destroy() {

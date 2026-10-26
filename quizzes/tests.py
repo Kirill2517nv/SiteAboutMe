@@ -4884,3 +4884,317 @@ class ClassworkStudentPagesTests(TestCase):
         attempt = self._start()
         self._finish(attempt)
         self.assertNotContains(self.client.get('/textbook/'), 'Идёт самостоятельная работа')
+
+
+@override_settings(STORAGES={
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+})
+class ClassworkTeacherTests(TestCase):
+    """
+    Учитель ведёт самостоятельные с сайта: создаёт, набирает задачи из блока,
+    смотрит ответы, назначает время и проходит работу как ученик.
+
+    Блок – то, из чего берутся задачи: практикум блока (с предупреждением,
+    что его решали дома), самопроверки его статей и другие самостоятельные.
+    Копирование, а не ссылка: у задачи один тест, и правка работы не должна
+    менять практикум.
+    """
+
+    def setUp(self):
+        import shutil
+        import tempfile
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        from accounts.models import Profile, StudentGroup
+        from textbook.models import Article, ArticleQuiz, Section
+
+        # Своё медиа: иначе у файла задачи окажется имя от прошлого прогона.
+        self.media = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.media, ignore_errors=True)
+        media_override = override_settings(MEDIA_ROOT=self.media)
+        media_override.enable()
+        self.addCleanup(media_override.disable)
+
+        User = get_user_model()
+        self.group = StudentGroup.objects.create(name='10В')
+        self.pupil = User.objects.create_user(
+            'pupil', password='pwd', last_name='Иванов', first_name='Пётр')
+        Profile.objects.create(user=self.pupil, group=self.group)
+        self.teacher = User.objects.create_superuser('teacher', password='pwd')
+
+        self.section = Section.objects.create(title='Графы', slug='grafy', order=3)
+
+        self.practicum = Quiz.objects.create(title='Практикум графов',
+                                             quiz_type='standard')
+        self.section.practicum_quiz = self.practicum
+        self.section.save(update_fields=['practicum_quiz'])
+        self.practicum_q = Question.objects.create(
+            quiz=self.practicum, title='Задача практикума', text='Условие',
+            question_type='choice', points=2)
+        Choice.objects.create(question=self.practicum_q, text='неверный',
+                              is_correct=False)
+        Choice.objects.create(question=self.practicum_q, text='верный',
+                              is_correct=True)
+        self.practicum_file = QuestionFile.objects.create(
+            question=self.practicum_q,
+            file=SimpleUploadedFile('data.txt', b'123'))
+
+        article = Article.objects.create(
+            track='material', section=self.section, slug='grafy-urok',
+            title='Урок про графы', order=1)
+        self.selfcheck = Quiz.objects.create(
+            title='Самопроверка урока', quiz_type='standard', is_self_check=True)
+        ArticleQuiz.objects.create(article=article, quiz=self.selfcheck)
+        self.selfcheck_q = Question.objects.create(
+            quiz=self.selfcheck, title='Вопрос самопроверки', text='Сколько?',
+            question_type='text', correct_text_answer='PREVIEW-SECRET')
+        from .models import TestCase as QuizTestCase
+        self.code_q = Question.objects.create(
+            quiz=self.selfcheck, title='Код', text='Напишите',
+            question_type='code')
+        QuizTestCase.objects.create(question=self.code_q, input_data='2',
+                                    output_data='OUT-UNIQUE')
+
+        self.work = Quiz.objects.create(
+            title='Работа по графам', quiz_type='classwork', section=self.section,
+            check_minutes=30, slug='cw-teacher')
+
+    def _login(self):
+        self.client.force_login(self.teacher)
+
+    def _panel(self):
+        return f'/classwork/{self.work.pk}/panel/?group={self.group.pk}'
+
+    def test_student_never_reaches_the_teacher_pages(self):
+        self.client.force_login(self.pupil)
+        urls = (
+            '/classwork/',
+            '/classwork/new/',
+            '/classwork/import/',
+            f'/classwork/{self.work.pk}/edit/',
+            f'/classwork/{self.work.pk}/preview/',
+            f'/classwork/{self.work.pk}/try/',
+        )
+        for url in urls:
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 302)
+                self.assertIn('/accounts/login/', response['Location'])
+
+    def test_create_makes_a_classwork_with_section_and_minutes(self):
+        self._login()
+        response = self.client.post('/classwork/new/', {
+            'title': 'Новая работа', 'section': self.section.pk, 'minutes': '25',
+        })
+        quiz = Quiz.objects.get(title='Новая работа')
+        self.assertEqual(quiz.quiz_type, 'classwork')
+        self.assertEqual(quiz.section_id, self.section.pk)
+        self.assertEqual(quiz.check_minutes, 25)
+        self.assertEqual(quiz.max_attempts, 1)
+        self.assertRedirects(response, f'/classwork/{quiz.pk}/edit/',
+                             fetch_redirect_response=False)
+
+        # Пустое название работу не создаёт.
+        before = Quiz.objects.filter(quiz_type='classwork').count()
+        response = self.client.post('/classwork/new/', {'title': '  '})
+        self.assertRedirects(response, '/classwork/', fetch_redirect_response=False)
+        self.assertEqual(Quiz.objects.filter(quiz_type='classwork').count(), before)
+
+    def test_import_creates_the_work_and_keeps_the_section(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        payload = {
+            'quiz': {'title': 'Из JSON'},
+            'questions': [
+                {'text': 'Выбери', 'question_type': 'choice',
+                 'choices': [{'text': 'да', 'is_correct': True}]},
+                {'text': 'Ответь', 'question_type': 'text',
+                 'correct_text_answer': '42'},
+            ],
+        }
+        upload = SimpleUploadedFile(
+            'work.json',
+            json.dumps(payload, ensure_ascii=False).encode('utf-8'),
+            content_type='application/json')
+        self._login()
+        response = self.client.post('/classwork/import/', {
+            'file': upload, 'section': self.section.pk,
+        })
+        quiz = Quiz.objects.get(title='Из JSON')
+        self.assertEqual(quiz.quiz_type, 'classwork')
+        self.assertEqual(quiz.section_id, self.section.pk)
+        self.assertEqual(quiz.questions.count(), 2)
+        self.assertRedirects(response, f'/classwork/{quiz.pk}/edit/',
+                             fetch_redirect_response=False)
+
+    def test_broken_json_does_not_create_a_work(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        before = Quiz.objects.count()
+        upload = SimpleUploadedFile('bad.json', b'{not json',
+                                    content_type='application/json')
+        self._login()
+        response = self.client.post('/classwork/import/', {'file': upload},
+                                    follow=True)
+        self.assertContains(response, 'не читается как JSON')
+        self.assertEqual(Quiz.objects.count(), before)
+
+    def test_edit_lists_the_block_sources_with_the_practicum_warning(self):
+        self._login()
+        response = self.client.get(f'/classwork/{self.work.pk}/edit/')
+        self.assertContains(response, 'Практикум блока')
+        self.assertContains(response, 'Задачи практикума ученики решали дома')
+        self.assertContains(response, 'Самопроверка: Урок про графы')
+
+    def test_add_copies_the_question_and_leaves_the_source_intact(self):
+        self._login()
+        response = self.client.post(f'/classwork/{self.work.pk}/edit/', {
+            'action': 'add', 'add': [self.practicum_q.pk, self.selfcheck_q.pk],
+        })
+        self.assertRedirects(response, f'/classwork/{self.work.pk}/edit/',
+                             fetch_redirect_response=False)
+
+        copy = Question.objects.get(quiz=self.work, title='Задача практикума')
+        self.assertNotEqual(copy.pk, self.practicum_q.pk)
+        self.assertEqual(copy.quiz_id, self.work.pk)
+        self.assertEqual(list(copy.choices.values_list('text', flat=True)),
+                         ['неверный', 'верный'])
+        self.assertEqual(copy.choices.filter(is_correct=True).count(), 1)
+        # Флаги банка ЕГЭ не переносятся.
+        self.assertFalse(copy.classroom_only or copy.exam_only)
+        self.assertEqual(copy.external_id, '')
+        # Оригинал не тронут.
+        self.assertEqual(self.practicum_q.choices.count(), 2)
+        self.assertEqual(self.work.questions.count(), 2)
+
+    def test_copy_question_shares_the_file_reference(self):
+        from . import classwork
+
+        copy = classwork.copy_question(self.practicum_q, self.work)
+        copied_file = QuestionFile.objects.get(question=copy)
+        self.assertEqual(copied_file.file.name, self.practicum_file.file.name)
+        # Файл не переписан: та же запись на диске на месте.
+        self.assertTrue(self.practicum_file.file.storage.exists(
+            self.practicum_file.file.name))
+
+    def test_remove_deletes_the_question_until_the_work_is_written(self):
+        from . import classwork
+
+        copy = classwork.copy_question(self.practicum_q, self.work)
+        self._login()
+        response = self.client.post(f'/classwork/{self.work.pk}/edit/', {
+            'action': 'remove', 'question': copy.pk,
+        })
+        self.assertRedirects(response, f'/classwork/{self.work.pk}/edit/',
+                             fetch_redirect_response=False)
+        self.assertFalse(Question.objects.filter(pk=copy.pk).exists())
+
+        kept = Question.objects.create(quiz=self.work, text='Остаётся',
+                                       question_type='text')
+        ClassworkAttempt.objects.create(
+            user=self.pupil, quiz=self.work,
+            deadline=timezone.now() + timedelta(minutes=10))
+        response = self.client.post(f'/classwork/{self.work.pk}/edit/', {
+            'action': 'remove', 'question': kept.pk,
+        }, follow=True)
+        self.assertContains(response, 'Работу уже писали')
+        self.assertTrue(Question.objects.filter(pk=kept.pk).exists())
+
+    def test_preview_shows_the_answers(self):
+        from . import classwork
+
+        classwork.copy_question(self.practicum_q, self.work)
+        classwork.copy_question(self.selfcheck_q, self.work)
+        classwork.copy_question(self.code_q, self.work)
+
+        self._login()
+        response = self.client.get(f'/classwork/{self.work.pk}/preview/')
+        html = response.content.decode()
+        self.assertIn('PREVIEW-SECRET', html)
+        self.assertIn('OUT-UNIQUE', html)
+        self.assertIn('верный', html)
+        self.assertIn('неверный', html)
+
+    def test_try_replaces_the_teacher_attempt_and_marks_the_page(self):
+        self._login()
+        response = self.client.post(f'/classwork/{self.work.pk}/try/')
+        attempt = ClassworkAttempt.objects.get(user=self.teacher, quiz=self.work)
+        self.assertRedirects(response, f'/classwork/a/{attempt.pk}/',
+                             fetch_redirect_response=False)
+        self.assertGreater(attempt.deadline, timezone.now())
+        first_pk = attempt.pk
+
+        # Старая попытка и её результат стираются: в пульте учителя нет.
+        self.client.post(f'/classwork/a/{first_pk}/finish/',
+                         data=json.dumps({'answers': {}}),
+                         content_type='application/json')
+        result_id = ClassworkAttempt.objects.get(pk=first_pk).result_id
+        self.assertIsNotNone(result_id)
+
+        self.client.post(f'/classwork/{self.work.pk}/try/')
+        self.assertFalse(ClassworkAttempt.objects.filter(pk=first_pk).exists())
+        self.assertFalse(UserResult.objects.filter(pk=result_id).exists())
+        attempt = ClassworkAttempt.objects.get(user=self.teacher, quiz=self.work)
+        self.assertNotEqual(attempt.pk, first_pk)
+
+        response = self.client.get(f'/classwork/a/{attempt.pk}/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'как ученик')
+
+    def test_schedule_opens_the_window_later_and_cancel_removes_it(self):
+        from . import classwork
+
+        self._login()
+        start = timezone.localtime(
+            timezone.now() + timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M')
+        response = self.client.post(f'/classwork/{self.work.pk}/control/', {
+            'action': 'schedule', 'group': self.group.pk, 'start': start,
+            'next': self._panel(),
+        })
+        self.assertRedirects(response, self._panel(),
+                             fetch_redirect_response=False)
+        assignment = QuizAssignment.objects.get(quiz=self.work, group=self.group)
+        self.assertGreater(assignment.start_date, timezone.now())
+        self.assertIsNone(assignment.end_date)
+        self.assertFalse(classwork.window_open(self.work, self.pupil))
+
+        response = self.client.get(self._panel())
+        self.assertContains(response, 'Запланирована')
+        self.assertContains(response, 'Отменить')
+
+        self.client.post(f'/classwork/{self.work.pk}/control/', {
+            'action': 'cancel', 'group': self.group.pk, 'next': self._panel(),
+        })
+        self.assertFalse(QuizAssignment.objects.filter(
+            quiz=self.work, group=self.group).exists())
+
+    def test_schedule_rejects_the_end_before_the_start(self):
+        self._login()
+        start = timezone.localtime(
+            timezone.now() + timedelta(hours=2)).strftime('%Y-%m-%dT%H:%M')
+        end = timezone.localtime(
+            timezone.now() + timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M')
+        response = self.client.post(f'/classwork/{self.work.pk}/control/', {
+            'action': 'schedule', 'group': self.group.pk, 'start': start,
+            'end': end, 'next': self._panel(),
+        }, follow=True)
+        self.assertContains(response, 'Конец раньше начала')
+        self.assertFalse(QuizAssignment.objects.filter(quiz=self.work).exists())
+
+    def test_cancel_refuses_a_started_work(self):
+        self._login()
+        self.client.post(f'/classwork/{self.work.pk}/control/', {
+            'action': 'start', 'group': self.group.pk,
+        })
+        ClassworkAttempt.objects.create(
+            user=self.pupil, quiz=self.work,
+            deadline=timezone.now() + timedelta(minutes=10))
+
+        response = self.client.post(f'/classwork/{self.work.pk}/control/', {
+            'action': 'cancel', 'group': self.group.pk, 'next': self._panel(),
+        }, follow=True)
+        self.assertContains(response, 'её можно только закрыть')
+        self.assertTrue(QuizAssignment.objects.filter(
+            quiz=self.work, group=self.group).exists())

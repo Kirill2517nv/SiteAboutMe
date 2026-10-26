@@ -6,7 +6,12 @@ app_name = 'classwork'
 
 urlpatterns = [
     path('', views_classwork.list_view, name='list'),
+    path('new/', views_classwork.create_view, name='create'),
+    path('import/', views_classwork.import_view, name='import'),
     path('<int:quiz_id>/', views_classwork.intro_view, name='intro'),
+    path('<int:quiz_id>/edit/', views_classwork.edit_view, name='edit'),
+    path('<int:quiz_id>/preview/', views_classwork.preview_view, name='preview'),
+    path('<int:quiz_id>/try/', views_classwork.try_view, name='try'),
     path('<int:quiz_id>/panel/', views_classwork.panel_view, name='panel'),
     path('<int:quiz_id>/rows/', views_classwork.rows_view, name='rows'),
     path('<int:quiz_id>/start/', views_classwork.start_view, name='start'),

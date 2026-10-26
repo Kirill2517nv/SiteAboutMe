@@ -161,9 +161,11 @@ class QuizAdmin(admin.ModelAdmin):
                 'fields': ('title', 'description', 'quiz_type', 'slug', 'check_page'),
             }),)
         if self._is_classwork(obj):
-            # Минуты – единственное, что правят здесь после заведения работы.
+            # Задачи и настройки набирают на сайте (/classwork/<id>/edit/);
+            # здесь остаётся то, что могло понадобиться в админке.
             return ((None, {
-                'fields': ('title', 'description', 'quiz_type', 'slug', 'check_minutes'),
+                'fields': ('title', 'description', 'quiz_type', 'slug', 'section',
+                           'check_minutes'),
             }),)
         return self.fieldsets
 

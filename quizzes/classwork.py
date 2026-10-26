@@ -305,12 +305,167 @@ def close(quiz, group):
         finalize(attempt, now)
 
 
-def open_for_group(quiz, group):
-    """«Начать»: окно класса открыто, конца у него пока нет."""
+def open_for_group(quiz, group, start=None, end=None):
+    """
+    Назначить окно классу: «Начать сейчас» (start по умолчанию now, конца нет)
+    или запланированное окно с началом и необязательным концом.
+    """
     QuizAssignment.objects.update_or_create(
         quiz=quiz, group=group, user=None,
-        defaults={'start_date': timezone.now(), 'end_date': None},
+        defaults={'start_date': start or timezone.now(), 'end_date': end},
     )
+
+
+def cancel(quiz, group):
+    """
+    Снять назначение класса.
+
+    Только пока никто не начал: запланированную по ошибке работу отменяют,
+    а начатую закрывают – иначе у пишущих учеников пропало бы окно, а их
+    черновики остались бы висеть без способа сдать.
+    """
+    started = ClassworkAttempt.objects.filter(
+        quiz=quiz, user__profile__group=group).exists()
+    if started:
+        return False
+    QuizAssignment.objects.filter(quiz=quiz, group=group, user=None).delete()
+    return True
+
+
+def has_answers(quiz):
+    """Работу уже писали: задачи убирать нельзя, ответы учеников ушли бы каскадом."""
+    return ClassworkAttempt.objects.filter(quiz=quiz).exists()
+
+
+def copy_question(question, quiz):
+    """
+    Копия задачи в другую работу.
+
+    Копия, а не ссылка: у Question один quiz, и правка задачи самостоятельной
+    не должна менять практикум блока. Флаги банка ЕГЭ не переносим – задача
+    внутри работы не участвует в отборе тренировок и экзамена. Картинки и
+    файлы ссылаются на тот же файл на диске: физическая копия тут не нужна,
+    файл у работ общий и неизменный.
+    """
+    from .models import Choice, Question, QuestionFile, QuestionImage, TestCase
+
+    # Все поля модели, кроме самого вопроса и флагов банка ЕГЭ.
+    skip = {'id', 'quiz', 'classroom_only', 'exam_only', 'external_id',
+            'group_id', 'solve_rate'}
+    values = {field.name: getattr(question, field.name)
+              for field in Question._meta.fields if field.name not in skip}
+
+    with transaction.atomic():
+        copy = Question.objects.create(quiz=quiz, **values)
+        for choice in question.choices.all():
+            Choice.objects.create(question=copy, text=choice.text,
+                                  is_correct=choice.is_correct)
+        for case in question.test_cases.all():
+            TestCase.objects.create(question=copy, input_data=case.input_data,
+                                    output_data=case.output_data)
+        for image in question.images.all():
+            QuestionImage.objects.create(question=copy, image=image.image.name,
+                                         alt_text=image.alt_text, order=image.order)
+        for file in question.files.all():
+            QuestionFile.objects.create(question=copy, file=file.file.name,
+                                        description=file.description, order=file.order)
+    return copy
+
+
+def sources(quiz):
+    """
+    Откуда набрать задачи самостоятельной: тесты того же блока учебника.
+
+    Практикум помечен warn: его ученики решали дома, и ответы у них уже есть –
+    для проверки знаний на уроке такая задача слабее. Остальные источники –
+    самопроверки статей блока и другие самостоятельные по этому блоку.
+    """
+    from textbook.models import ArticleQuiz
+
+    section = quiz.section
+    if section is None:
+        return []
+
+    groups = []
+
+    practicum = section.practicum_quiz
+    if practicum:
+        questions = list(practicum.questions.order_by('id'))
+        if questions:
+            groups.append({'label': 'Практикум блока', 'warn': True,
+                           'questions': questions})
+
+    pairs = (ArticleQuiz.objects.filter(article__section=section)
+             .select_related('article', 'quiz').order_by('article__order', 'order'))
+    for pair in pairs:
+        questions = list(pair.quiz.questions.order_by('id'))
+        if questions:
+            groups.append({'label': f'Самопроверка: {pair.article.title}',
+                           'warn': False, 'questions': questions})
+
+    others = (Quiz.objects.filter(quiz_type='classwork', section=section)
+              .exclude(pk=quiz.pk).order_by('title'))
+    for other in others:
+        questions = list(other.questions.order_by('id'))
+        if questions:
+            groups.append({'label': f'Самостоятельная: {other.title}',
+                           'warn': False, 'questions': questions})
+
+    return groups
+
+
+def try_as_teacher(user, quiz):
+    """
+    Пройти работу глазами ученика.
+
+    Прежняя попытка учителя стирается вместе с её UserResult: пересматривать
+    работу можно сколько угодно раз, а вторая строка того же человека в пульте
+    и отчётах не нужна – там видны только ученики.
+    """
+    if not user.is_superuser:
+        return None
+    with transaction.atomic():
+        old = ClassworkAttempt.objects.filter(user=user, quiz=quiz).first()
+        if old:
+            result = old.result
+            old.delete()
+            if result:
+                result.delete()
+        return ClassworkAttempt.objects.create(
+            user=user, quiz=quiz,
+            deadline=timezone.now() + timedelta(minutes=minutes(quiz)),
+        )
+
+
+def import_json(data, section, user=None):
+    """
+    Загрузить самостоятельную из JSON формата load_quiz.
+
+    Работа заводится той же функцией, что и обычный тест, поэтому формат
+    один и тот же; отличаются только тип, блок и минуты. Ошибка разбора –
+    ValueError с текстом для учителя: страница показывает его сообщением,
+    а не пятисоткой.
+    """
+    from django.core.management.base import CommandError
+
+    from .management.commands.load_quiz import load_quiz_from_data
+
+    try:
+        quiz = load_quiz_from_data(data)
+    except KeyError as exc:
+        raise ValueError(f'В файле нет обязательного поля {exc}. '
+                         'Формат – как у fixtures/quiz_template.json.') from exc
+    except CommandError as exc:
+        raise ValueError(str(exc)) from exc
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f'Не удалось разобрать файл: {exc}') from exc
+
+    quiz.quiz_type = 'classwork'
+    quiz.section = section
+    raw = data.get('quiz', {}).get('minutes') if isinstance(data, dict) else None
+    quiz.check_minutes = int(raw) if str(raw).isdigit() and 1 <= int(raw) <= 235 else None
+    quiz.save(update_fields=['quiz_type', 'section', 'check_minutes'])
+    return quiz
 
 
 def pending(result):

@@ -47,6 +47,12 @@ class Quiz(models.Model):
         help_text="Срез и самостоятельная: минуты на работу. Пусто у среза – сумма "
                   "нормативов ЕГЭ по номерам его задач, у самостоятельной – 40.",
     )
+    section = models.ForeignKey(
+        'textbook.Section', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='classworks', verbose_name="Блок учебника",
+        help_text="Только у самостоятельной: к какой теме работа. Из блока "
+                  "набираются задачи и на его странице показывается работа.",
+    )
 
     class Meta:
         verbose_name = "Тест"

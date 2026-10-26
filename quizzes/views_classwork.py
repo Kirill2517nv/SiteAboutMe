@@ -9,6 +9,7 @@
 import json
 import os
 
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.db.models import Count, Q
 from django.http import HttpResponse, JsonResponse
@@ -18,9 +19,10 @@ from django.views.decorators.http import require_GET, require_POST
 
 from accounts.models import StudentGroup
 from accounts.templatetags.profile_tags import surname_first
+from textbook.models import Section
 
 from . import classwork
-from .models import ClassworkAttempt, Quiz
+from .models import ClassworkAttempt, Question, Quiz
 from .utils import js_json
 
 MAX_SECONDS = 36000  # десять часов: больше за урок не бывает, а опечатку срезаем
@@ -242,7 +244,9 @@ def score_view(request, pk):
 @user_passes_test(_teacher)
 @require_POST
 def control_view(request, quiz_id):
-    """Панель учителя: начать и закрыть работу класса, минуты на неё."""
+    """Панель учителя: начать, запланировать, отменить и закрыть работу класса."""
+    from .views_practice import _local_datetime
+
     quiz = get_object_or_404(Quiz, id=quiz_id, quiz_type='classwork')
     action = request.POST.get('action')
     group_id = request.POST.get('group') or ''
@@ -250,6 +254,18 @@ def control_view(request, quiz_id):
 
     if action == 'start' and group:
         classwork.open_for_group(quiz, group)
+    elif action == 'schedule' and group:
+        start = _local_datetime(request.POST.get('start'))
+        end = _local_datetime(request.POST.get('end'))
+        if start is None:
+            messages.error(request, 'Нужно начало работы.')
+        elif end is not None and end <= start:
+            messages.error(request, 'Конец раньше начала.')
+        else:
+            classwork.open_for_group(quiz, group, start=start, end=end)
+    elif action == 'cancel' and group:
+        if not classwork.cancel(quiz, group):
+            messages.error(request, 'Работу уже начали – её можно только закрыть.')
     elif action == 'close' and group:
         classwork.close(quiz, group)
     elif action == 'minutes':
@@ -282,6 +298,141 @@ def grade_view(request, pk):
     attempt.grade = int(value) if value in ('2', '3', '4', '5') else None
     attempt.save(update_fields=['grade'])
     return JsonResponse({'ok': True, 'grade': classwork.final_grade(attempt)})
+
+
+# --- управление работами ---
+
+def _section(value):
+    """Блок из формы: id или None (группа «Без блока»)."""
+    return Section.objects.filter(id=int(value)).first() if str(value).isdigit() else None
+
+
+def _minutes(value):
+    """Минуты из формы: 1–235 или None (у самостоятельной это 40)."""
+    value = (value or '').strip()
+    return int(value) if value.isdigit() and 1 <= int(value) <= 235 else None
+
+
+@login_required
+@user_passes_test(_teacher)
+@require_POST
+def create_view(request):
+    """Новая самостоятельная: название, блок и минуты – остальное наборется в edit."""
+    title = (request.POST.get('title') or '').strip()
+    if not title:
+        messages.error(request, 'Название самостоятельной пустое.')
+        return redirect('classwork:list')
+    quiz = Quiz.objects.create(
+        title=title, quiz_type='classwork', max_attempts=1,
+        section=_section(request.POST.get('section')),
+        check_minutes=_minutes(request.POST.get('minutes')),
+    )
+    return redirect('classwork:edit', quiz_id=quiz.id)
+
+
+@login_required
+@user_passes_test(_teacher)
+@require_POST
+def import_view(request):
+    """Работа из JSON формата load_quiz – той же функцией, что у команды."""
+    upload = request.FILES.get('file')
+    if upload is None:
+        messages.error(request, 'Выберите JSON-файл.')
+        return redirect('classwork:list')
+    try:
+        data = json.loads(upload.read().decode('utf-8'))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        messages.error(request, 'Файл не читается как JSON в кодировке UTF-8.')
+        return redirect('classwork:list')
+    try:
+        quiz = classwork.import_json(
+            data, _section(request.POST.get('section')), request.user)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+        return redirect('classwork:list')
+    return redirect('classwork:edit', quiz_id=quiz.id)
+
+
+@login_required
+@user_passes_test(_teacher)
+def edit_view(request, quiz_id):
+    """Свойства работы, её задачи и набор задач из блока учебника."""
+    quiz = get_object_or_404(Quiz, id=quiz_id, quiz_type='classwork')
+
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        if action == 'meta':
+            title = (request.POST.get('title') or '').strip()
+            if not title:
+                messages.error(request, 'Название пустое.')
+            else:
+                quiz.title = title
+                quiz.section = _section(request.POST.get('section'))
+                quiz.check_minutes = _minutes(request.POST.get('minutes'))
+                quiz.save(update_fields=['title', 'section', 'check_minutes'])
+                messages.success(request, 'Сохранено.')
+        elif action == 'remove':
+            value = request.POST.get('question', '')
+            if classwork.has_answers(quiz):
+                messages.error(request, 'Работу уже писали – убрать задачу нельзя, '
+                                        'ответы учеников пропали бы.')
+            elif value.isdigit():
+                quiz.questions.filter(id=int(value)).delete()
+                messages.success(request, 'Задача убрана.')
+        elif action == 'add':
+            # Только задачи из показанных источников: скрытый id чужого теста
+            # не должен давать копию в работу.
+            candidates = {q.id for group in classwork.sources(quiz)
+                          for q in group['questions']}
+            chosen = [int(v) for v in request.POST.getlist('add')
+                      if v.isdigit() and int(v) in candidates]
+            questions = list(Question.objects.filter(id__in=chosen).order_by('id'))
+            for question in questions:
+                classwork.copy_question(question, quiz)
+            messages.success(request, f'Добавлено задач: {len(questions)}.')
+        return redirect('classwork:edit', quiz_id=quiz.id)
+
+    from .views import _sort_questions
+
+    questions = list(quiz.questions.all())
+    _sort_questions(quiz, questions)
+    return render(request, 'quizzes/classwork_edit.html', {
+        'quiz': quiz,
+        'questions': questions,
+        'sources': classwork.sources(quiz),
+        'has_answers': classwork.has_answers(quiz),
+        'sections': Section.objects.order_by('order', 'title'),
+        'max_score': classwork.max_score(quiz),
+        'minutes': classwork.minutes(quiz),
+    })
+
+
+@login_required
+@user_passes_test(_teacher)
+@require_GET
+def preview_view(request, quiz_id):
+    """Все задачи с ответами – вычитать работу до урока."""
+    from .views import _sort_questions
+
+    quiz = get_object_or_404(Quiz, id=quiz_id, quiz_type='classwork')
+    questions = list(quiz.questions.prefetch_related('choices', 'test_cases', 'images', 'files'))
+    _sort_questions(quiz, questions)
+    return render(request, 'quizzes/classwork_preview.html', {
+        'quiz': quiz,
+        'questions': questions,
+        'max_score': classwork.max_score(quiz),
+        'minutes': classwork.minutes(quiz),
+    })
+
+
+@login_required
+@user_passes_test(_teacher)
+@require_POST
+def try_view(request, quiz_id):
+    """«Пройти как ученик»: своя попытка без окна, старую стираем."""
+    quiz = get_object_or_404(Quiz, id=quiz_id, quiz_type='classwork')
+    attempt = classwork.try_as_teacher(request.user, quiz)
+    return redirect('classwork:work', pk=attempt.pk)
 
 
 # --- панель учителя ---
@@ -369,8 +520,15 @@ def _rows(quiz, students):
 @user_passes_test(_teacher)
 @require_GET
 def list_view(request):
-    """Все самостоятельные: карточка работы со счётчиками и окнами классов."""
+    """
+    Все самостоятельные, сгруппированные по блоку учебника.
+
+    Блок – то, по чему учитель ищет работу перед уроком («это по графам»),
+    поэтому группы идут в порядке блоков, а «Без блока» – в конце. Сверху
+    две формы: завести пустую и загрузить готовый JSON.
+    """
     quizzes = (Quiz.objects.filter(quiz_type='classwork')
+               .select_related('section')
                .annotate(submitted=Count('classwork_attempts', distinct=True,
                                          filter=Q(classwork_attempts__finished_at__isnull=False)))
                .prefetch_related('questions', 'assignments__group')
@@ -387,7 +545,27 @@ def list_view(request):
             # Личные назначения – не окно класса: в панели они не показываются.
             'assignments': [a for a in quiz.assignments.all() if a.group_id],
         })
-    return render(request, 'quizzes/classwork_list.html', {'rows': rows})
+
+    # Группы в порядке блоков; «Без блока» – последней.
+    rows.sort(key=lambda row: (
+        row['quiz'].section is None,
+        row['quiz'].section.order if row['quiz'].section else 0,
+        row['quiz'].section.title if row['quiz'].section else '',
+        row['quiz'].title,
+    ))
+    groups = []
+    for row in rows:
+        section = row['quiz'].section
+        if not groups or groups[-1]['section'] != section:
+            groups.append({'section': section, 'rows': []})
+        groups[-1]['rows'].append(row)
+
+    default_section = Section.objects.filter(slug=request.GET.get('section', '')).first()
+    return render(request, 'quizzes/classwork_list.html', {
+        'groups': groups,
+        'sections': Section.objects.order_by('order', 'title'),
+        'default_section': default_section,
+    })
 
 
 @login_required
@@ -404,6 +582,20 @@ def panel_view(request, quiz_id):
     students, groups, loose, current = _class_filter(request)
     group = StudentGroup.objects.filter(id=current).first() if current.isdigit() else None
     assignment = quiz.assignments.filter(group=group).first() if group else None
+
+    # Состояние окна класса считаем здесь: шаблон не умеет сравнивать даты,
+    # а рисовать состояние по «есть ли end_date» нельзя – запланированное
+    # окно с концом в будущем ничем не отличается от идущего.
+    now = timezone.now()
+    if assignment is None or assignment.start_date is None:
+        state = 'none'
+    elif assignment.start_date > now:
+        state = 'scheduled'
+    elif assignment.end_date and assignment.end_date <= now:
+        state = 'closed'
+    else:
+        state = 'open'
+
     return render(request, 'quizzes/classwork_panel.html', {
         'quiz': quiz,
         'groups': groups,
@@ -411,6 +603,7 @@ def panel_view(request, quiz_id):
         'current_group': current,
         'group': group,
         'assignment': assignment,
+        'state': state,
         'minutes': classwork.minutes(quiz),
         'max_score': classwork.max_score(quiz),
         'rows': _rows(quiz, students),

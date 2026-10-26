@@ -5,9 +5,9 @@
 
 {% block content %}
 {% comment %}
-Список самостоятельных: отсюда учитель выбирает работу на урок и открывает её
-пульт. Строка отвечает на два вопроса – сколько в работе задач и баллов, и
-какие классы её уже писали (или пишут прямо сейчас).
+Список самостоятельных, сгруппированный по блокам учебника: работу ищут
+перед уроком по теме, а не по названию. Сверху – завести пустую или
+загрузить готовый JSON; набирают задачи и назначают время на странице работы.
 {% endcomment %}
 <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     {% include 'quizzes/_ege_teacher_bar.html' %}
@@ -19,36 +19,114 @@
         </p>
     </div>
 
-    {% for row in rows %}
-    <a href="{% url 'classwork:panel' row.quiz.id %}"
-       class="block mb-3 rounded-xl border border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 hover:border-brand-400 transition-colors">
-        <div class="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 class="text-lg font-bold text-gray-900 dark:text-white">{{ row.quiz.title }}</h2>
-            <span class="text-sm text-gray-500 dark:text-slate-400">
-                {{ row.count }} задач{{ row.count|plural:"а,и," }} ·
-                {{ row.max }} балл{{ row.max|plural:",а,ов" }} ·
-                {{ row.minutes }} мин
-            </span>
+    <div class="grid gap-4 md:grid-cols-2 mb-8">
+        <section class="rounded-xl border border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800 p-4">
+            <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-3">Новая самостоятельная</h2>
+            <form method="post" action="{% url 'classwork:create' %}" class="space-y-3 text-sm">
+                {% csrf_token %}
+                <label class="block text-gray-500 dark:text-slate-400">
+                    Название
+                    <input type="text" name="title" required maxlength="200"
+                           class="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white">
+                </label>
+                <div class="flex flex-wrap gap-3">
+                    <label class="flex-1 min-w-40 text-gray-500 dark:text-slate-400">
+                        Блок
+                        <select name="section"
+                                class="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white">
+                            <option value="">Без блока</option>
+                            {% for section in sections %}
+                            <option value="{{ section.id }}" {% if default_section and section.id == default_section.id %}selected{% endif %}>{{ section.title }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label class="w-24 text-gray-500 dark:text-slate-400">
+                        Минуты
+                        <input type="number" name="minutes" min="1" max="235" value="40"
+                               class="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white">
+                    </label>
+                </div>
+                <button type="submit" class="px-4 py-2 rounded-lg bg-brand-600 text-white font-medium hover:bg-brand-700">
+                    Создать
+                </button>
+            </form>
+        </section>
+
+        <section class="rounded-xl border border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800 p-4">
+            <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-3">Загрузить из JSON</h2>
+            <form method="post" action="{% url 'classwork:import' %}" enctype="multipart/form-data"
+                  class="space-y-3 text-sm">
+                {% csrf_token %}
+                <label class="block text-gray-500 dark:text-slate-400">
+                    Файл
+                    <input type="file" name="file" accept=".json,application/json" required
+                           class="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white">
+                </label>
+                <label class="block text-gray-500 dark:text-slate-400">
+                    Блок
+                    <select name="section"
+                            class="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white">
+                        <option value="">Без блока</option>
+                        {% for section in sections %}
+                        <option value="{{ section.id }}" {% if default_section and section.id == default_section.id %}selected{% endif %}>{{ section.title }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <button type="submit" class="px-4 py-2 rounded-lg border border-gray-200 dark:border-slate-600 font-medium text-gray-700 dark:text-slate-200 hover:border-brand-400">
+                    Загрузить
+                </button>
+            </form>
+            <p class="text-xs text-gray-500 dark:text-slate-400 mt-3">
+                Формат – как у load_quiz (fixtures/quiz_template.json); задачи с файлами добавляйте в админке.
+            </p>
+        </section>
+    </div>
+
+    {% for group in groups %}
+    <section class="mb-8">
+        <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-3">
+            {{ group.section.title|default:"Без блока" }}
+        </h2>
+        {% for row in group.rows %}
+        <div class="mb-3 rounded-xl border border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800 p-4">
+            <div class="flex flex-wrap items-baseline justify-between gap-2">
+                <a href="{% url 'classwork:panel' row.quiz.id %}"
+                   class="text-lg font-bold text-gray-900 dark:text-white hover:text-brand-600 dark:hover:text-cyan-400">
+                    {{ row.quiz.title }}
+                </a>
+                <span class="text-sm text-gray-500 dark:text-slate-400">
+                    {{ row.count }} задач{{ row.count|plural:"а,и," }} ·
+                    {{ row.max }} балл{{ row.max|plural:",а,ов" }} ·
+                    {{ row.minutes }} мин
+                </span>
+            </div>
+            <div class="mt-2 flex flex-wrap items-center gap-3 text-sm">
+                <a href="{% url 'classwork:panel' row.quiz.id %}"
+                   class="text-brand-600 dark:text-cyan-400 hover:underline">Пульт</a>
+                <a href="{% url 'classwork:edit' row.quiz.id %}"
+                   class="text-brand-600 dark:text-cyan-400 hover:underline">Задачи</a>
+                <a href="{% url 'classwork:preview' row.quiz.id %}"
+                   class="text-brand-600 dark:text-cyan-400 hover:underline">Предпросмотр</a>
+                <span class="text-gray-500 dark:text-slate-400">Сдано: {{ row.submitted }}</span>
+            </div>
+            <div class="mt-2 flex flex-wrap items-center gap-2 text-sm">
+                {% for assignment in row.assignments %}
+                <span class="px-2 py-0.5 rounded text-xs font-medium
+                    {% if assignment.end_date %}bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400
+                    {% else %}bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300{% endif %}">
+                    {{ assignment.group.name }}:
+                    {% if not assignment.start_date %}не начиналась
+                    {% elif assignment.end_date %}закрыта {{ assignment.end_date|date:"d.m H:i" }}
+                    {% else %}идёт с {{ assignment.start_date|date:"H:i" }}{% endif %}
+                </span>
+                {% endfor %}
+            </div>
         </div>
-        <div class="mt-2 flex flex-wrap items-center gap-2 text-sm">
-            <span class="text-gray-500 dark:text-slate-400">Сдано: {{ row.submitted }}</span>
-            {% for assignment in row.assignments %}
-            <span class="px-2 py-0.5 rounded text-xs font-medium
-                {% if assignment.end_date %}bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400
-                {% else %}bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300{% endif %}">
-                {{ assignment.group.name }}:
-                {% if not assignment.start_date %}не начиналась
-                {% elif assignment.end_date %}закрыта {{ assignment.end_date|date:"d.m H:i" }}
-                {% else %}идёт с {{ assignment.start_date|date:"H:i" }}{% endif %}
-            </span>
-            {% endfor %}
-        </div>
-    </a>
+        {% endfor %}
+    </section>
     {% empty %}
     <div class="bg-gray-50 dark:bg-slate-800 rounded-xl p-8 text-center text-gray-500 dark:text-slate-400">
-        Самостоятельных пока нет. Заведите тест с типом «Самостоятельная работа» в
-        <a href="{% url 'admin:quizzes_quiz_add' %}" class="text-brand-600 dark:text-cyan-400 hover:underline">админке</a>
-        и добавьте задачи.
+        Самостоятельных пока нет. Заведите первую формой выше.
     </div>
     {% endfor %}
 </div>
