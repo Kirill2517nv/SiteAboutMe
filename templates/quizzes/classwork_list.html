@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+{% load textbook_tags %}
+
+{% block title %}Самостоятельные работы{% endblock title %}
+
+{% block content %}
+{% comment %}
+Список самостоятельных: отсюда учитель выбирает работу на урок и открывает её
+пульт. Строка отвечает на два вопроса – сколько в работе задач и баллов, и
+какие классы её уже писали (или пишут прямо сейчас).
+{% endcomment %}
+<div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    {% include 'quizzes/_ege_teacher_bar.html' %}
+
+    <div class="mb-6">
+        <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">Самостоятельные работы</h1>
+        <p class="text-base text-gray-500 dark:text-slate-400 mt-1">
+            Работа идёт на уроке: начало и конец задаёт учитель, ученики пишут в классе
+        </p>
+    </div>
+
+    {% for row in rows %}
+    <a href="{% url 'classwork:panel' row.quiz.id %}"
+       class="block mb-3 rounded-xl border border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 hover:border-brand-400 transition-colors">
+        <div class="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 class="text-lg font-bold text-gray-900 dark:text-white">{{ row.quiz.title }}</h2>
+            <span class="text-sm text-gray-500 dark:text-slate-400">
+                {{ row.count }} задач{{ row.count|plural:"а,и," }} ·
+                {{ row.max }} балл{{ row.max|plural:",а,ов" }} ·
+                {{ row.minutes }} мин
+            </span>
+        </div>
+        <div class="mt-2 flex flex-wrap items-center gap-2 text-sm">
+            <span class="text-gray-500 dark:text-slate-400">Сдано: {{ row.submitted }}</span>
+            {% for assignment in row.assignments %}
+            <span class="px-2 py-0.5 rounded text-xs font-medium
+                {% if assignment.end_date %}bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400
+                {% else %}bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300{% endif %}">
+                {{ assignment.group.name }}:
+                {% if not assignment.start_date %}не начиналась
+                {% elif assignment.end_date %}закрыта {{ assignment.end_date|date:"d.m H:i" }}
+                {% else %}идёт с {{ assignment.start_date|date:"H:i" }}{% endif %}
+            </span>
+            {% endfor %}
+        </div>
+    </a>
+    {% empty %}
+    <div class="bg-gray-50 dark:bg-slate-800 rounded-xl p-8 text-center text-gray-500 dark:text-slate-400">
+        Самостоятельных пока нет. Заведите тест с типом «Самостоятельная работа» в
+        <a href="{% url 'admin:quizzes_quiz_add' %}" class="text-brand-600 dark:text-cyan-400 hover:underline">админке</a>
+        и добавьте задачи.
+    </div>
+    {% endfor %}
+</div>
+{% endblock content %}

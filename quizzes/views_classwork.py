@@ -8,12 +8,14 @@
 import json
 
 from django.contrib.auth.decorators import login_required, user_passes_test
+from django.db.models import Count, Q
 from django.http import HttpResponse, JsonResponse
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
 from accounts.models import StudentGroup
+from accounts.templatetags.profile_tags import surname_first
 
 from . import classwork
 from .models import ClassworkAttempt, Quiz
@@ -181,3 +183,150 @@ def grade_view(request, pk):
     attempt.grade = int(value) if value in ('2', '3', '4', '5') else None
     attempt.save(update_fields=['grade'])
     return JsonResponse({'ok': True, 'grade': classwork.final_grade(attempt)})
+
+
+# --- панель учителя ---
+
+def _mmss(seconds):
+    """Секунды как «M:SS»: столько же, сколько видит ученик на таймере."""
+    seconds = max(0, int(seconds))
+    return f'{seconds // 60}:{seconds % 60:02d}'
+
+
+def _rows(quiz, students):
+    """
+    По строке на ученика; попытки класса – одним запросом.
+
+    Сортировка – по той же строке «Фамилия Имя», что стоит в ячейке, а не
+    order_by('last_name'): ученик без фамилии иначе уехал бы в начало, хотя
+    в таблице у него логин.
+    """
+    students = list(students)
+    now = timezone.now()
+    maximum = classwork.max_score(quiz)
+    attempts = {
+        attempt.user_id: attempt
+        for attempt in ClassworkAttempt.objects.filter(quiz=quiz, user__in=students)
+        .select_related('result')
+    }
+
+    rows = []
+    for student in sorted(students,
+                          key=lambda u: surname_first(u).lower().replace('ё', 'е')):
+        attempt = attempts.get(student.id)
+        if attempt is None:
+            state = 'none'
+        elif attempt.finished_at:
+            state = 'finished'
+        elif attempt.frozen_at:
+            state = 'frozen'
+        else:
+            state = 'writing'
+
+        row = {
+            'student': student,
+            'name': surname_first(student),
+            'attempt': attempt,
+            'state': state,
+            'left_seconds': 0,
+            'left': '',
+            'frozen_at': None,
+            'leaves': 0,
+            'away': '0:00',
+            'pastes': 0,
+            'score': None,
+            'max': maximum,
+            'pending': False,
+            'auto': None,
+            'grade': None,
+            'final': None,
+        }
+        if attempt:
+            row.update({
+                'frozen_at': attempt.frozen_at,
+                'leaves': attempt.leaves,
+                'away': _mmss(attempt.away_seconds),
+                'pastes': attempt.pastes,
+                'grade': attempt.grade,
+            })
+            if state == 'writing':
+                row['left_seconds'] = max(
+                    0, int((attempt.deadline - now).total_seconds()))
+                row['left'] = _mmss(row['left_seconds'])
+            elif state == 'finished':
+                points = classwork.score(attempt.result)
+                auto = classwork.auto_grade(points, maximum)
+                row.update({
+                    'score': points,
+                    'pending': classwork.pending(attempt.result),
+                    'auto': auto,
+                    'final': attempt.grade if attempt.grade is not None else auto,
+                })
+        rows.append(row)
+    return rows
+
+
+@login_required
+@user_passes_test(_teacher)
+@require_GET
+def list_view(request):
+    """Все самостоятельные: карточка работы со счётчиками и окнами классов."""
+    quizzes = (Quiz.objects.filter(quiz_type='classwork')
+               .annotate(submitted=Count('classwork_attempts', distinct=True,
+                                         filter=Q(classwork_attempts__finished_at__isnull=False)))
+               .prefetch_related('questions', 'assignments__group')
+               .order_by('title'))
+    rows = []
+    for quiz in quizzes:
+        questions = list(quiz.questions.all())
+        rows.append({
+            'quiz': quiz,
+            'count': len(questions),
+            'max': sum(question.points for question in questions),
+            'minutes': classwork.minutes(quiz),
+            'submitted': quiz.submitted,
+            # Личные назначения – не окно класса: в панели они не показываются.
+            'assignments': [a for a in quiz.assignments.all() if a.group_id],
+        })
+    return render(request, 'quizzes/classwork_list.html', {'rows': rows})
+
+
+@login_required
+@user_passes_test(_teacher)
+@require_GET
+def panel_view(request, quiz_id):
+    """Учительский пульт: окно класса, заморозки, оценки."""
+    from .views import _class_filter
+
+    quiz = get_object_or_404(Quiz, id=quiz_id, quiz_type='classwork')
+    # Первая отрисовка тоже закрывает просроченные: иначе до первого опроса
+    # в таблице висело бы «пишет · осталось 0:00».
+    classwork.expire(quiz)
+    students, groups, loose, current = _class_filter(request)
+    group = StudentGroup.objects.filter(id=current).first() if current.isdigit() else None
+    assignment = quiz.assignments.filter(group=group).first() if group else None
+    return render(request, 'quizzes/classwork_panel.html', {
+        'quiz': quiz,
+        'groups': groups,
+        'has_loose': loose,
+        'current_group': current,
+        'group': group,
+        'assignment': assignment,
+        'minutes': classwork.minutes(quiz),
+        'max_score': classwork.max_score(quiz),
+        'rows': _rows(quiz, students),
+    })
+
+
+@login_required
+@user_passes_test(_teacher)
+@require_GET
+def rows_view(request, quiz_id):
+    """Только строки таблицы – для опроса раз в четыре секунды."""
+    from .views import _class_filter
+
+    quiz = get_object_or_404(Quiz, id=quiz_id, quiz_type='classwork')
+    # Закрытая вкладка ученика иначе держала бы работу незакрытой до учителя.
+    classwork.expire(quiz)
+    students, _, _, _ = _class_filter(request)
+    return render(request, 'quizzes/_classwork_rows.html', {'rows': _rows(quiz, students)})

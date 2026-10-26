@@ -52,6 +52,11 @@
         Таблица класса
     </a>
 
+    <a href="{% url 'classwork:list' %}"
+       class="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-gray-700 dark:text-slate-300 hover:border-brand-400">
+        Самостоятельные
+    </a>
+
     {% if student %}
     <a href="{% url 'ege:ege_list' %}#progress" class="text-sm text-gray-500 dark:text-slate-400 hover:text-brand-600">← к своему прогрессу</a>
     <a href="{% url 'accounts:student_profile' student.id %}" class="text-sm text-gray-500 dark:text-slate-400 hover:text-brand-600">профиль ученика →</a>

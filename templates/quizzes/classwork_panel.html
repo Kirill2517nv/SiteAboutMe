@@ -1,0 +1,169 @@
+{% extends 'base.html' %}
+{% load textbook_tags %}
+
+{% block title %}{{ quiz.title }}: самостоятельная{% endblock title %}
+
+{% block content %}
+{% comment %}
+Пульт учителя на уроке. Работа идёт не по расписанию, а по команде: учитель
+открывает окно классу, ученики пишут, учитель видит, кто ушёл со страницы и
+кого надо разморозить, и ставит итоговую оценку. Отсюда же закрывается работа –
+все, кто ещё пишет, сдают её сейчас.
+
+Обновление – опрос раз в четыре секунды, а не WebSocket. Панель открыта на
+одном уроке у одного учителя; тридцать строк с числами стоят копейки, а
+отдельный канал потребовал бы потребителя, маршрута и второго способа
+обновлять ту же таблицу. Опрос пропускается, пока учитель нажимает в таблице
+(иначе список закрывался бы у него под рукой) и пока вкладка скрыта.
+{% endcomment %}
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8"
+     x-data="classworkPanel($el)"
+     data-rows-url="{% url 'classwork:rows' quiz.id %}?group={{ current_group }}"
+     data-csrf="{{ csrf_token }}">
+
+    <a href="{% url 'classwork:list' %}"
+       class="inline-flex items-center gap-1 text-sm text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200 mb-4">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+        </svg>
+        Все самостоятельные
+    </a>
+
+    <div class="mb-6">
+        <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">{{ quiz.title }}</h1>
+        <p class="text-base text-gray-500 dark:text-slate-400 mt-1">
+            {{ quiz.questions.count }} задач{{ quiz.questions.count|plural:"а,и," }} ·
+            {{ max_score }} балл{{ max_score|plural:",а,ов" }} ·
+            {{ minutes }} мин
+        </p>
+    </div>
+
+    {% include 'quizzes/_ege_group_tabs.html' %}
+
+    {% if group %}
+    <section class="mb-8 rounded-xl border border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800 p-4">
+        <div class="flex flex-wrap items-center gap-3">
+            <span class="text-sm text-gray-500 dark:text-slate-400">
+                {% if not assignment or not assignment.start_date %}Работа не начиналась
+                {% elif assignment.end_date %}Закрыта в {{ assignment.end_date|date:"H:i" }}
+                {% else %}Идёт с {{ assignment.start_date|date:"H:i" }}{% endif %}
+            </span>
+
+            {% if not assignment or assignment.end_date %}
+            <form method="post" action="{% url 'classwork:control' quiz.id %}">
+                {% csrf_token %}
+                <input type="hidden" name="group" value="{{ group.id }}">
+                <input type="hidden" name="action" value="start">
+                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                <button type="submit" class="px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700">Начать</button>
+            </form>
+            {% else %}
+            <form method="post" action="{% url 'classwork:control' quiz.id %}"
+                  onsubmit="return confirm('Закрыть работу классу? Все, кто ещё пишет, сдадут её сейчас.')">
+                {% csrf_token %}
+                <input type="hidden" name="group" value="{{ group.id }}">
+                <input type="hidden" name="action" value="close">
+                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                <button type="submit" class="px-4 py-2 rounded-lg border border-red-200 dark:border-red-800 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30">Закрыть работу</button>
+            </form>
+            {% endif %}
+
+            <form method="post" action="{% url 'classwork:control' quiz.id %}"
+                  class="flex items-center gap-2 text-sm text-gray-500 dark:text-slate-400">
+                {% csrf_token %}
+                <input type="hidden" name="group" value="{{ group.id }}">
+                <input type="hidden" name="action" value="minutes">
+                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                На работу
+                <input type="number" name="minutes" min="1" max="235" value="{{ minutes }}"
+                       class="w-20 px-2 py-1 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white">
+                мин
+                <button type="submit" class="px-3 py-1 rounded-lg border border-gray-200 dark:border-slate-600 hover:border-brand-400">Сохранить</button>
+            </form>
+        </div>
+    </section>
+    {% else %}
+    <p class="mb-8 text-sm text-gray-500 dark:text-slate-400">Чтобы начать работу, выберите класс.</p>
+    {% endif %}
+
+    <div class="overflow-x-auto rounded-xl border border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-gray-100 dark:border-slate-700 text-left">
+                    <th class="px-4 py-3 font-medium text-gray-500 dark:text-slate-400">Ученик</th>
+                    <th class="px-3 py-3 font-medium text-gray-500 dark:text-slate-400">Состояние</th>
+                    <th class="px-3 py-3 font-medium text-gray-500 dark:text-slate-400 text-center">Уходы</th>
+                    <th class="px-3 py-3 font-medium text-gray-500 dark:text-slate-400 text-center">Вне страницы</th>
+                    <th class="px-3 py-3 font-medium text-gray-500 dark:text-slate-400 text-center">Вставки</th>
+                    <th class="px-3 py-3 font-medium text-gray-500 dark:text-slate-400 text-center">Баллы</th>
+                    <th class="px-3 py-3 font-medium text-gray-500 dark:text-slate-400">Оценка</th>
+                    <th class="px-3 py-3"></th>
+                </tr>
+            </thead>
+            <tbody id="classwork-rows">
+                {% include 'quizzes/_classwork_rows.html' %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock content %}
+
+{% block extra_js %}
+<script>
+function classworkPanel(root) {
+    return {
+        busy: false,
+        timer: null,
+
+        init() {
+            this.timer = setInterval(() => this.refresh(), 4000);
+            // Делегирование на корень: tbody подменяется опросом, и слушатель
+            // на нём самом исчез бы вместе со строками.
+            root.addEventListener('click', (event) => {
+                const button = event.target.closest('[data-unfreeze]');
+                if (button) this.post(button.dataset.unfreeze, {}, button);
+            });
+            root.addEventListener('change', (event) => {
+                const select = event.target.closest('[data-grade-url]');
+                if (select) this.post(select.dataset.gradeUrl, {grade: select.value}, select);
+            });
+        },
+
+        destroy() {
+            clearInterval(this.timer);
+        },
+
+        async post(url, data, control) {
+            control.disabled = true;
+            try {
+                await fetch(url, {
+                    method: 'POST',
+                    body: new URLSearchParams(data),
+                    headers: {'X-CSRFToken': root.dataset.csrf},
+                });
+            } finally {
+                control.disabled = false;
+            }
+            // Действие важнее «не трогай, пока учитель в таблице»: строку надо
+            // показать сразу, иначе разморозка ждала бы до клика мимо.
+            this.refresh(true);
+        },
+
+        async refresh(force) {
+            const tbody = root.querySelector('#classwork-rows');
+            if (!tbody || this.busy || document.hidden) return;
+            if (!force && tbody.contains(document.activeElement)) return;
+            this.busy = true;
+            try {
+                const response = await fetch(root.dataset.rowsUrl);
+                if (response.ok) tbody.innerHTML = await response.text();
+            } catch (error) {
+                // Сеть моргнула – следующий тик повторит.
+            } finally {
+                this.busy = false;
+            }
+        },
+    };
+}
+</script>
+{% endblock extra_js %}

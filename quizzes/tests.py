@@ -4633,3 +4633,103 @@ class ClassworkTests(TestCase):
         self.client.post(f'/classwork/{self.work.pk}/control/',
                          {'action': 'close', 'group': self.group.pk})
         self.assertTrue(solutions.can_view(self.pupil, self.text_q))
+
+
+@override_settings(STORAGES={
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+})
+class ClassworkPanelTests(TestCase):
+    """
+    Пульт учителя: страницы входа, окно класса и живая таблица.
+
+    Страницы рендерятся в тестах без collectstatic, поэтому манифест
+    подменён обычным хранилищем – как в тестах таблицы класса.
+    """
+
+    def setUp(self):
+        from accounts.models import Profile, StudentGroup
+
+        User = get_user_model()
+        self.group = StudentGroup.objects.create(name='10В')
+        self.pupil = User.objects.create_user(
+            'pupil', password='pwd', last_name='Иванов', first_name='Пётр')
+        Profile.objects.create(user=self.pupil, group=self.group)
+        self.teacher = User.objects.create_superuser('teacher', password='pwd')
+
+        self.work = Quiz.objects.create(title='Контрольная на уроке',
+                                        quiz_type='classwork', check_minutes=30,
+                                        slug='cw-panel')
+        self.text_q = Question.objects.create(
+            quiz=self.work, text='Посчитай', question_type='text',
+            correct_text_answer='42', points=2)
+
+    def _open(self):
+        self.client.force_login(self.teacher)
+        self.client.post(f'/classwork/{self.work.pk}/control/',
+                         {'action': 'start', 'group': self.group.pk})
+
+    def _start(self):
+        self.client.force_login(self.pupil)
+        self.client.post(f'/classwork/{self.work.pk}/start/')
+        return ClassworkAttempt.objects.get(user=self.pupil, quiz=self.work)
+
+    def _rows(self):
+        self.client.force_login(self.teacher)
+        return self.client.get(f'/classwork/{self.work.pk}/rows/')
+
+    def test_student_never_reaches_the_teacher_pages(self):
+        self.client.force_login(self.pupil)
+        for url in ('/classwork/', f'/classwork/{self.work.pk}/panel/'):
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 302)
+                self.assertIn('/accounts/login/', response['Location'])
+
+    def test_list_and_panel_show_the_work_and_the_class(self):
+        self.client.force_login(self.teacher)
+        response = self.client.get('/classwork/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Контрольная на уроке')
+
+        response = self.client.get(f'/classwork/{self.work.pk}/panel/?group={self.group.pk}')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Иванов Пётр')
+        self.assertContains(response, 'Начать')
+
+        self._open()
+        response = self.client.get(f'/classwork/{self.work.pk}/panel/?group={self.group.pk}')
+        self.assertContains(response, 'Закрыть работу')
+
+    def test_rows_show_the_frozen_student_and_the_unfreeze_url(self):
+        self._open()
+        attempt = self._start()
+        self.client.post(f'/classwork/a/{attempt.pk}/event/', {'kind': 'leave'})
+
+        html = self._rows().content.decode()
+        self.assertIn('Разморозить', html)
+        self.assertIn(f'/classwork/a/{attempt.pk}/unfreeze/', html)
+
+    def test_expired_attempt_is_finished_by_the_rows_request(self):
+        self._open()
+        attempt = self._start()
+        ClassworkAttempt.objects.filter(pk=attempt.pk).update(
+            deadline=timezone.now() - timedelta(minutes=1))
+
+        self._rows()
+
+        attempt.refresh_from_db()
+        self.assertIsNotNone(attempt.finished_at)
+
+    def test_finished_row_shows_score_and_the_review_link(self):
+        self._open()
+        attempt = self._start()
+        self.client.post(
+            f'/classwork/a/{attempt.pk}/finish/',
+            data=json.dumps({'answers': {str(self.text_q.pk): '42'}}),
+            content_type='application/json')
+
+        attempt.refresh_from_db()
+        html = self._rows().content.decode()
+        self.assertIn('из', html)
+        self.assertIn(f'/quizzes/attempt/{attempt.result_id}/', html)

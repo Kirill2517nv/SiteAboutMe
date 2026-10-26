@@ -1,0 +1,77 @@
+{% comment %}
+Строки пульта самостоятельной. Партиал отдельный, потому что его целиком
+подменяет опрос: шапка таблицы и формы над ней стоят в classwork_panel.html и
+при обновлении не перерисовываются.
+{% endcomment %}
+{% for row in rows %}
+<tr class="border-b border-gray-50 dark:border-slate-700/50 last:border-0
+    {% if row.state == 'frozen' %}bg-red-50 dark:bg-red-900/20{% else %}hover:bg-gray-50 dark:hover:bg-slate-700/30{% endif %}">
+    <td class="px-4 py-2.5">
+        <div class="font-medium text-gray-900 dark:text-white">{{ row.name }}</div>
+        {% if row.attempt %}
+        <div class="text-xs text-gray-400">{{ row.attempt.started_at|date:"H:i" }}</div>
+        {% endif %}
+    </td>
+
+    <td class="px-3 py-2.5">
+        {% if row.state == 'none' %}
+        <span class="text-sm text-gray-400 dark:text-slate-500">не начал</span>
+        {% elif row.state == 'writing' %}
+        <span class="text-sm text-emerald-600 dark:text-emerald-400">пишет · осталось {{ row.left }}</span>
+        {% elif row.state == 'frozen' %}
+        <div class="flex flex-wrap items-center gap-2">
+            <span class="text-sm font-medium text-red-600 dark:text-red-400">ЗАМОРОЖЕН с {{ row.frozen_at|date:"H:i:s" }}</span>
+            <button type="button" data-unfreeze="{% url 'classwork:unfreeze' row.attempt.id %}"
+                    class="px-2 py-0.5 rounded-lg border border-red-200 dark:border-red-800 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30">
+                Разморозить
+            </button>
+        </div>
+        {% else %}
+        <span class="text-sm text-brand-600 dark:text-cyan-400">сдал {{ row.attempt.finished_at|date:"H:i" }}</span>
+        {% endif %}
+    </td>
+
+    <td class="px-3 py-2.5 text-center tabular-nums
+        {% if row.leaves %}text-red-600 dark:text-red-400 font-semibold{% else %}text-gray-400{% endif %}">{{ row.leaves }}</td>
+    <td class="px-3 py-2.5 text-center tabular-nums text-gray-500 dark:text-slate-400">{{ row.away }}</td>
+    <td class="px-3 py-2.5 text-center tabular-nums
+        {% if row.pastes %}text-red-600 dark:text-red-400 font-semibold{% else %}text-gray-400{% endif %}">{{ row.pastes }}</td>
+
+    <td class="px-3 py-2.5 text-center">
+        {% if row.state == 'finished' %}
+        <span class="font-medium text-gray-900 dark:text-white tabular-nums">{{ row.score }}</span><span class="text-xs text-gray-400"> из {{ row.max }}</span>
+        {% if row.pending %}
+        <div class="text-xs text-amber-600 dark:text-amber-400">проверяется…</div>
+        {% endif %}
+        {% else %}
+        <span class="text-gray-300 dark:text-slate-600">–</span>
+        {% endif %}
+    </td>
+
+    <td class="px-3 py-2.5">
+        {% if row.state == 'finished' %}
+        <select data-grade-url="{% url 'classwork:grade' row.attempt.id %}"
+                class="px-2 py-1 rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white text-sm">
+            <option value="" {% if not row.grade %}selected{% endif %}>{% if row.auto %}авто ({{ row.auto }}){% else %}авто{% endif %}</option>
+            <option value="2" {% if row.grade == 2 %}selected{% endif %}>2</option>
+            <option value="3" {% if row.grade == 3 %}selected{% endif %}>3</option>
+            <option value="4" {% if row.grade == 4 %}selected{% endif %}>4</option>
+            <option value="5" {% if row.grade == 5 %}selected{% endif %}>5</option>
+        </select>
+        {% else %}
+        <span class="text-gray-300 dark:text-slate-600">–</span>
+        {% endif %}
+    </td>
+
+    <td class="px-3 py-2.5 text-right">
+        {% if row.state == 'finished' and row.attempt.result_id %}
+        <a href="{% url 'quizzes:attempt_detail' row.attempt.result_id %}"
+           class="text-sm text-brand-600 dark:text-cyan-400 hover:underline">разбор</a>
+        {% endif %}
+    </td>
+</tr>
+{% empty %}
+<tr>
+    <td colspan="8" class="px-4 py-6 text-center text-gray-400">В этом классе нет учеников</td>
+</tr>
+{% endfor %}

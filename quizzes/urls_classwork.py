@@ -5,6 +5,9 @@ from . import views_classwork
 app_name = 'classwork'
 
 urlpatterns = [
+    path('', views_classwork.list_view, name='list'),
+    path('<int:quiz_id>/panel/', views_classwork.panel_view, name='panel'),
+    path('<int:quiz_id>/rows/', views_classwork.rows_view, name='rows'),
     path('<int:quiz_id>/start/', views_classwork.start_view, name='start'),
     path('<int:quiz_id>/control/', views_classwork.control_view, name='control'),
     path('a/<int:pk>/save/', views_classwork.save_view, name='save'),
