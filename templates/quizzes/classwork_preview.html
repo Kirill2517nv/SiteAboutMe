@@ -3,6 +3,9 @@
 
 {% block title %}{{ quiz.title }}: предпросмотр{% endblock title %}
 
+{# Стили условия – те же, что у ученика: предпросмотр показывает задачу так, как её увидят. #}
+{% block extra_css %}{% include 'quizzes/_task_text_css.html' %}{% endblock extra_css %}
+
 {% block content %}
 {% comment %}
 Предпросмотр работы с ответами – вычитать её до урока.
