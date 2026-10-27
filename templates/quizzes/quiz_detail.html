@@ -298,6 +298,7 @@ Alpine ищет данные вверх по дереву, поэтому кно
                     <div class="flex items-center gap-2"><span class="w-3 h-3 rounded bg-blue-100"></span> Есть ответ</div>
                     <div class="flex items-center gap-2"><span class="w-3 h-3 rounded bg-green-100"></span> Решена</div>
                 </div>
+                {% if brainrot_videos %}<div class="mt-4">{% include 'quizzes/_brainrot_feed.html' %}</div>{% endif %}
             </div>
         </div>
 
@@ -754,6 +755,7 @@ Alpine ищет данные вверх по дереву, поэтому кно
             </div>
         </div>
     </div>
+    {% if brainrot_hunt %}{% include 'quizzes/_easter_hunt.html' %}{% endif %}
 </div> <!-- close x-data="quizApp()" -->
 </div> <!-- close x-data="presentMode()" -->
 {% endif %}
@@ -778,6 +780,7 @@ Alpine ищет данные вверх по дереву, поэтому кно
 <!-- Quiz async (WebSocket + code submission) -->
 <script src="{% static 'js/code-lang.js' %}"></script>
 <script src="{% static 'js/quiz-async.js' %}"></script>
+<script src="{% static 'js/brainrot-feed.js' %}"></script>
 
 <script>
 function quizApp() {
@@ -1046,6 +1049,7 @@ function quizApp() {
 
         goToTask(index) {
             this.currentTask = index;
+            this.$dispatch('task-switch');  // секрет пасхалки, _easter_hunt.html
             this.ensureCodeMirror();
             this.maybeOfferHint();
         },

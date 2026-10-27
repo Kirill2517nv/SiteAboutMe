@@ -59,9 +59,10 @@ class Quiz(models.Model):
                   "ученик. Пусто – все.",
     )
     classwork_brainrot = models.BooleanField(
-        default=False, verbose_name="Ленту видео",
+        default=False, verbose_name="Ленту видео разрешено",
         help_text="Только у самостоятельной: вертикальные ролики из media/brainrot/ "
-                  "рядом с номерами задач. Включает учитель на пульте.",
+                  "рядом с номерами задач. Учитель разрешает на пульте, видят её "
+                  "только ученики, включившие пасхалку в профиле.",
     )
 
     class Meta:

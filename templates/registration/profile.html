@@ -223,6 +223,58 @@
     </form>
     {% endif %}
 
+    <!-- ===== Пасхалки (accounts/easter_eggs.py) ===== -->
+    {% if easter_egg_cards %}
+    <div id="easter-eggs" class="mb-10 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden" data-aos="fade-up">
+        <div class="px-6 py-4 border-b border-gray-100 dark:border-slate-700">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Пасхалки</h2>
+        </div>
+        <div class="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {% for card in easter_egg_cards %}
+            {% if card.found %}
+            {% comment %}
+            Вся карточка – кнопка: щелчок переключает, выключенная – чёрно-белая.
+            Сохраняется fetch'ем, без перезагрузки: страница остаётся на месте.
+            Ответ не дошёл – карточка возвращается в прежнее состояние.
+            {% endcomment %}
+            <form method="post" x-data="{ on: {{ card.on|yesno:'true,false' }} }"
+                  @submit.prevent="on = !on;
+                      const data = new FormData($el); data.set('on', on ? '1' : '0');
+                      fetch($el.action || location.href, { method: 'POST', body: data, headers: { 'X-Requested-With': 'fetch' } })
+                          .then(r => { if (!r.ok) on = !on; }).catch(() => { on = !on; })">
+                {% csrf_token %}
+                <input type="hidden" name="easter_egg" value="{{ card.egg.key }}">
+                <input type="hidden" name="on" value="{{ card.on|yesno:'0,1' }}">
+                <button type="submit" :aria-pressed="on"
+                        class="w-full flex items-center gap-4 rounded-xl border-2 px-4 py-3 text-left transition-colors"
+                        :class="on ? 'border-brand-500 bg-brand-50/60 dark:border-cyan-500 dark:bg-cyan-900/20' : 'border-gray-100 dark:border-slate-700 hover:border-brand-200 dark:hover:border-slate-500'">
+                    <img src="{% static card.egg.image %}" alt="" width="64" height="64"
+                         class="w-16 h-16 rounded-xl shrink-0 transition" :class="on ? '' : 'grayscale opacity-70'">
+                    <span class="flex-1 min-w-0">
+                        <span class="block text-sm font-semibold text-gray-900 dark:text-white">{{ card.egg.title }}</span>
+                        <span class="block text-xs text-gray-500 dark:text-slate-400 mt-0.5">{{ card.egg.blurb }}</span>
+                    </span>
+                    <span class="relative w-10 h-6 shrink-0 rounded-full transition-colors" aria-hidden="true"
+                          :class="on ? 'bg-brand-500 dark:bg-cyan-500' : 'bg-gray-200 dark:bg-slate-600'">
+                        <span class="absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all" :class="on ? 'left-5' : 'left-1'"></span>
+                    </span>
+                </button>
+            </form>
+            {% else %}
+            <div class="flex items-center gap-4 rounded-xl border-2 border-dashed border-gray-200 dark:border-slate-700 px-4 py-3">
+                <img src="{% static card.egg.image %}" alt="" width="64" height="64"
+                     class="w-16 h-16 rounded-xl shrink-0 brightness-0 opacity-20 dark:invert dark:opacity-10">
+                <span class="flex-1 min-w-0">
+                    <span class="block text-sm font-semibold text-gray-400 dark:text-slate-500">???</span>
+                    <span class="block text-xs text-gray-500 dark:text-slate-400 mt-0.5">{{ card.egg.hint }}</span>
+                </span>
+            </div>
+            {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
     <!-- ===== Сводка ===== -->
     <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-10" data-aos="fade-up" data-aos-delay="100">
         <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 px-4 py-3.5">

@@ -27,13 +27,6 @@
 {% endcomment %}
 
 {% block extra_css %}
-<style>
-    /* Лента роликов: новый въезжает снизу (листаем вперёд) или сверху (назад). */
-    @keyframes rot-from-below { from { transform: translateY(100%); } to { transform: none; } }
-    @keyframes rot-from-above { from { transform: translateY(-100%); } to { transform: none; } }
-    .rot-from-below { animation: rot-from-below .25s ease-out; }
-    .rot-from-above { animation: rot-from-above .25s ease-out; }
-</style>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/theme/material-darker.min.css">
 <link rel="stylesheet" href="{% static 'css/codemirror-vscode.css' %}">
@@ -113,37 +106,7 @@
                 </div>
             </div>
 
-            {% comment %}
-            Лента роликов – шутка учителя, включается на пульте. x-if, а не
-            x-show: спрятанный <video> с autoplay всё равно качал бы файл. Без
-            controls и с controlslist: полный экран на телефоне увёл бы со
-            страницы, и надзор засчитал бы уход. Колесо и перетаскивание
-            мышью листают, щелчок – пауза. Видео – только колонка md+, на
-            телефоне колонки нет.
-            {% endcomment %}
-            <template x-if="brainrotOn && videos.length && !rotHidden">
-                <div class="relative rounded-xl overflow-hidden bg-black aspect-[9/16] select-none cursor-grab touch-none"
-                     @wheel.prevent="rotWheel($event)"
-                     @pointerdown="rotDown($event)" @pointerup="rotUp($event)">
-                    <template x-for="src in [videos[rotIndex]]" :key="rotIndex">
-                        <video :src="src" class="w-full h-full object-cover pointer-events-none"
-                               :class="rotDir > 0 ? 'rot-from-below' : 'rot-from-above'"
-                               muted autoplay loop playsinline disablepictureinpicture
-                               controlslist="nofullscreen nodownload noremoteplayback"></video>
-                    </template>
-                    <div x-show="rotPaused" x-cloak class="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none">
-                        <svg class="w-12 h-12 text-white/90" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-                    </div>
-                    <button type="button" @pointerdown.stop @click.stop="rotClose()" title="Убрать видео"
-                            class="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70">
-                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-                    </button>
-                </div>
-            </template>
-            <button type="button" x-show="brainrotOn && videos.length && rotHidden" x-cloak @click="rotOpen()"
-                    class="w-full text-xs text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300">
-                Показать видео
-            </button>
+            {% include 'quizzes/_brainrot_feed.html' %}
             </div>
         </aside>
 
@@ -281,6 +244,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/edit/closebrackets.min.js"></script>
 <script src="{% static 'js/code-lang.js' %}"></script>
 <script src="{% static 'js/code-run.js' %}"></script>
+<script src="{% static 'js/brainrot-feed.js' %}"></script>
 {% include 'quizzes/_mathjax.html' %}
 
 <script>
@@ -289,52 +253,6 @@ function classworkWork() {
         tasks: {{ tasks_json|safe }},
         drafts: {{ drafts_json|safe }},
 
-        // --- лента роликов ---
-        // Порядок свой у каждого ученика: соседи по парте листают разное.
-        videos: (({{ videos_json|safe }}).sort(() => Math.random() - 0.5)),
-        brainrotOn: {{ brainrot|yesno:"true,false" }},
-        rotHidden: (() => { try { return localStorage.getItem('classwork-brainrot-hidden') === '1'; } catch (e) { return false; } })(),
-        rotIndex: 0,
-        rotDir: 1,
-        rotPaused: false,
-        _rotY: null,
-        _rotAt: 0,
-
-        rotGo(dir) {
-            const n = this.videos.length;
-            this.rotDir = dir;
-            this.rotIndex = (this.rotIndex + dir + n) % n;
-            this.rotPaused = false;
-        },
-        // Тачпад шлёт десятки событий на один жест – листаем не чаще раза в 0,6 с.
-        rotWheel(e) {
-            if (Math.abs(e.deltaY) < 4 || Date.now() - this._rotAt < 600) return;
-            this._rotAt = Date.now();
-            this.rotGo(e.deltaY > 0 ? 1 : -1);
-        },
-        rotDown(e) {
-            this._rotY = e.clientY;
-            e.currentTarget.setPointerCapture(e.pointerId);
-        },
-        // Потянул вверх – следующий ролик, как в ленте; короткий щелчок – пауза.
-        rotUp(e) {
-            if (this._rotY === null) return;
-            const dy = e.clientY - this._rotY;
-            this._rotY = null;
-            if (Math.abs(dy) > 40) { this.rotGo(dy < 0 ? 1 : -1); return; }
-            const video = e.currentTarget.querySelector('video');
-            if (!video) return;
-            if (video.paused) { video.play(); this.rotPaused = false; }
-            else { video.pause(); this.rotPaused = true; }
-        },
-        rotClose() {
-            this.rotHidden = true;
-            try { localStorage.setItem('classwork-brainrot-hidden', '1'); } catch (e) {}
-        },
-        rotOpen() {
-            this.rotHidden = false;
-            try { localStorage.removeItem('classwork-brainrot-hidden'); } catch (e) {}
-        },
         answers: {},
         langs: {},
         current: 0,
@@ -499,7 +417,8 @@ function classworkWork() {
                 if (!(data.frozen === false && this._leaveAt > sentAt)) {
                     this.frozen = data.frozen;
                 }
-                this.brainrotOn = !!data.brainrot;
+                // Учитель запретил ленту на пульте – гаснет с этим же опросом.
+                window.dispatchEvent(new CustomEvent('brainrot', { detail: !!data.brainrot }));
                 this._end = Date.now() + data.left * 1000;
                 this.left = data.left;
             } catch (e) {

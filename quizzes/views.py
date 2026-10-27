@@ -9,6 +9,7 @@ from django.conf import settings
 from django.core.exceptions import PermissionDenied
 from django.views.decorators.http import require_POST, require_GET
 from django.views.decorators.csrf import csrf_protect
+from . import classwork
 from .models import PracticeItem, Quiz, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, Question, CodeSubmission, QuestionFile, ExamTaskProgress, HintChoice, SharedSolution
 from accounts.models import StudentGroup
 from textbook.models import EgeTask
@@ -1428,6 +1429,7 @@ def quiz_detail_view(request, quiz_id):
         'last_submissions_json': js_json(last_submissions),
         'total_points': sum(q.points for q in all_questions),
         'show_solutions': show_solutions,
+        **classwork.brainrot_context(request.user),
     })
 
 @login_required

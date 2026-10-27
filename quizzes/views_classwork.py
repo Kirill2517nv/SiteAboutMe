@@ -115,8 +115,7 @@ def work_view(request, pk):
         'drafts_json': js_json({'answers': attempt.answers, 'languages': attempt.languages}),
         'left': max(0, int((attempt.deadline - timezone.now()).total_seconds())),
         'frozen': attempt.is_frozen,
-        'brainrot': quiz.classwork_brainrot,
-        'videos_json': js_json(classwork.brainrot_videos()),
+        **classwork.brainrot_context(request.user, quiz),
     })
 
 
@@ -244,8 +243,8 @@ def state_view(request, pk):
         'frozen': attempt.is_frozen,
         'finished': attempt.is_finished,
         'left': max(0, left),
-        # Учитель выключил ленту на пульте – открытые страницы гасят её с опросом.
-        'brainrot': attempt.quiz.classwork_brainrot,
+        # Учитель запретил ленту на пульте – открытые страницы гасят её с опросом.
+        'brainrot': classwork.brainrot_visible(request.user, attempt.quiz),
     })
 
 

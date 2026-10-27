@@ -123,6 +123,9 @@ class Profile(models.Model):
         max_length=5, choices=NAME_VISIBILITY_CHOICES, default='anon',
         verbose_name="Имя под решениями",
     )
+    # Найденные пасхалки: {ключ: включена}. Нет ключа – не найдена. Список
+    # пасхалок – в accounts/easter_eggs.py, новая пасхалка миграции не требует.
+    easter_eggs = models.JSONField(default=dict, blank=True, verbose_name="Пасхалки")
     # Заявка по коду класса. Класс лежит здесь, а не в group, пока учитель не
     # принял: group читают все отчёты, и заявка в них не попадает без фильтров.
     join_group = models.ForeignKey(

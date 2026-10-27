@@ -1,0 +1,18 @@
+{% comment %}
+Секрет пасхалки brainrot: 10 переключений задач за 15 секунд (easterHunt в
+static/js/brainrot-feed.js). Страница шлёт `task-switch` из своего goTo.
+Ставится вне колонки md+, иначе на телефоне не было бы ни счёта, ни тоста.
+Только практикум и тренажёр: на самостоятельной идёт работа на оценку.
+{% endcomment %}
+<div x-data="easterHunt('{% url 'accounts:easter_egg_found' 'brainrot' %}', '{{ csrf_token }}')" @task-switch.window="tick()">
+    <div x-show="toast" x-cloak x-transition.opacity role="status"
+         class="fixed bottom-20 md:bottom-6 right-4 left-4 sm:left-auto sm:max-w-sm z-50 flex items-center gap-4 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-slate-800 shadow-lg px-4 py-3">
+        {# Та же картинка, что на карточке в профиле, – цветная: пасхалка уже включена. #}
+        <img :src="toastImage" alt="" width="64" height="64" class="w-16 h-16 rounded-xl shrink-0">
+        <span class="text-sm text-gray-800 dark:text-slate-200">
+            <span class="block font-semibold">Найдена пасхалка: <span x-text="toast"></span></span>
+            Полистал задачи – устал. Пора смотреть тикитоки)
+            <span class="block">Выключить можно в профиле.</span>
+        </span>
+    </div>
+</div>

@@ -1,0 +1,42 @@
+{% comment %}
+Лента роликов – пасхалка brainrot (accounts/easter_eggs.py). Ставится в колонку
+задач md+ на самостоятельной, в тренажёре и в практикуме; контекст –
+classwork.brainrot_context, компонент – brainrotFeed в static/js/brainrot-feed.js.
+x-if, а не x-show: спрятанный <video> с autoplay всё равно качал бы файл. Без
+controls и с controlslist: полный экран на телефоне увёл бы со страницы, и
+надзор самостоятельной засчитал бы уход. Колесо и перетаскивание мышью
+листают, щелчок – пауза. На телефоне колонки нет – нет и ленты.
+{% endcomment %}
+{{ brainrot_videos|json_script:"brainrot-videos" }}
+<div x-data="brainrotFeed({{ brainrot|yesno:'true,false' }})" @brainrot.window="rotOn = $event.detail">
+    <template x-if="rotOn && videos.length && !rotHidden">
+        <div class="relative rounded-xl overflow-hidden bg-black aspect-[9/16] select-none cursor-grab touch-none"
+             @wheel.prevent="rotWheel($event)"
+             @pointerdown="rotDown($event)" @pointerup="rotUp($event)">
+            <template x-for="src in [videos[rotIndex]]" :key="rotIndex">
+                <video :src="src" class="w-full h-full object-cover pointer-events-none"
+                       :class="rotDir > 0 ? 'rot-from-below' : 'rot-from-above'"
+                       muted autoplay loop playsinline disablepictureinpicture
+                       controlslist="nofullscreen nodownload noremoteplayback"></video>
+            </template>
+            <div x-show="rotPaused" x-cloak class="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none">
+                <svg class="w-12 h-12 text-white/90" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+            </div>
+            <button type="button" @pointerdown.stop @click.stop="rotClose()" title="Убрать видео"
+                    class="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+    </template>
+    <button type="button" x-show="rotOn && videos.length && rotHidden" x-cloak @click="rotOpen()"
+            class="w-full rounded-lg border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-slate-300 hover:border-brand-400 hover:text-brand-700 dark:hover:border-cyan-500 dark:hover:text-cyan-300 transition-colors">
+        Показать видео
+    </button>
+</div>
+<style>
+    /* Новый ролик въезжает снизу (листаем вперёд) или сверху (назад). */
+    @keyframes rot-from-below { from { transform: translateY(100%); } to { transform: none; } }
+    @keyframes rot-from-above { from { transform: translateY(-100%); } to { transform: none; } }
+    .rot-from-below { animation: rot-from-below .25s ease-out; }
+    .rot-from-above { animation: rot-from-above .25s ease-out; }
+</style>

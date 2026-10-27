@@ -5,14 +5,19 @@ from django.contrib.auth.models import User
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.db.models import Count, Prefetch
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.templatetags.static import static
+from django.urls import reverse
 from django.utils import timezone
 from django.views import generic
+from django.views.decorators.http import require_POST
 from django import forms
 
 from quizzes.models import UserResult
 from textbook.services import profile_textbook_stats
 
+from . import easter_eggs
 from .models import Notification, Profile, StudentGroup
 
 
@@ -112,6 +117,14 @@ class ProfileView(LoginRequiredMixin, generic.TemplateView):
                 profile.save(update_fields=['solution_name_visibility'])
             return redirect('accounts:profile')
 
+        if 'easter_egg' in request.POST:
+            easter_eggs.switch(profile, request.POST['easter_egg'], request.POST.get('on') == '1')
+            # Карточка переключается fetch'ем и перерисовывается сама – страница
+            # не перезагружается и не уезжает наверх. Без JS – обычный возврат.
+            if request.headers.get('X-Requested-With') == 'fetch':
+                return HttpResponse(status=204)
+            return redirect(f"{reverse('accounts:profile')}#easter-eggs")
+
         if 'alumni_about' in request.POST:
             alumni_form = AlumniForm(request.POST, instance=profile)
             if alumni_form.is_valid():
@@ -155,6 +168,7 @@ class ProfileView(LoginRequiredMixin, generic.TemplateView):
             'suggestions': list(user.suggestions.select_related('article')[:8]),
             'suggestions_total': user.suggestions.count(),
             'name_visibility_options': Profile.NAME_VISIBILITY_OPTIONS,
+            'easter_egg_cards': easter_eggs.cards(user) if is_own else [],
         })
         if is_own and 'name_form' not in context:
             name_form = NameForm(user=user)
@@ -276,6 +290,17 @@ def join_view(request):
         return render(request, 'accounts/join.html', {'done': True, 'group': form.group,
                                                       'username': user.username})
     return render(request, 'accounts/join.html', {'form': form})
+
+
+@login_required
+@require_POST
+def easter_egg_found_view(request, key):
+    """Секрет на странице выполнен: пасхалка открыта и включена."""
+    if key not in easter_eggs.EGGS_BY_KEY:
+        return JsonResponse({'error': 'Нет такой пасхалки'}, status=404)
+    egg = easter_eggs.EGGS_BY_KEY[key]
+    return JsonResponse({'new': easter_eggs.unlock(request.user, key),
+                         'title': egg.title, 'image': static(egg.image)})
 
 
 @login_required

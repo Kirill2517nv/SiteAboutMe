@@ -22,7 +22,7 @@ from django.views.decorators.http import require_POST
 from accounts.templatetags.profile_tags import surname_first
 from textbook.models import Article, EgeTask
 
-from . import ege_practice, ege_stats
+from . import classwork, ege_practice, ege_stats
 from .ege_scoring import answer_shape, check_answer, expected_answer
 from .ege_constants import (
     EGE_QUIZ_TYPES, EGE_RECOMMENDED_TIME, EGE_TASK_POINTS, EXAM_MINUTES,
@@ -735,6 +735,8 @@ def practice_view(request, pk):
         # В работе над ошибками сессия смешанная, и одной ширины на всех не
         # хватает: ряд из четырёх разъезжался бы с тройкой.
         'nav_rows_json': js_json(_navigator_rows(items)),
+        # Лента роликов и её секрет; срез – работа на оценку, его не трогаем.
+        **(classwork.brainrot_context(request.user) if session.kind != 'check' else {}),
     })
 
 

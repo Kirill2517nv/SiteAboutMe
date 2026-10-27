@@ -152,7 +152,8 @@
 
         <!-- Сайдбар с сеткой задач -->
         <aside class="present-hide hidden md:block w-52 shrink-0">
-            <div class="sticky top-24 bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 p-3">
+            <div class="sticky top-24 space-y-3">
+            <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 p-3">
                 <div class="text-xs font-medium text-gray-400 dark:text-slate-500 mb-2 px-1">Задачи</div>
                 {% comment %}
                 Связка обведена рамкой и занимает ровно одну строку: тройка
@@ -192,6 +193,8 @@
                         <span class="task-btn task-swatch default"></span> без ответа
                     </div>
                 </div>
+            </div>
+            {% if brainrot_videos %}{% include 'quizzes/_brainrot_feed.html' %}{% endif %}
             </div>
         </aside>
 
@@ -400,6 +403,7 @@
         {% csrf_token %}
         <input type="hidden" name="codes" x-ref="finishCodes">
     </form>
+    {% if brainrot_hunt %}{% include 'quizzes/_easter_hunt.html' %}{% endif %}
 </div>
 </div>
 {% endblock content %}
@@ -412,6 +416,7 @@
 <script src="{% static 'js/code-lang.js' %}"></script>
 <script src="{% static 'js/answer-table.js' %}"></script>
 <script src="{% static 'js/code-run.js' %}"></script>
+<script src="{% static 'js/brainrot-feed.js' %}"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/edit/matchbrackets.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/edit/closebrackets.min.js"></script>
 
@@ -598,6 +603,7 @@ function practiceApp() {
             this._flushTime();
             this.flushAnswers();
             this.current = i;
+            this.$dispatch('task-switch');  // секрет пасхалки, _easter_hunt.html
             this._startTask();
             this.$nextTick(() => this._ensureEditor());
         },

@@ -1137,6 +1137,27 @@ class ExamAnswerTests(TestCase):
             content_type='application/json',
         )
 
+    @override_settings(STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    })
+    def test_easter_hunt_until_found(self):
+        from accounts import easter_eggs
+
+        url = f'/ege/practice/{self.session.pk}/'
+        response = self.client.get(url)
+        self.assertFalse(response.context['brainrot'])
+        self.assertContains(response, 'easterHunt(')
+        self.assertContains(response, "$dispatch('task-switch')")
+        easter_eggs.unlock(self.user, 'brainrot')
+        response = self.client.get(url)
+        self.assertTrue(response.context['brainrot'])
+        self.assertNotContains(response, 'easterHunt(')
+        # Срез не трогаем: ни ленты, ни секрета.
+        PracticeSession.objects.filter(pk=self.session.pk).update(kind='check')
+        response = self.client.get(url)
+        self.assertNotIn('brainrot', response.context)
+
     def test_save_returns_no_verdict(self):
         data = self._answer('4').json()
         self.assertTrue(data['saved'])
@@ -4900,8 +4921,10 @@ class ClassworkStudentPagesTests(TestCase):
         # Условие в галерее – Markdown, как на работе, а не сырой текст в pre-wrap.
         self.assertContains(gallery, 'class="task-text')
 
-    def test_brainrot_feed_follows_the_teacher(self):
+    def test_brainrot_feed_needs_teacher_and_profile(self):
         import os
+
+        from accounts import easter_eggs
 
         folder = os.path.join(self.media, 'brainrot')
         os.makedirs(folder)
@@ -4910,21 +4933,27 @@ class ClassworkStudentPagesTests(TestCase):
 
         self._open()
         attempt = self._start()
+        state_url = f'/classwork/a/{attempt.pk}/state/'
         response = self.client.get(f'/classwork/a/{attempt.pk}/')
         self.assertFalse(response.context['brainrot'])
         # В ленту идут только .mp4: исходник рядом в неё не попадает.
-        self.assertEqual(json.loads(response.context['videos_json']), ['/media/brainrot/a.mp4'])
+        self.assertEqual(response.context['brainrot_videos'], ['/media/brainrot/a.mp4'])
+        # Секрет на самостоятельной не ищут: идёт работа на оценку.
+        self.assertFalse(response.context['brainrot_hunt'])
+        self.assertNotContains(response, 'easterHunt(')
 
         self.client.force_login(self.teacher)
         self.client.post(f'/classwork/{self.work.pk}/control/', {'action': 'brainrot', 'on': '1'})
         self.client.force_login(self.pupil)
-        state = self.client.get(f'/classwork/a/{attempt.pk}/state/').json()
-        self.assertTrue(state['brainrot'])
+        # Учитель разрешил, а у ученика пасхалка не найдена – ленты нет.
+        self.assertFalse(self.client.get(state_url).json()['brainrot'])
+        easter_eggs.unlock(self.pupil, 'brainrot')
+        self.assertTrue(self.client.get(state_url).json()['brainrot'])
 
         self.client.force_login(self.teacher)
         self.client.post(f'/classwork/{self.work.pk}/control/', {'action': 'brainrot', 'on': '0'})
         self.client.force_login(self.pupil)
-        self.assertFalse(self.client.get(f'/classwork/a/{attempt.pk}/state/').json()['brainrot'])
+        self.assertFalse(self.client.get(state_url).json()['brainrot'])
 
     def test_textbook_banner_follows_the_window(self):
         self.client.force_login(self.pupil)

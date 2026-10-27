@@ -419,3 +419,67 @@ class JoinByCodeTests(TestCase):
                          {'action': 'issue_code', '_selected_action': [self.group.pk]})
         self.group.refresh_from_db()
         self.assertNotEqual(self.group.join_code, old)
+
+
+@NO_MANIFEST_STATIC
+class EasterEggTests(TestCase):
+    """Пасхалки: секрет открывает и включает, профиль переключает, учитель не правит."""
+
+    def setUp(self):
+        self.student = User.objects.create_user('egg', password='pw')
+        self.teacher = User.objects.create_superuser('egg-teacher', password='pw')
+        self.client.force_login(self.student)
+
+    def _eggs(self):
+        return Profile.objects.get(user=self.student).easter_eggs
+
+    def test_hidden_card_shows_hint_until_found(self):
+        html = self.client.get(reverse('accounts:profile')).content.decode()
+        self.assertIn('???', html)
+        self.assertIn('Не задерживайся ни на одной задаче', html)
+        self.assertNotIn('Чемпион по пролистыванию', html)
+
+    def test_found_turns_on_once(self):
+        url = reverse('accounts:easter_egg_found', args=['brainrot'])
+        data = self.client.post(url).json()
+        self.assertTrue(data['new'])
+        # Тост показывает ту же картинку, что карточка в профиле.
+        self.assertEqual(data['image'], '/static/img/easter-eggs/brainrot.png')
+        self.assertEqual(self._eggs(), {'brainrot': True})
+        # Выключил в профиле – повторный секрет не включает обратно.
+        # Переключатель в профиле – fetch без перезагрузки страницы.
+        response = self.client.post(reverse('accounts:profile'), {'easter_egg': 'brainrot', 'on': '0'},
+                                    headers={'X-Requested-With': 'fetch'})
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(self.client.post(url).json()['new'])
+        self.assertEqual(self._eggs(), {'brainrot': False})
+        html = self.client.get(reverse('accounts:profile')).content.decode()
+        self.assertIn('Чемпион по пролистыванию', html)
+        self.assertIn('x-data="{ on: false }"', html)
+
+    def test_switch_cannot_open_unfound(self):
+        self.client.post(reverse('accounts:profile'), {'easter_egg': 'brainrot', 'on': '1'})
+        self.assertEqual(self._eggs(), {})
+
+    def test_unknown_key_and_get(self):
+        self.assertEqual(self.client.post(reverse('accounts:easter_egg_found', args=['nope'])).status_code, 404)
+        self.assertEqual(self.client.get(reverse('accounts:easter_egg_found', args=['brainrot'])).status_code, 405)
+
+    def test_teacher_does_not_switch_foreign(self):
+        self.client.post(reverse('accounts:easter_egg_found', args=['brainrot']))
+        self.client.force_login(self.teacher)
+        url = reverse('accounts:student_profile', args=[self.student.id])
+        self.assertNotIn('id="easter-eggs"', self.client.get(url).content.decode())
+        self.assertEqual(self.client.post(url, {'easter_egg': 'brainrot', 'on': '0'}).status_code, 403)
+        self.assertEqual(self._eggs(), {'brainrot': True})
+
+    def test_visible_needs_profile_and_teacher(self):
+        from quizzes.classwork import brainrot_visible
+        work = Quiz(quiz_type='classwork', classwork_brainrot=True)
+        self.assertFalse(brainrot_visible(self.student))
+        self.client.post(reverse('accounts:easter_egg_found', args=['brainrot']))
+        self.student.refresh_from_db()
+        self.assertTrue(brainrot_visible(self.student))
+        self.assertTrue(brainrot_visible(self.student, work))
+        work.classwork_brainrot = False
+        self.assertFalse(brainrot_visible(self.student, work))

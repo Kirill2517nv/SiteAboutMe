@@ -18,6 +18,8 @@ from django.db.models import Sum
 from django.urls import reverse
 from django.utils import timezone
 
+from accounts import easter_eggs
+
 from .ege_constants import EXAM_ANSWER_GRACE
 from .models import ClassworkAttempt, Quiz, QuizAssignment
 
@@ -43,6 +45,29 @@ def brainrot_videos():
     except OSError:
         return []
     return [f'{settings.MEDIA_URL}{BRAINROT_DIR}/{name}' for name in names]
+
+
+def brainrot_visible(user, quiz=None):
+    """
+    Единственное правило «показывать ли ленту»: ученик включил пасхалку
+    brainrot у себя в профиле, а на самостоятельной (quiz) ещё и учитель
+    разрешил на пульте. На практикуме и в тренажёре разрешать некому.
+    """
+    if quiz is not None and not quiz.classwork_brainrot:
+        return False
+    return easter_eggs.is_on(user, 'brainrot')
+
+
+def brainrot_context(user, quiz=None):
+    """Контекст партиалов ленты (_brainrot_feed.html) и охоты (_easter_hunt.html).
+    quiz – только самостоятельная: на ней секрет не ищут, идёт работа на оценку."""
+    return {
+        'brainrot': brainrot_visible(user, quiz),
+        'brainrot_videos': brainrot_videos(),
+        'brainrot_hunt': quiz is None and not easter_eggs.is_found(user, 'brainrot'),
+    }
+
+
 # Шкала одна на все работы; править здесь.
 GRADE_SCALE = ((85, 5), (65, 4), (45, 3))  # процент от максимума -> оценка, ниже – 2
 DRAFT_LIMIT = 20000
