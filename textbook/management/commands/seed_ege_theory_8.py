@@ -338,6 +338,41 @@ def _count_script():
     )
 
 
+def _loops_script():
+    """Тот же перебор без `product`: по циклу на каждую букву слова.
+
+    Попросили ученики – самое топорное решение, где видно, откуда берутся
+    слова и номера. `_check()` выполняет его так же, как `_count_script()`.
+    """
+    alphabet = ''.join(sorted(COUNT_LETTERS))
+    names = 'abcdefghij'[:COUNT_LEN]
+    lines = [
+        f"letters = '{alphabet}'          # по алфавиту – иначе номера не те",
+        '',
+        'total = 0                    # счётчик подходящих слов',
+        'number = 0                   # номер текущего слова в списке',
+    ]
+    for depth, name in enumerate(names):
+        lines.append('    ' * depth + f'for {name} in letters:')
+    pad = '    ' * COUNT_LEN
+    banned = ' and '.join(f"'{sym}' not in word" for sym in COUNT_BANNED)
+    exact = ' and '.join(
+        f"word.count('{sym}') == {number}"
+        for sym, number in COUNT_EXACT.items()
+    )
+    lines += [
+        f'{pad}number += 1',
+        f"{pad}word = {' + '.join(names)}",
+        f'{pad}if number % 2 == 1:              # нечётный номер',
+        f'{pad}    if {banned}:',
+        f'{pad}        if {exact}:',
+        f'{pad}            total += 1',
+        '',
+        f'print(total)                 # {COUNT_ANSWER}',
+    ]
+    return '\n'.join(lines) + '\n'
+
+
 def _check():
     """Ответ ФИПИ получается перебором, а утверждения разбора – из кода.
 
@@ -417,13 +452,14 @@ def _check():
     # код в разборе давал ответ из разбора, а проверить это глазами нельзя.
     # Сверяется напечатанное, а не переменная: ученик увидит именно вывод,
     # и заодно стандартный поток не течёт в вывод самой команды.
-    printed = io.StringIO()
-    with redirect_stdout(printed):
-        exec(_count_script(), {})  # noqa: S102 – свой же сгенерированный код
-    assert printed.getvalue().strip() == str(COUNT_ANSWER), (
-        f'скрипт из статьи печатает {printed.getvalue().strip()!r}, '
-        f'а в разборе {COUNT_ANSWER}'
-    )
+    for script in (_count_script(), _loops_script()):
+        printed = io.StringIO()
+        with redirect_stdout(printed):
+            exec(script, {})  # noqa: S102 – свой же сгенерированный код
+        assert printed.getvalue().strip() == str(COUNT_ANSWER), (
+            f'скрипт из статьи печатает {printed.getvalue().strip()!r}, '
+            f'а в разборе {COUNT_ANSWER}'
+        )
 
 
 class Command(BaseCommand):
@@ -748,7 +784,30 @@ class Command(BaseCommand):
                 'три строки, всё остальное остаётся как есть.'
             )),
 
-            dict(order=13, block_type='text', title='Типичные ошибки', content=(
+            dict(order=13, block_type='text',
+                 title='Совсем без библиотек: цикл на каждую букву', content=(
+                '`product` и `enumerate` – сокращения, и за ними легко '
+                'потерять, что происходит. Вот то же самое руками: слово из '
+                f'{COUNT_LEN} букв – это {COUNT_LEN} вложенных циклов, по одному '
+                'на каждое место. Внешний цикл перебирает первую букву, '
+                'самый внутренний – последнюю, поэтому последняя буква '
+                'меняется быстрее всех – ровно как в списке по алфавиту.\n'
+                '\n'
+                'Номер слова считаем сами: `number += 1` на каждом витке '
+                'самого внутреннего цикла. Шесть букв склеиваем в одну '
+                'строку `word` – и дальше все проверки делаются над ней: '
+                '`not in` – буквы нет в слове, `count` – сколько раз она '
+                'встретилась.\n'
+                '\n'
+                'Решение длинное, зато его можно написать, не помня ни одной '
+                'библиотеки, и ответ тот же.'
+            )),
+
+            dict(order=14, block_type='code',
+                 title='Шесть вложенных циклов', code_language='python',
+                 content=_loops_script()),
+
+            dict(order=15, block_type='text', title='Типичные ошибки', content=(
                 f'1. **Забыли прибавить единицу.** Посчитали значение слова '
                 f'и записали {value}. Список нумеруется с единицы, а числа '
                 'начинаются с нуля – между значением и номером всегда сдвиг '
