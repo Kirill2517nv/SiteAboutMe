@@ -270,5 +270,8 @@
 - [x] `static/vendor/` (4.2 МБ) добавлен в git – без него `git pull` оставил бы сайт без CSS/JS
 - [x] CHANGELOG 0.6.10, docs/api/ege.md (пробник и окно варианта), docs/api/overview.md
 - [x] Тесты: quizzes + accounts + textbook + spetskurs
-- [ ] Ждёт Кирилла: браузер, push, выкатка (accounts 0015, quizzes 0060–0061, textbook 0016)
+- [x] 2026-11-09: выкатка 0.6.10 – push 7675608, deploy.sh (migrate accounts 0015, quizzes 0060–0061, textbook 0016), `seed_masterclass_fizika`, 12 файлов `MK_*` скопированы до `collectstatic`; висящих `join_group` на проде было 0
+- [x] qrcode==8.2 добавлен в requirements.txt – без него `seed_masterclass_fizika` падал на проде (7675608)
+- [x] Смоук прода: главная, `/ege/`, `/accounts/join/`, мастер-класс, vendor CSS/JS, MathJax + шрифты, `MK_*.{html,js,wasm}` – 200
+- [ ] Пробник на проде завести заново: данные dev не переносятся – объявление, класс-ключ «ЕГЭ», дата открытия
 
