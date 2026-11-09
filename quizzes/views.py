@@ -465,6 +465,10 @@ def ege_list_view(request):
             # Дата, когда откроется. Пусто – вариант уже закрыт по end_date,
             # и карточка пишет «Закрыт», а не прошедшую дату открытия.
             'opens_at': quiz.start_date if (quiz.start_date and quiz.start_date > timezone.now()) else None,
+            # Экзамен с результатом всё равно редиректит на страницу результатов,
+            # поэтому «Пройти снова» у ученика там ведёт в никуда – кнопку не рисуем.
+            'can_start': (quiz.exam_mode != 'exam' or best_score is None
+                          or request.user.is_superuser),
         })
 
     from . import ege_stats

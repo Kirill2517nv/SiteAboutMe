@@ -5,6 +5,7 @@ from datetime import timedelta
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import SimpleTestCase, TestCase, TransactionTestCase, override_settings
+from django.urls import reverse
 from django.utils import timezone
 
 from . import ege_practice, ege_scoring, ege_stats
@@ -454,6 +455,27 @@ class EgeResultsMatrixTests(TestCase):
                                                             password='pwd')
         self.assertTrue(solutions.can_view(teacher, self.code_q))
         self.assertFalse(solutions.can_view(self.pupil, self.code_q))
+
+
+class EgeListButtonTests(TestCase):
+    """Экзамен с результатом не предлагает «Пройти снова»: страница варианта
+    всё равно редиректит на результат, и кнопка вела бы в никуда."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user('hub_pupil', password='pwd')
+        self.client.force_login(self.user)
+
+    def _hub_after_writing(self, exam_mode):
+        quiz = Quiz.objects.create(title='Вариант', quiz_type='exam',
+                                   exam_mode=exam_mode, is_public=True)
+        UserResult.objects.create(user=self.user, quiz=quiz, score=1)
+        return self.client.get(reverse('ege:ege_list')).content.decode()
+
+    def test_written_exam_has_no_retake_button(self):
+        self.assertNotIn('Пройти снова', self._hub_after_writing('exam'))
+
+    def test_written_practice_can_be_retaken(self):
+        self.assertIn('Пройти снова', self._hub_after_writing('practice'))
 
 
 class VariantSummaryTests(TestCase):

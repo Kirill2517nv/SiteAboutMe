@@ -336,12 +336,12 @@
 
                     <div class="mt-4 flex flex-col gap-2">
                         {% if user.is_authenticated %}
-                        {% if item.is_open %}
+                        {% if item.is_open and item.can_start %}
                         <a href="{% url 'ege:ege_detail' item.quiz.id %}"
                            class="text-center px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors">
                             {% if item.best_score is not None %}Пройти снова{% else %}Начать{% endif %}
                         </a>
-                        {% else %}
+                        {% elif not item.is_open %}
                         <span class="text-center px-4 py-2 bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400 text-sm font-medium rounded-lg cursor-not-allowed">
                             {% if item.opens_at %}Откроется {{ item.opens_at|date:"j E, H:i" }}{% else %}Закрыт{% endif %}
                         </span>
