@@ -364,6 +364,12 @@ class JoinByCodeTests(TestCase):
         self.assertContains(self._join(old), 'Код не подошёл')
         self.assertFalse(User.objects.filter(username='ivanov').exists())
 
+    def test_link_prefills_code(self):
+        # По такой ссылке ведёт QR с объявления: код уже вписан в форму
+        response = self.client.get(reverse('accounts:join'),
+                                   {'code': self.group.join_code})
+        self.assertContains(response, f'value="{self.group.join_code}"')
+
     def test_ege_flag_comes_from_class(self):
         ege = StudentGroup.objects.create(name='ЕГЭ', is_ege_class=True)
         ege.issue_join_code()

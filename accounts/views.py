@@ -278,10 +278,15 @@ class JoinForm(UserCreationForm):
 
 
 def join_view(request):
-    """/accounts/join/ – регистрация по коду класса: ученик сразу входит на сайт."""
+    """/accounts/join/ – регистрация по коду класса: ученик сразу входит на сайт.
+
+    `?code=` подставляет код в форму: по такой ссылке ведёт QR с объявления,
+    чтобы ученик не переписывал «ЕГЭ» с бумаги. Код и так напечатан на
+    объявлении, так что в адресе он ничего нового не выдаёт."""
     if request.user.is_authenticated:
         return redirect('home')
-    form = JoinForm(request.POST or None)
+    form = JoinForm(request.POST or None,
+                    initial={'code': request.GET.get('code', '')})
     if request.method == 'POST' and form.is_valid():
         user = form.save()
         return render(request, 'accounts/join.html', {'done': True, 'group': form.group,
