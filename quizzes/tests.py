@@ -17,8 +17,8 @@ from textbook.models import Article, EgeTask, Section
 from textbook.templatetags.textbook_tags import plural
 
 from .models import (
-    Choice, ClassworkAttempt, CodeSubmission, ExamTaskProgress, PracticeItem, PracticeSession,
-    Question, QuestionFile, Quiz, QuizAssignment, UserAnswer, UserResult,
+    Choice, ClassworkAttempt, CodeSubmission, ExamTaskProgress, MockExamSignup, PracticeItem,
+    PracticeSession, Question, QuestionFile, Quiz, QuizAssignment, UserAnswer, UserResult,
     normalize_text_answer,
 )
 from .tasks import update_practice_item_from_submission as update_practice_from_submission
@@ -344,6 +344,17 @@ class VariantAttemptTests(TestCase):
         )
         self.assertEqual(self._progress(self.text).attempts_to_solve, 1)
 
+    def test_snapshot_does_not_count_an_attempt(self):
+        # Снимок с ответом проверяется по тестам молча, а решает ответ в поле:
+        # отправка программы не должна раздувать «с какой попытки решено».
+        from quizzes.tasks import update_exam_progress_from_submission
+        submission = CodeSubmission.objects.create(
+            user=self.user, quiz=self.quiz, question=self.code,
+            code='print(1)', status='success', is_correct=True, answer='1',
+        )
+        update_exam_progress_from_submission(submission)
+        self.assertEqual(self._progress(self.code).attempts_to_solve, 0)
+
     def test_counter_freezes_after_the_task_is_solved(self):
         # Две отправки до успеха – «решено со второй попытки». Дальнейшие
         # эксперименты с кодом счётчик не трогают.
@@ -377,6 +388,72 @@ class VariantAttemptTests(TestCase):
             content_type='application/json',
         )
         self.assertEqual(self._progress(self.code).attempts_to_solve, 1)
+
+
+class EgeResultsMatrixTests(TestCase):
+    """Таблица результатов: часть балла за 26/27 и прочерк за неотвеченную."""
+
+    def setUp(self):
+        self.pupil = get_user_model().objects.create_user('pupil_matrix', password='pwd')
+        self.quiz = Quiz.objects.create(title='Пробный', quiz_type='exam',
+                                        exam_mode='exam', slug='probny', is_public=True)
+        self.text_q = Question.objects.create(
+            quiz=self.quiz, text='2 + 2', question_type='text',
+            correct_text_answer='4', ege_number=1, points=1,
+        )
+        self.code_q = Question.objects.create(
+            quiz=self.quiz, text='два числа', question_type='code',
+            ege_number=26, points=2,
+        )
+        from .models import TestCase as TestCaseModel
+        TestCaseModel.objects.create(question=self.code_q, input_data='',
+                                     output_data='10 20')
+        self.skipped_q = Question.objects.create(
+            quiz=self.quiz, text='пятое', question_type='text',
+            correct_text_answer='5', ege_number=5, points=1,
+        )
+        result = UserResult.objects.create(user=self.pupil, quiz=self.quiz, score=2)
+        UserAnswer.objects.create(user_result=result, question=self.text_q,
+                                  text_answer='4', is_correct=True)
+        UserAnswer.objects.create(user_result=result, question=self.code_q,
+                                  text_answer='20 10', is_correct=False, score=1)
+        # Неотвеченную сдача всё равно записывает – но пустой.
+        UserAnswer.objects.create(user_result=result, question=self.skipped_q,
+                                  text_answer='', is_correct=False)
+
+    def test_partial_score_is_counted(self):
+        from quizzes.views import build_ege_results_matrix
+        matrix, _, _ = build_ege_results_matrix(self.quiz)
+        row = matrix[0]
+        self.assertEqual(row['score'], 2)  # 1 за текстовую + 1 из 2 за 26-е
+        self.assertEqual(row['correct_count'], 1)
+        partial = [r for r in row['task_results'] if r['ege_number'] == 26][0]
+        self.assertFalse(partial['correct'])
+        self.assertEqual((partial['score'], partial['points']), (1, 2))
+
+    def test_unanswered_task_is_a_dash(self):
+        from quizzes.views import build_ege_results_matrix
+        matrix, _, _ = build_ege_results_matrix(self.quiz)
+        skipped = [r for r in matrix[0]['task_results'] if r['ege_number'] == 5][0]
+        self.assertIsNone(skipped['correct'])
+
+    def test_second_attempt_wrong_is_not_a_dash(self):
+        # Сдача пишет пустую строку на каждую задачу. Во второй попытке ученик
+        # ответил неверно – в отчёте должен быть крест, а не «не открывал».
+        second = UserResult.objects.create(user=self.pupil, quiz=self.quiz, score=0)
+        UserAnswer.objects.create(user_result=second, question=self.skipped_q,
+                                  text_answer='7', is_correct=False)
+        from quizzes.views import build_ege_results_matrix
+        matrix, _, _ = build_ege_results_matrix(self.quiz)
+        fifth = [r for r in matrix[0]['task_results'] if r['ege_number'] == 5][0]
+        self.assertIs(fifth['correct'], False)
+
+    def test_teacher_opens_solutions_of_unsolved_task(self):
+        from quizzes import solutions
+        teacher = get_user_model().objects.create_superuser('teacher_matrix',
+                                                            password='pwd')
+        self.assertTrue(solutions.can_view(teacher, self.code_q))
+        self.assertFalse(solutions.can_view(self.pupil, self.code_q))
 
 
 class VariantSummaryTests(TestCase):
@@ -5827,3 +5904,153 @@ class ClassworkSeedBlock6Tests(TestCase):
         self.assertEqual(
             quiz.questions.get(title='Побитовое И').test_cases.get().pk,
             current)
+
+
+NO_MANIFEST_STATIC = override_settings(STORAGES={
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+})
+
+
+@NO_MANIFEST_STATIC
+class MockExamTests(TestCase):
+    """Пробник: вариант открывается по времени, окно спрашивает и напоминает."""
+
+    def setUp(self):
+        from django.urls import reverse
+        from accounts.models import Profile, StudentGroup
+
+        User = get_user_model()
+        self.reverse = reverse
+        self.key_group = StudentGroup.objects.create(
+            name='Пробник', join_code='ЕГЭ',
+            join_code_until=timezone.now() + timedelta(days=7))
+        self.class_a = StudentGroup.objects.create(name='10А')
+        self.quiz = Quiz.objects.create(
+            title='Пробный ЕГЭ №1', quiz_type='exam', exam_mode='exam', is_public=True,
+            signup_text='Пробник в пятницу. Ответьте, пожалуйста.',
+            signup_group=self.key_group,
+            start_date=timezone.now() + timedelta(days=2))
+        self.user = User.objects.create_user('pupil', password='pw')
+        Profile.objects.create(user=self.user, group=self.class_a)
+        self.key_user = User.objects.create_user('key_pupil', password='pw')
+        Profile.objects.create(user=self.key_user, group=self.key_group)
+        self.teacher = User.objects.create_superuser('mock_teacher', 't@x.ru', 'pw')
+
+    def test_closed_until_start(self):
+        self.client.force_login(self.user)
+        url = self.reverse('ege:ege_detail', args=[self.quiz.id])
+        # Страница и все эндпоинты решения закрыты до открытия
+        self.assertEqual(self.client.get(url).status_code, 302)
+        for name in ('ege:ege_finish', 'ege:ege_check', 'ege:ege_save_time'):
+            response = self.client.post(self.reverse(name, args=[self.quiz.id]),
+                                        data='{}', content_type='application/json')
+            self.assertEqual(response.status_code, 403, name)
+        # Учитель проходит всегда
+        self.client.force_login(self.teacher)
+        self.assertEqual(self.client.get(url).status_code, 200)
+
+    def test_open_after_start(self):
+        self.quiz.start_date = timezone.now() - timedelta(minutes=1)
+        self.quiz.save(update_fields=['start_date'])
+        self.client.force_login(self.user)
+        response = self.client.get(self.reverse('ege:ege_detail', args=[self.quiz.id]))
+        self.assertEqual(response.status_code, 200)
+
+    def test_started_attempt_survives_end_date(self):
+        # До сдачи ответы живут только в браузере: 403 на «Завершить» после
+        # end_date стёр бы весь экзамен у того, кто сел за минуту до конца.
+        self.quiz.start_date = timezone.now() - timedelta(hours=5)
+        self.quiz.end_date = timezone.now() - timedelta(minutes=1)
+        self.quiz.save(update_fields=['start_date', 'end_date'])
+        self.client.force_login(self.user)
+        detail = self.reverse('ege:ege_detail', args=[self.quiz.id])
+
+        # Попытки нет – вход закрыт, как прежде
+        self.assertEqual(self.client.get(detail).status_code, 302)
+
+        # Попытка начата – страница и завершение открыты
+        session = self.client.session
+        session[f'ege_{self.quiz.id}_start'] = timezone.now().isoformat()
+        session.save()
+        self.assertEqual(self.client.get(detail).status_code, 200)
+        response = self.client.post(
+            self.reverse('ege:ege_finish', args=[self.quiz.id]),
+            data='{"answers": {}}', content_type='application/json')
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(UserResult.objects.filter(user=self.user, quiz=self.quiz).exists())
+
+    def test_signup_saved_and_can_change(self):
+        url = self.reverse('ege:ege_mock_signup', args=[self.quiz.id])
+        # Чужому классу окно не показывают и ответ не принимают
+        self.client.force_login(self.user)
+        self.assertEqual(self.client.post(url, {'answer': 'yes'}).status_code, 403)
+        self.client.force_login(self.key_user)
+        self.assertEqual(self.client.post(url, {'answer': 'yes'}).status_code, 200)
+        self.assertEqual(MockExamSignup.objects.get(quiz=self.quiz, user=self.key_user).answer, 'yes')
+        self.client.post(url, {'answer': 'no'})
+        self.assertEqual(MockExamSignup.objects.get(quiz=self.quiz, user=self.key_user).answer, 'no')
+        self.assertEqual(self.client.post(url, {'answer': 'maybe'}).status_code, 400)
+
+    def test_modal_context(self):
+        # Окно видит только ученик класса-ключа: остальным пробник не объявлен
+        self.client.force_login(self.user)
+        self.assertNotIn('MOCK_EXAM', self.client.get('/').context)
+
+        self.client.force_login(self.key_user)
+        response = self.client.get('/')
+        self.assertEqual(response.context['MOCK_EXAM']['answer'], '')
+        self.assertFalse(response.context['MOCK_EXAM']['is_open'])
+
+        # «Буду» убирает вопрос и включает плашку-напоминание под шапкой
+        url = self.reverse('ege:ege_mock_signup', args=[self.quiz.id])
+        self.client.post(url, {'answer': 'yes'})
+        response = self.client.get('/')
+        self.assertEqual(response.context['MOCK_EXAM']['answer'], 'yes')
+        self.assertContains(response, 'Перейти к варианту')
+        self.assertNotContains(response, 'Не смогу')
+        self.client.post(url, {'answer': 'no'})
+        self.assertNotIn('MOCK_EXAM', self.client.get('/').context)
+
+        # Учитель окна не видит
+        self.client.force_login(self.teacher)
+        self.assertNotIn('MOCK_EXAM', self.client.get('/').context)
+
+    def test_admin_data_counts(self):
+        from .mock_exam import admin_data
+        MockExamSignup.objects.create(quiz=self.quiz, user=self.user, answer='yes')
+        data = admin_data(self.quiz)
+        # не ответивший ученик класса-ключа – в «будут» не попадает
+        self.assertEqual((data['will'], data['pending'], data['wont']), (1, 1, 0))
+        self.assertEqual({row['user'].id: row['answer'] for row in data['rows']},
+                         {self.key_user.id: 'none', self.user.id: 'yes'})
+        MockExamSignup.objects.create(quiz=self.quiz, user=self.key_user, answer='no')
+        data = admin_data(self.quiz)
+        self.assertEqual((data['will'], data['pending'], data['wont']), (1, 0, 1))
+
+    def test_teacher_with_result_still_opens_settings(self):
+        # Учитель настраивает пробник на странице варианта, даже если уже писал его
+        UserResult.objects.create(user=self.teacher, quiz=self.quiz, score=0)
+        self.client.force_login(self.teacher)
+        response = self.client.get(self.reverse('ege:ege_detail', args=[self.quiz.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Пробник')
+
+    def test_teacher_sets_date_and_group(self):
+        url = self.reverse('ege:ege_mock_settings', args=[self.quiz.id])
+        self.client.force_login(self.teacher)
+        self.client.post(url, {
+            'start_date': '2026-11-13T15:30',
+            'signup_group': str(self.key_group.id),
+            'signup_text': 'Приходите в пятницу',
+        })
+        self.quiz.refresh_from_db()
+        local = timezone.localtime(self.quiz.start_date)
+        self.assertEqual((local.year, local.month, local.day, local.hour, local.minute),
+                         (2026, 11, 13, 15, 30))
+        self.assertEqual(self.quiz.signup_group, self.key_group)
+        self.assertEqual(self.quiz.signup_text, 'Приходите в пятницу')
+
+        # Ученику настройки недоступны
+        self.client.force_login(self.user)
+        self.assertEqual(self.client.post(url, {'signup_text': 'x'}).status_code, 403)

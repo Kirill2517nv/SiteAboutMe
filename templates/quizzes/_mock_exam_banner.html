@@ -1,0 +1,46 @@
+{% if MOCK_EXAM and MOCK_EXAM.answer == 'yes' %}
+{% comment %}
+Напоминание о пробнике: постоянная плашка под шапкой, как уведомление.
+Не модалка – после ответа «Буду» ученик продолжает заниматься, а дата
+и кнопка остаются на виду до самого экзамена.
+{% endcomment %}
+<div class="bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-amber-800 dark:text-amber-200">
+        <span class="font-semibold">Пробный ЕГЭ</span>
+        <span>{{ MOCK_EXAM.quiz.title }}{% if MOCK_EXAM.opens_at %} – {{ MOCK_EXAM.opens_at|date:"j E в H:i" }}{% endif %}</span>
+        {% if MOCK_EXAM.is_open %}
+        <a href="{% url 'ege:ege_detail' MOCK_EXAM.quiz.id %}"
+           class="ml-auto px-3 py-1 bg-amber-600 text-white text-xs font-medium rounded-lg border border-orange-500 hover:bg-amber-700 transition-colors">
+            Перейти к варианту
+        </a>
+        {% else %}
+        <span id="mock-wait"
+              class="ml-auto px-3 py-1 bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 text-xs font-medium rounded-lg border border-orange-400 cursor-not-allowed">
+            Перейти к варианту
+        </span>
+        <a id="mock-go" href="{% url 'ege:ege_detail' MOCK_EXAM.quiz.id %}"
+           class="ml-auto hidden px-3 py-1 bg-amber-600 text-white text-xs font-medium rounded-lg border border-orange-500 hover:bg-amber-700 transition-colors">
+            Перейти к варианту
+        </a>
+        <script>
+        /* Страница открыта до начала – кнопка оживает сама, без перезагрузки.
+           setTimeout не принимает задержку больше ~24.8 суток (переполнение
+           сработало бы сразу), поэтому длинный срок ждём повтором. */
+        (function () {
+            const opens = new Date('{{ MOCK_EXAM.opens_at|date:"c" }}');
+            function tick() {
+                const left = opens - Date.now();
+                if (left <= 0) {
+                    document.getElementById('mock-wait')?.classList.add('hidden');
+                    document.getElementById('mock-go')?.classList.remove('hidden');
+                    return;
+                }
+                setTimeout(tick, Math.min(left + 1000, 2147483647));
+            }
+            tick();
+        })();
+        </script>
+        {% endif %}
+    </div>
+</div>
+{% endif %}

@@ -259,6 +259,14 @@ def article_detail_view(request, slug):
             back_url = reverse('spetskurs:basics')
             back_label = 'Основы C++'
         article_number = ''
+    elif article.track == 'event':
+        # Страница выступления: одна статья, соседей нет. Назад – к спецкурсу,
+        # про который мастер-класс рассказывает.
+        siblings = [article]
+        group_title = 'Мастер-класс'
+        article_number = ''
+        back_url = reverse('spetskurs:landing')
+        back_label = 'Спецкурс'
     elif article.section_id:
         siblings = list(visible(article.section.articles).filter(track='material'))
         group_title = article.section.title

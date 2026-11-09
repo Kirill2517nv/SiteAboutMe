@@ -9,8 +9,8 @@
 нет: редактор создавался, но оставался невидимой пустой областью. Пока задачи
 на код жили только в вариантах (ege_detail, где стили есть), это не всплывало.
 {% endcomment %}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/theme/material-darker.min.css">
+<link rel="stylesheet" href="{% static 'vendor/codemirror-5.65.18/codemirror.css' %}">
+<link rel="stylesheet" href="{% static 'vendor/codemirror-5.65.18/theme/material-darker.css' %}">
 <link rel="stylesheet" href="{% static 'css/codemirror-vscode.css' %}">
 <style>
     .CodeMirror {
@@ -410,15 +410,15 @@
 
 {% block pre_alpine_js %}
 {% include 'quizzes/_mathjax.html' %}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/python/python.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/clike/clike.min.js"></script>
+<script src="{% static 'vendor/codemirror-5.65.18/codemirror.js' %}"></script>
+<script src="{% static 'vendor/codemirror-5.65.18/mode/python/python.js' %}"></script>
+<script src="{% static 'vendor/codemirror-5.65.18/mode/clike/clike.js' %}"></script>
 <script src="{% static 'js/code-lang.js' %}"></script>
 <script src="{% static 'js/answer-table.js' %}"></script>
 <script src="{% static 'js/code-run.js' %}"></script>
 <script src="{% static 'js/brainrot-feed.js' %}"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/edit/matchbrackets.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/edit/closebrackets.min.js"></script>
+<script src="{% static 'vendor/codemirror-5.65.18/addon/edit/matchbrackets.js' %}"></script>
+<script src="{% static 'vendor/codemirror-5.65.18/addon/edit/closebrackets.js' %}"></script>
 
 <script>
 function practiceApp() {

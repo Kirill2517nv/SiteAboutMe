@@ -1,0 +1,66 @@
+{% if MOCK_EXAM and not MOCK_EXAM.answer %}
+{% with quiz=MOCK_EXAM.quiz %}
+<script>
+/* Вопрос об участии в пробнике. Скрипт здесь, а не отдельным файлом: партиал
+   включается до Alpine, а внешний файл добавил бы запись в манифест статики.
+   После ответа перезагружаем страницу: «Буду» включает плашку под шапкой,
+   «Не смогу» убирает окно навсегда. */
+function mockExamModal(url) {
+    return {
+        busy: false,
+        error: '',
+        async submit(answer) {
+            if (this.busy) return;
+            this.busy = true;
+            this.error = '';
+            // Токен из шаблона, а не из cookie: cookie может не быть (почистили,
+            // приватное окно), и тогда POST молча получал 403.
+            const token = document.getElementById('mock-csrf')?.value || '';
+            try {
+                const resp = await fetch(url, {
+                    method: 'POST',
+                    headers: {'X-CSRFToken': token},
+                    body: new URLSearchParams({answer}),
+                });
+                if (resp.ok) { location.reload(); return; }
+                this.error = 'Не удалось сохранить ответ. Обновите страницу и попробуйте снова.';
+            } catch (e) {
+                this.error = 'Нет связи с сайтом. Проверьте интернет и повторите.';
+            }
+            this.busy = false;
+        },
+    };
+}
+</script>
+{% comment %}
+Вопрос об участии: модалку нельзя закрыть без ответа – по ней считают
+компьютеры. Напоминание после «Буду» – плашка под шапкой (_mock_exam_banner.html).
+{% endcomment %}
+<div x-data="mockExamModal('{% url "ege:ege_mock_signup" quiz.id %}')" x-cloak
+     class="fixed inset-0 z-[1100] flex items-center justify-center p-4 bg-black/50 dark:bg-black/70">
+    <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-xl w-full max-w-md p-6">
+        <input type="hidden" id="mock-csrf" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+        <h2 class="text-xl font-bold text-gray-900 dark:text-white">Пробный ЕГЭ</h2>
+        <p class="text-sm text-gray-500 dark:text-slate-400 mt-1">{{ quiz.title }}</p>
+        <p class="text-gray-700 dark:text-slate-300 mt-3">{{ quiz.signup_text|linebreaksbr }}</p>
+        {% if MOCK_EXAM.opens_at %}
+        <p class="text-sm text-gray-500 dark:text-slate-400 mt-3">
+            Начало – {{ MOCK_EXAM.opens_at|date:"j E, H:i" }}.
+        </p>
+        {% endif %}
+        <p x-show="error" x-text="error" x-cloak
+           class="text-sm text-red-600 dark:text-red-400 mt-3"></p>
+        <div class="flex gap-2 mt-5">
+            <button type="button" @click="submit('yes')" :disabled="busy"
+                    class="flex-1 px-4 py-2.5 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 disabled:opacity-60 transition-colors">
+                Буду
+            </button>
+            <button type="button" @click="submit('no')" :disabled="busy"
+                    class="flex-1 px-4 py-2.5 bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-300 text-sm font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-slate-600 disabled:opacity-60 transition-colors">
+                Не смогу
+            </button>
+        </div>
+    </div>
+</div>
+{% endwith %}
+{% endif %}

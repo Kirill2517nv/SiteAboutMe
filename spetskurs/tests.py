@@ -264,3 +264,43 @@ class ProjectFormulasSurviveMarkdownTest(SimpleTestCase):
             rendered = html.unescape(str(markdownify(source)))
             for formula in re.findall(r'\$[^$]+\$', source):
                 self.assertIn(formula, rendered, f'{slug}.{field}')
+
+
+class MasterClassPageTests(TestCase):
+    """Страница мастер-класса: её открывают участники по QR, без входа."""
+
+    @classmethod
+    def setUpTestData(cls):
+        import tempfile
+        cls.media = tempfile.mkdtemp()
+        with override_settings(MEDIA_ROOT=cls.media):
+            call_command('seed_masterclass_fizika', stdout=StringIO())
+        cls.article = Article.objects.get(slug='master-klass-fizika')
+
+    @classmethod
+    def tearDownClass(cls):
+        import shutil
+        shutil.rmtree(cls.media, ignore_errors=True)
+        super().tearDownClass()
+
+    def test_guest_sees_page_with_four_simulations(self):
+        response = self.client.get(reverse('textbook:article_detail', args=[self.article.slug]))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        for name in ('MK_Ballistics', 'MK_Oscillations', 'MK_Pendulum', 'MK_Orbit'):
+            self.assertIn(f'spetskurs/wasm/{name}.html', html)
+            self.assertTrue(Path('static/spetskurs/wasm', f'{name}.wasm').exists(), name)
+        self.assertIn('textbook-widgets.', html)   # без реестра embed не смонтируется
+        self.assertIn('data-slide', html)            # режим проектора листает блоки
+
+    def test_not_in_cpp_basics(self):
+        # Статья спецкурса без course_task – это «Основы C++»; у мастер-класса свой трек.
+        self.assertEqual(self.article.track, 'event')
+        response = self.client.get(reverse('spetskurs:basics'))
+        self.assertNotContains(response, self.article.title)
+
+    def test_seed_twice_keeps_one_qr_file(self):
+        with override_settings(MEDIA_ROOT=self.media):
+            call_command('seed_masterclass_fizika', stdout=StringIO())
+        images = {b.image.name for b in self.article.blocks.filter(block_type='image')}
+        self.assertEqual(len(images), 1)

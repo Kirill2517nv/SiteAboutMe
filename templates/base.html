@@ -25,22 +25,22 @@
     <!-- Tailwind CSS (локальная сборка) -->
     <link rel="stylesheet" href="{% static 'css/tailwind.css' %}">
     
-    <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Библиотеки лежат в static/vendor, а не на CDN: стиль с чужого домена
+         держит отрисовку, и рукопожатие с CDN из школьной сети и через
+         антивирус занимало до 5 с – сайт стоял белым при быстром HTML -->
+    <link rel="stylesheet" href="{% static 'vendor/inter-5.3.0/inter.css' %}">
     
     <!-- Design Tokens -->
     <link rel="stylesheet" href="{% static 'css/design-tokens.css' %}">
 
     <!-- AOS - Animate on Scroll -->
-    <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
+    <link href="{% static 'vendor/aos-2.3.1/aos.css' %}" rel="stylesheet">
     
     <!-- Swiper CSS -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css">
+    <link rel="stylesheet" href="{% static 'vendor/swiper-11.2.10/swiper-bundle.min.css' %}">
     
     <!-- PhotoSwipe CSS -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@5/dist/photoswipe.css">
+    <link rel="stylesheet" href="{% static 'vendor/photoswipe-5.4.4/photoswipe.css' %}">
     
     {% block extra_css %}{% endblock extra_css %}
     
@@ -180,14 +180,6 @@
                             <span class="absolute -top-1.5 -right-2 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-xs leading-[18px] text-center tabular-nums">{{ PENDING_NOTES }}</span>
                             {% endif %}
                         </a>
-                        {# Заявки по коду класса (accounts.context_processors.join_badge) – только пока они есть #}
-                        {% if PENDING_JOINS %}
-                        <a href="{% url 'admin:accounts_joinrequest_changelist' %}" title="Заявки в классы: ждут – {{ PENDING_JOINS }}"
-                           class="relative p-1 text-gray-500 hover:text-brand-600 dark:text-slate-400 dark:hover:text-cyan-400 transition-colors">
-                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/></svg>
-                            <span class="absolute -top-1.5 -right-2 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-xs leading-[18px] text-center tabular-nums">{{ PENDING_JOINS }}</span>
-                        </a>
-                        {% endif %}
                     {% endif %}
                     {% include '_notifications_bell.html' %}
                     {% if user.is_authenticated %}
@@ -250,6 +242,8 @@
         </div>
     </header>
 
+    {% include 'quizzes/_mock_exam_banner.html' %}
+
     {# Ученик ещё не представился – форма в профиле (accounts.views.NameForm) #}
     {% if user.is_authenticated and not user.is_superuser %}{% if not user.last_name or not user.first_name %}
     <div class="bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800">
@@ -291,23 +285,25 @@
             </p>
         </div>
     </footer>
-    
+
+    {% include 'quizzes/_mock_exam_modal.html' %}
+
     <!-- Скрипты которые должны загрузиться ДО Alpine.js -->
     {% block pre_alpine_js %}{% endblock pre_alpine_js %}
     
     <!-- Alpine.js -->
-    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.3/dist/cdn.min.js"></script>
+    <script src="{% static 'vendor/alpinejs-3.14.3/cdn.min.js' %}"></script>
     
     <!-- htmx -->
-    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="{% static 'vendor/htmx-1.9.10/htmx.min.js' %}"></script>
     
     <!-- Swiper JS -->
-    <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
+    <script src="{% static 'vendor/swiper-11.2.10/swiper-bundle.min.js' %}"></script>
     
     <!-- PhotoSwipe JS -->
     <script type="module">
-        import PhotoSwipeLightbox from 'https://cdn.jsdelivr.net/npm/photoswipe@5/dist/photoswipe-lightbox.esm.min.js';
-        import PhotoSwipe from 'https://cdn.jsdelivr.net/npm/photoswipe@5/dist/photoswipe.esm.min.js';
+        import PhotoSwipeLightbox from '{% static "vendor/photoswipe-5.4.4/photoswipe-lightbox.esm.min.js" %}';
+        import PhotoSwipe from '{% static "vendor/photoswipe-5.4.4/photoswipe.esm.min.js" %}';
         
         // Инициализация PhotoSwipe для всех галерей.
         // children ограничен ссылками с data-pswp-width: в .pswp-gallery
@@ -323,7 +319,7 @@
     </script>
     
     <!-- AOS - Animate on Scroll -->
-    <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
+    <script src="{% static 'vendor/aos-2.3.1/aos.js' %}"></script>
     <script>
         AOS.init({
             duration: 600,

@@ -45,6 +45,8 @@ urlpatterns = [
     path('<int:quiz_id>/result/', views.ege_result_view, name='ege_result'),
     path('<int:quiz_id>/results/', views.ege_results_view, name='ege_results'),
     path('<int:quiz_id>/save-time/', views.ege_save_time_view, name='ege_save_time'),
+    path('<int:quiz_id>/signup/', views.mock_signup_view, name='ege_mock_signup'),
+    path('<int:quiz_id>/mock/', views.mock_settings_view, name='ege_mock_settings'),
     path('<int:quiz_id>/task/<int:ege_number>/solution/<int:user_id>/', views.ege_solution_detail_view, name='ege_user_solution'),
     path('<int:quiz_id>/results/student/<int:user_id>/', views.ege_student_stats_view, name='ege_student_stats'),
 ]

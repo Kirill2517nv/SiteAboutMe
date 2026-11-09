@@ -1,7 +1,7 @@
 import secrets
 from datetime import timedelta
 
-from django.db import models, transaction
+from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
 
@@ -33,17 +33,19 @@ class StudentGroup(models.Model):
     )
     is_ege_class = models.BooleanField(
         default=False, verbose_name="Класс подготовки к ЕГЭ",
-        help_text="Принятые по коду ученики этого класса сразу получают «Сдаёт ЕГЭ». "
-                  "Читается только в момент принятия – уже принятых не трогает.",
+        help_text="Ученики, вошедшие по коду этого класса, сразу получают «Сдаёт ЕГЭ». "
+                  "Читается только в момент входа – уже вошедших не трогает.",
     )
-    # Код класса: по нему ученик подаёт заявку на /accounts/join/. Заявка ничего
-    # не даёт до «Принять» в админке, поэтому утёкший код безопасен – срок и
-    # перевыпуск нужны, чтобы не разбирать лишние заявки.
+    # Код класса: по нему ученик регистрируется на /accounts/join/ и сразу входит
+    # на сайт. Код либо выпускает генератор (действие в админке), либо учитель
+    # вписывает свой в карточке класса. Утёкший код безопаснее заменить.
     join_code = models.CharField(
         max_length=8, blank=True, default='', db_index=True, verbose_name="Код класса",
+        help_text="Можно вписать свой. Пусто – кода нет.",
     )
     join_code_until = models.DateTimeField(
         null=True, blank=True, verbose_name="Код действует до",
+        help_text="Пусто при вписанном коде – срок ставится на 7 дней вперёд.",
     )
 
     # Без похожих символов (0/O, 1/I/L): код диктуют голосом и пишут на доске
@@ -126,12 +128,6 @@ class Profile(models.Model):
     # Найденные пасхалки: {ключ: включена}. Нет ключа – не найдена. Список
     # пасхалок – в accounts/easter_eggs.py, новая пасхалка миграции не требует.
     easter_eggs = models.JSONField(default=dict, blank=True, verbose_name="Пасхалки")
-    # Заявка по коду класса. Класс лежит здесь, а не в group, пока учитель не
-    # принял: group читают все отчёты, и заявка в них не попадает без фильтров.
-    join_group = models.ForeignKey(
-        StudentGroup, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name='applicants', verbose_name="Заявка в класс",
-    )
 
     class Meta:
         verbose_name = "Профиль ученика"
@@ -143,33 +139,6 @@ class Profile(models.Model):
 
     def __str__(self):
         return f"Профиль: {self.user.username}"
-
-
-class JoinRequest(User):
-    """Заявка по коду класса – тот же User, свой раздел в админке."""
-
-    class Meta:
-        proxy = True
-        verbose_name = "Заявка в класс"
-        verbose_name_plural = "Заявки в классы"
-
-    @classmethod
-    def pending(cls):
-        return cls.objects.filter(is_active=False, profile__join_group__isnull=False)
-
-
-@transaction.atomic
-def accept_join(user, ege=False):
-    """Принять заявку: ученик входит в класс и может войти на сайт.
-    «Сдаёт ЕГЭ» ставится по флагу класса или по решению учителя."""
-    profile = user.profile
-    group = profile.join_group
-    profile.group = group
-    profile.join_group = None
-    profile.is_ege = profile.is_ege or ege or group.is_ege_class
-    profile.save(update_fields=['group', 'join_group', 'is_ege'])
-    user.is_active = True
-    user.save(update_fields=['is_active'])
 
 
 class Notification(models.Model):

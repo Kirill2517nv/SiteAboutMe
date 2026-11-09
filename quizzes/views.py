@@ -2,6 +2,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.urls import reverse
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from django.contrib.auth.models import User
 from django.db.models import Max, Count, Sum
 from django.http import FileResponse, Http404, JsonResponse
@@ -10,7 +11,7 @@ from django.core.exceptions import PermissionDenied
 from django.views.decorators.http import require_POST, require_GET
 from django.views.decorators.csrf import csrf_protect
 from . import classwork
-from .models import PracticeItem, Quiz, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, Question, CodeSubmission, QuestionFile, ExamTaskProgress, HintChoice, SharedSolution
+from .models import PracticeItem, Quiz, Choice, UserResult, UserAnswer, TestCase, QuizAssignment, Question, CodeSubmission, QuestionFile, ExamTaskProgress, HintChoice, SharedSolution, MockExamSignup
 from accounts.models import StudentGroup
 from textbook.models import EgeTask
 import datetime
@@ -192,11 +193,12 @@ def get_user_ege_stats(user, quiz_ids):
 def build_ege_results_matrix(quiz):
     """Матрица: пользователи x задачи для таблицы результатов.
 
-    Одна строка на пользователя — лучший результат по каждой задаче
-    из ВСЕХ попыток (если задача решена хотя бы в одной попытке — ✓).
+    Одна строка на пользователя – лучший ответ по каждой задаче из ВСЕХ
+    попыток: верный, иначе с большим частичным баллом (26/27 стоят 1 или 2).
+    Задача без ответа остаётся None, а не False: ученик её не открывал, и
+    красный крест там соврал бы. Балл строки – сумма, в которую частичный
+    балл входит так же, как в `UserResult.score` (туда его пишет сдача).
     """
-    from collections import defaultdict
-
     questions = list(quiz.questions.filter(
         ege_number__isnull=False
     ).order_by('ege_number'))
@@ -204,38 +206,53 @@ def build_ege_results_matrix(quiz):
     # Все ответы по варианту, группируем по user
     all_answers = UserAnswer.objects.filter(
         user_result__quiz=quiz
-    ).select_related('question', 'user_result__user', 'user_result__user__profile')
+    ).select_related('question', 'user_result__user', 'user_result__user__profile').order_by('pk')
 
-    # {user_id: {question_id: True}} — True если хоть раз верно
-    user_best = defaultdict(dict)
+    def answered(ans):
+        return bool(ans and (ans.text_answer or ans.code_answer or ans.selected_choice_id))
+
+    def better(new, old):
+        # Сдача варианта пишет по строке на КАЖДУЮ задачу, включая пустые.
+        # Без этой ступени пустая строка первой попытки «равна» неверному
+        # ответу второй (у обеих is_correct=False, score=None), остаётся
+        # пустая – и задача, которую ученик на самом деле открывал, в отчёте
+        # выглядит прочерком «не открывал».
+        if answered(new) != answered(old):
+            return answered(new)
+        if new.is_correct != old.is_correct:
+            return new.is_correct
+        return (new.score or 0) > (old.score or 0)
+
+    best_answer = {}  # (user_id, question_id) -> UserAnswer
     users_map = {}  # user_id -> User object
-    # {(user_id, question_id): answer_id} — лучший ответ (correct > latest)
-    best_answer_map = {}
 
     for ans in all_answers:
         uid = ans.user_result.user_id
-        qid = ans.question_id
         users_map[uid] = ans.user_result.user
-        # Берём лучший результат: True перезаписывает False, но не наоборот
-        prev_solved = user_best[uid].get(qid) is True
-        if not prev_solved:
-            user_best[uid][qid] = ans.is_correct
-        key = (uid, qid)
-        if key not in best_answer_map:
-            best_answer_map[key] = ans.id
-        elif ans.is_correct and not prev_solved:
-            best_answer_map[key] = ans.id
+        key = (uid, ans.question_id)
+        prev = best_answer.get(key)
+        if prev is None or better(ans, prev):
+            best_answer[key] = ans
 
     # Собираем матрицу
     matrix = []
-    for uid, best_map in user_best.items():
-        user = users_map[uid]
-        task_results = [
-            {'correct': best_map.get(q.id), 'ege_number': q.ege_number, 'question_id': q.id}
-            for q in questions
-        ]
+    for uid, user in users_map.items():
+        task_results = []
+        for q in questions:
+            ans = best_answer.get((uid, q.id))
+            has_answer = answered(ans)
+            task_results.append({
+                'correct': ans.is_correct if has_answer else None,
+                'score': ans.score if has_answer else None,
+                'points': q.points,
+                'ege_number': q.ege_number,
+                'question_id': q.id,
+            })
         correct_count = sum(1 for r in task_results if r['correct'] is True)
-        score = sum(q.points for q, r in zip(questions, task_results) if r['correct'] is True)
+        score = sum(
+            q.points if r['correct'] is True else (r['score'] or 0)
+            for q, r in zip(questions, task_results)
+        )
 
         full_name = f"{user.last_name} {user.first_name}".strip()
         if not full_name:
@@ -253,13 +270,14 @@ def build_ege_results_matrix(quiz):
     # Сортировка: по баллам desc, затем по фамилии
     matrix.sort(key=lambda r: (-r['score'], r['full_name']))
 
+    best_answer_map = {key: ans.id for key, ans in best_answer.items()}
     return matrix, questions, best_answer_map
 
 
 def _student_list():
     """Ученики для панели учителя – тот же список и порядок, что в профиле."""
     return (
-        # is_active – заявки по коду класса учеником ещё не стали
+        # is_active=False – ученика выключил учитель, в работу его не берём
         User.objects.filter(is_superuser=False, is_active=True)
         .select_related('profile__group')
         .order_by('profile__group__name', 'last_name', 'username')
@@ -442,6 +460,11 @@ def ege_list_view(request):
             'exam_mode': quiz.exam_mode,
             'attempts': attempts,
             'best_score': best_score,
+            # Пробник закрыт до start_date: карточка показывает дату вместо «Начать».
+            'is_open': quiz.window_open(request.user) if request.user.is_authenticated else True,
+            # Дата, когда откроется. Пусто – вариант уже закрыт по end_date,
+            # и карточка пишет «Закрыт», а не прошедшую дату открытия.
+            'opens_at': quiz.start_date if (quiz.start_date and quiz.start_date > timezone.now()) else None,
         })
 
     from . import ege_stats
@@ -481,6 +504,19 @@ def ege_list_view(request):
 # --- EGE DETAIL / CHECK / FINISH / RESULT / SAVE-TIME ---
 
 @login_required
+def _ege_work_open(request, quiz):
+    """Можно ли сейчас писать вариант: окно открыто или попытка уже начата.
+
+    Закрытие по `end_date` закрывает вход, но не отбирает начатую работу:
+    ответы варианта до финиша живут в браузере, и 403 на «Завершить» стёр бы
+    весь экзамен у того, кто сел за минуту до конца окна. Начало попытки
+    лежит в сессии (`ege_<id>_start`, пишет `ege_detail_view`).
+    """
+    if quiz.window_open(request.user):
+        return True
+    return bool(request.session.get(f'ege_{quiz.id}_start'))
+
+
 def ege_detail_view(request, quiz_id):
     """Страница прохождения варианта ЕГЭ."""
     quiz = get_object_or_404(
@@ -494,8 +530,14 @@ def ege_detail_view(request, quiz_id):
         is_public=True,
     )
 
-    # Режим экзамена + уже есть результат → redirect на результат
-    if quiz.exam_mode == 'exam':
+    # Вариант-пробник открывается по расписанию. Учитель проходит всегда, а
+    # уже начатая попытка переживает end_date – иначе ответы не досдать.
+    if not _ege_work_open(request, quiz):
+        return redirect('ege:ege_list')
+
+    # Режим экзамена + уже есть результат → redirect на результат.
+    # Учителю – исключение: на этой же странице он настраивает пробник.
+    if quiz.exam_mode == 'exam' and not request.user.is_superuser:
         existing_result = UserResult.objects.filter(user=request.user, quiz=quiz).order_by('-date_completed').first()
         if existing_result:
             return redirect('ege:ege_result', quiz_id=quiz.id)
@@ -580,6 +622,10 @@ def ege_detail_view(request, quiz_id):
         'last_submissions_json': js_json(last_submissions),
         'total_points': sum(q.points for q in questions),
     }
+    if request.user.is_superuser:
+        from .mock_exam import admin_data
+        context['mock'] = admin_data(quiz)
+        context['classes'] = StudentGroup.objects.order_by('name')
     return render(request, 'quizzes/ege_detail.html', context)
 
 
@@ -588,6 +634,9 @@ def ege_detail_view(request, quiz_id):
 def ege_check_answer_view(request, quiz_id):
     """AJAX: проверка одного text-ответа (только тренировка)."""
     quiz = get_object_or_404(Quiz, id=quiz_id, quiz_type='exam', is_public=True)
+
+    if not _ege_work_open(request, quiz):
+        return JsonResponse({'error': 'Вариант ещё не открыт'}, status=403)
 
     if quiz.exam_mode != 'practice':
         return JsonResponse({'error': 'Проверка по одному доступна только в тренировке'}, status=403)
@@ -652,6 +701,9 @@ def ege_check_answer_view(request, quiz_id):
 def ege_finish_view(request, quiz_id):
     """Завершение варианта ЕГЭ: создание UserResult + UserAnswer."""
     quiz = get_object_or_404(Quiz, id=quiz_id, quiz_type='exam', is_public=True)
+
+    if not _ege_work_open(request, quiz):
+        return JsonResponse({'error': 'Вариант ещё не открыт'}, status=403)
 
     # Экзамен — не более 1 попытки
     if quiz.exam_mode == 'exam':
@@ -924,6 +976,9 @@ def ege_results_view(request, quiz_id):
                     'time_mm_ss': time_mm_ss,
                     'attempts': p.attempts_to_solve if p else 0,
                     'is_solved': p.is_solved if p else False,
+                    # Частичный балл 26/27: задача не закрыта, но балл есть.
+                    'score': p.score if p else None,
+                    'points': q.points,
                     'color': color,
                     'is_code': q.question_type == 'code',
                     'cpu_time_ms': p.best_cpu_time_ms if p else None,
@@ -971,6 +1026,9 @@ def ege_student_stats_view(request, quiz_id, user_id):
             'time_mm_ss': time_mm_ss,
             'attempts': p.attempts_to_solve if p else 0,
             'is_solved': p.is_solved if p else False,
+            # Частичный балл 26/27: задача не закрыта, но балл есть.
+            'score': p.score if p else None,
+            'points': q.points,
             'color': color,
             'is_code': q.question_type == 'code',
             'cpu_time_ms': p.best_cpu_time_ms if p else None,
@@ -994,6 +1052,9 @@ def ege_student_stats_view(request, quiz_id, user_id):
 def ege_save_time_view(request, quiz_id):
     """AJAX: сохранение времени по задаче."""
     quiz = get_object_or_404(Quiz, id=quiz_id, quiz_type='exam', is_public=True)
+
+    if not _ege_work_open(request, quiz):
+        return JsonResponse({'error': 'Вариант ещё не открыт'}, status=403)
 
     try:
         data = json.loads(request.body)
@@ -1024,6 +1085,47 @@ def ege_save_time_view(request, quiz_id):
     progress.save(update_fields=['time_spent_seconds'])
 
     return JsonResponse({'ok': True, 'total_seconds': progress.time_spent_seconds})
+
+
+@login_required
+@require_POST
+def mock_signup_view(request, quiz_id):
+    """Ответ ученика на вопрос об участии в пробнике (модалка в base.html)."""
+    quiz = get_object_or_404(Quiz, id=quiz_id, quiz_type='exam', signup_text__gt='')
+    group_id = getattr(getattr(request.user, 'profile', None), 'group_id', None)
+    if not quiz.signup_group_id or quiz.signup_group_id != group_id:
+        # Окно показывают только классу-ключу – ответ от чужого не принимаем
+        return JsonResponse({'error': 'Пробник не для вашего класса'}, status=403)
+    answer = request.POST.get('answer')
+    if answer not in dict(MockExamSignup.ANSWER_CHOICES):
+        return JsonResponse({'error': 'Нужен ответ'}, status=400)
+    MockExamSignup.objects.update_or_create(
+        quiz=quiz, user=request.user, defaults={'answer': answer})
+    return JsonResponse({'answer': answer})
+
+
+@login_required
+@require_POST
+def mock_settings_view(request, quiz_id):
+    """Блок «Пробник» на странице варианта: дата открытия, класс-ключ, объявление."""
+    if not request.user.is_superuser:
+        raise PermissionDenied
+    quiz = get_object_or_404(Quiz, id=quiz_id, quiz_type='exam')
+
+    start = request.POST.get('start_date', '').strip()
+    dt = parse_datetime(start) if start else None
+    if dt is None and start:
+        return redirect('ege:ege_detail', quiz_id=quiz.id)  # кривую дату не сохраняем
+    if dt and timezone.is_naive(dt):
+        dt = timezone.make_aware(dt)
+
+    group_id = request.POST.get('signup_group', '').strip()
+    quiz.start_date = dt
+    quiz.signup_group = (StudentGroup.objects.filter(pk=group_id).first()
+                         if group_id else None)
+    quiz.signup_text = request.POST.get('signup_text', '').strip()
+    quiz.save(update_fields=['start_date', 'signup_group', 'signup_text'])
+    return redirect('ege:ege_detail', quiz_id=quiz.id)
 
 
 @login_required

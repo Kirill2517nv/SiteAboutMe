@@ -139,10 +139,13 @@
                         {% include 'quizzes/_ege_answer_body.html' with question=row.question %}
                     </div>
 
-                    {% if row.question.source_url %}
-                    <a href="{{ row.question.source_url }}" target="_blank" rel="noopener"
-                       class="inline-block mt-3 text-xs text-gray-400 hover:text-brand-600">Оригинал на источнике</a>
-                    {% endif %}
+                    <div class="mt-3 flex items-center gap-4">
+                        {% include 'quizzes/_solutions_link.html' with question_id=row.question.id compact=True %}
+                        {% if row.question.source_url %}
+                        <a href="{{ row.question.source_url }}" target="_blank" rel="noopener"
+                           class="text-xs text-gray-400 hover:text-brand-600">Оригинал на источнике</a>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
             {% endfor %}

@@ -11,7 +11,7 @@ from django.urls import reverse
 from django.utils import timezone
 from PIL import Image
 
-from accounts.models import Profile, StudentGroup, accept_join
+from accounts.models import Profile, StudentGroup
 from quizzes.models import Question, Quiz, UserAnswer, UserResult
 from textbook.models import Article, ArticleProgress, Section
 from textbook.services import profile_textbook_stats
@@ -323,8 +323,7 @@ class NameFormTests(TestCase):
 
 @NO_MANIFEST_STATIC
 class JoinByCodeTests(TestCase):
-    """Заявка по коду класса: код → заявка → вход закрыт с понятным текстом →
-    учитель принял → ученик в классе. И заявка не видна ни в одном отчёте."""
+    """Вход по коду класса: код → регистрация → ученик сразу активен и в классе."""
 
     def setUp(self):
         self.group = StudentGroup.objects.create(name='10А')
@@ -337,28 +336,21 @@ class JoinByCodeTests(TestCase):
             'username': username, 'password1': 'secret-pass-1', 'password2': 'secret-pass-1',
         })
 
-    def _login(self, password='secret-pass-1'):
-        return self.client.post(reverse('login'), {'username': 'ivanov', 'password': password})
+    def _login(self, password='secret-pass-1', username='ivanov'):
+        return self.client.post(reverse('login'), {'username': username, 'password': password})
 
     def test_full_path(self):
         # Регистр, пробелы и дефис в коде не важны
         code = self.group.join_code.lower()
         response = self._join(f' {code[:4]}-{code[4:]} ')
-        self.assertContains(response, 'Заявка отправлена')
+        self.assertContains(response, 'Готово')
         user = User.objects.get(username='ivanov')
-        self.assertFalse(user.is_active)
-        self.assertEqual(user.profile.join_group, self.group)
-        self.assertIsNone(user.profile.group)
-
-        self.assertContains(self._login(), 'Заявка ждёт подтверждения учителя')
-        self.assertContains(self._login('wrong-pass'), 'Неверный логин или пароль')
-
-        accept_join(user)
-        user.refresh_from_db()
+        self.assertTrue(user.is_active)
         self.assertEqual(user.profile.group, self.group)
-        self.assertIsNone(user.profile.join_group)
         self.assertFalse(user.profile.is_ege)
+
         self.assertEqual(self._login().status_code, 302)
+        self.assertContains(self._login('wrong-pass'), 'Неверный логин или пароль')
 
     def test_dead_and_reissued_code(self):
         old = self.group.join_code
@@ -372,48 +364,34 @@ class JoinByCodeTests(TestCase):
         self.assertContains(self._join(old), 'Код не подошёл')
         self.assertFalse(User.objects.filter(username='ivanov').exists())
 
-    def test_ege_flag_from_class_or_teacher(self):
+    def test_ege_flag_comes_from_class(self):
         ege = StudentGroup.objects.create(name='ЕГЭ', is_ege_class=True)
         ege.issue_join_code()
         self._join(ege.join_code, username='a')
         self._join(self.group.join_code, username='b')
-        accept_join(User.objects.get(username='a'))
-        accept_join(User.objects.get(username='b'), ege=True)
         self.assertTrue(Profile.objects.get(user__username='a').is_ege)
-        self.assertTrue(Profile.objects.get(user__username='b').is_ege)
+        self.assertFalse(Profile.objects.get(user__username='b').is_ege)
 
-    def test_pending_not_in_reports(self):
-        self._join(self.group.join_code)
-        accepted = User.objects.create_user('acc', last_name='Принятов')
-        Profile.objects.create(user=accepted, group=self.group)
-        section = Section.objects.create(title='Блок', slug='blok', is_published=True)
+    def test_disabled_account_gets_clear_message(self):
+        user = User.objects.create_user('off', password='secret-pass-1', is_active=False)
+        Profile.objects.create(user=user)
+        self.assertContains(self._login(username='off'), 'Учётная запись отключена')
+
+    def test_teacher_sets_own_code(self):
         self.client.force_login(self.teacher)
-        pages = [
-            reverse('ege:ege_class') + '?group=all',
-            reverse('ege:ege_class') + '?group=none',
-            reverse('textbook:section_stats', args=[section.slug]) + '?group=all',
-            reverse('textbook:section_stats', args=[section.slug]) + '?group=none',
-            reverse('accounts:profile'),
-        ]
-        for url in pages:
-            html = self.client.get(url).content.decode()
-            self.assertNotIn('Заявкин', html, url)
-        self.assertIn('Принятов', self.client.get(pages[0]).content.decode())
+        url = reverse('admin:accounts_studentgroup_change', args=[self.group.pk])
+        data = {'name': '10А', 'join_code': '7б-2027', 'join_code_until_0': '', 'join_code_until_1': ''}
+        self.client.post(url, data)
+        self.group.refresh_from_db()
+        self.assertEqual(self.group.join_code, '7Б2027')
+        self.assertGreater(self.group.join_code_until, timezone.now())
+        # Тот же код у второго класса – ошибка, а не молчаливая замена
+        self.client.post(reverse('admin:accounts_studentgroup_add'),
+                         {'name': '10Б', 'join_code': '7Б2027'})
+        self.assertEqual(StudentGroup.objects.filter(join_code='7Б2027').count(), 1)
 
-    def test_admin_actions_and_badge(self):
-        self._join(self.group.join_code, username='keep')
-        self._join(self.group.join_code, username='drop')
+    def test_issue_code_action(self):
         self.client.force_login(self.teacher)
-        self.assertContains(self.client.get('/'), 'Заявки в классы: ждут – 2')
-        url = reverse('admin:accounts_joinrequest_changelist')
-        keep, drop = (User.objects.get(username=n).pk for n in ('keep', 'drop'))
-        self.client.post(url, {'action': 'accept_ege', '_selected_action': [keep]})
-        self.client.post(url, {'action': 'reject', '_selected_action': [drop]})
-        self.assertTrue(User.objects.get(pk=keep).is_active)
-        self.assertTrue(Profile.objects.get(user_id=keep).is_ege)
-        self.assertFalse(User.objects.filter(pk=drop).exists())
-        self.assertNotContains(self.client.get('/'), 'Заявки в классы')
-
         old = self.group.join_code
         self.client.post(reverse('admin:accounts_studentgroup_changelist'),
                          {'action': 'issue_code', '_selected_action': [self.group.pk]})

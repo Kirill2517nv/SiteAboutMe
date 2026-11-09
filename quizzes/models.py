@@ -64,6 +64,18 @@ class Quiz(models.Model):
                   "рядом с номерами задач. Учитель разрешает на пульте, видят её "
                   "только ученики, включившие пасхалку в профиле.",
     )
+    signup_text = models.TextField(
+        blank=True, verbose_name="Объявление пробника",
+        help_text="Только у варианта: заполнено – вариант объявлен пробником, "
+                  "ученикам показывается окно с записью и напоминанием.",
+    )
+    signup_group = models.ForeignKey(
+        StudentGroup, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='mock_exam_quizzes', verbose_name="Класс-ключ пробника",
+        help_text="Класс, которому показывается окно записи; ответ «Буду / Не смогу» "
+                  "даёт и он – опаздывают все. Сюда выбирается класс, в который "
+                  "вступают по коду «ЕГЭ».",
+    )
 
     class Meta:
         verbose_name = "Тест"
@@ -71,6 +83,17 @@ class Quiz(models.Model):
 
     def __str__(self):
         return self.title
+
+    def window_open(self, user):
+        """Вариант открыт по своим датам. Учитель проходит его всегда."""
+        if user.is_superuser:
+            return True
+        now = timezone.now()
+        if self.start_date and now < self.start_date:
+            return False
+        if self.end_date and now > self.end_date:
+            return False
+        return True
 
     def check_numbers(self):
         """Номера заданий среза – по его задачам, отдельно их не хранить."""
@@ -130,6 +153,27 @@ class QuizAssignment(models.Model):
         if self.user:
             return f"{self.quiz} -> {self.user}"
         return f"{self.quiz} -> {self.group}"
+
+
+class MockExamSignup(models.Model):
+    """Ответ ученика на вопрос об участии в пробнике. Один на пару вариант-ученик."""
+
+    ANSWER_CHOICES = [('yes', 'Буду'), ('no', 'Не смогу')]
+
+    quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE, related_name='signups',
+                             verbose_name="Вариант")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='mock_exam_signups',
+                             verbose_name="Ученик")
+    answer = models.CharField(max_length=3, choices=ANSWER_CHOICES, verbose_name="Ответ")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Ответ обновлён")
+
+    class Meta:
+        verbose_name = "Запись на пробник"
+        verbose_name_plural = "Записи на пробник"
+        unique_together = ('quiz', 'user')
+
+    def __str__(self):
+        return f"{self.quiz} – {self.user}: {self.get_answer_display()}"
 
 class Question(models.Model):
     TYPE_CHOICES = [

@@ -6,7 +6,7 @@
 {% block description %}{% if article.description %}{{ article.description|striptags|truncatechars:200 }}{% else %}{{ block.super }}{% endif %}{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+<link rel="stylesheet" href="{% static 'vendor/highlight-11.9.0/atom-one-dark.min.css' %}">
 <link rel="stylesheet" href="{% static 'css/textbook-article.css' %}">
 {% endblock %}
 
@@ -457,10 +457,10 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="{% static 'vendor/highlight-11.9.0/highlight.min.js' %}"></script>
+<script src="{% static 'vendor/highlight-11.9.0/languages/python.min.js' %}"></script>
 {# cmake нет в сборке highlight.min.js: без модуля hljs красит тёмным по тёмному #}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/cmake.min.js"></script>
+<script src="{% static 'vendor/highlight-11.9.0/languages/cmake.min.js' %}"></script>
 <script>
     window.MathJax = {
         tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
@@ -520,7 +520,7 @@
         decorateCodeBlocks();
     });
 </script>
-<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" defer></script>
+<script src="{% static 'vendor/mathjax-3.2.2/tex-chtml.js' %}" defer></script>
 {% if has_widgets %}
 {% comment %}
 Реестр виджетов – 148 КБ gzip, и нужен он четверти статей. На остальных скрипт

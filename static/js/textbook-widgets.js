@@ -5892,6 +5892,16 @@
         const body = widgetFrame(el, el.dataset.title);
         body.style.padding = '0';
         body.appendChild(iframe);
+
+        // Симуляция спецкурса лежит на том же домене: колесо над ней масштабирует
+        // график и не должно прокручивать страницу. Причина и тот же приём –
+        // в templates/spetskurs/_simulation_frame.html (holdWheel). Чужой домен
+        // (GeoGebra) документа не отдаёт – там всё как было.
+        iframe.addEventListener('load', () => {
+            let doc = null;
+            try { doc = iframe.contentDocument; } catch (e) { return; }
+            if (doc) doc.addEventListener('wheel', e => e.preventDefault(), { passive: false });
+        });
     });
 
     // ─────────────────────────────────────────────────────────────

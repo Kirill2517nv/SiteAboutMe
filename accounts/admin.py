@@ -1,9 +1,12 @@
+from datetime import timedelta
+
+from django import forms
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import Group, User
 from django.utils import timezone
 
-from .models import JoinRequest, Notification, StudentGroup, Profile, accept_join
+from .models import Notification, StudentGroup, Profile
 
 class ProfileInline(admin.StackedInline):
     model = Profile
@@ -17,14 +20,37 @@ class UserAdmin(BaseUserAdmin):
     search_fields = ('last_name', 'first_name', 'username', 'email')
     list_filter = BaseUserAdmin.list_filter + ('profile__group', 'profile__is_ege')
 
+
+class StudentGroupForm(forms.ModelForm):
+    """Код класса можно выпустить генератором или вписать свой: нормализуем
+    (регистр, пробелы, дефисы), не даём двум классам один код, ставим срок."""
+
+    class Meta:
+        model = StudentGroup
+        fields = '__all__'
+
+    def clean_join_code(self):
+        code = StudentGroup.normalize_code(self.cleaned_data.get('join_code'))
+        taken = StudentGroup.objects.filter(join_code=code).exclude(pk=self.instance.pk)
+        if code and taken.exists():
+            raise forms.ValidationError(f'Этот код уже у класса «{taken.first().name}».')
+        return code
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get('join_code') and not cleaned.get('join_code_until'):
+            cleaned['join_code_until'] = (timezone.now() +
+                                          timedelta(days=StudentGroup.JOIN_CODE_DAYS))
+        return cleaned
+
+
 class StudentGroupAdmin(admin.ModelAdmin):
+    form = StudentGroupForm
     search_fields = ['name']
     # Год выпуска – единственный переключатель «активный класс / архив»
     list_display = ('name', 'join_code_display', 'graduation_year', 'in_stats',
                     'no_textbook_deadlines', 'is_ege_class')
     list_editable = ('graduation_year', 'in_stats', 'no_textbook_deadlines', 'is_ege_class')
-    # Код генерирует действие, вручную – только срок
-    readonly_fields = ('join_code',)
     actions = ['issue_code', 'close_code']
 
     @admin.display(description='Код класса')
@@ -49,57 +75,6 @@ class StudentGroupAdmin(admin.ModelAdmin):
         for group in queryset:
             group.close_join_code()
         self.message_user(request, f'Коды закрыты: {queryset.count()}')
-
-
-@admin.register(JoinRequest)
-class JoinRequestAdmin(admin.ModelAdmin):
-    """Заявки по коду класса. Принятый ученик уходит отсюда в свой класс,
-    отклонённый удаляется вместе с аккаунтом."""
-
-    list_display = ('last_name', 'first_name', 'username', 'join_class', 'date_joined')
-    list_filter = ('profile__join_group',)
-    search_fields = ('last_name', 'first_name', 'username')
-    ordering = ('profile__join_group__name', 'last_name', 'first_name')
-    actions = ['accept', 'accept_ege', 'reject']
-    fields = ('last_name', 'first_name', 'username', 'date_joined')
-
-    def get_queryset(self, request):
-        return (super().get_queryset(request)
-                .filter(is_active=False, profile__join_group__isnull=False)
-                .select_related('profile__join_group'))
-
-    def get_actions(self, request):
-        actions = super().get_actions(request)
-        actions.pop('delete_selected', None)  # «Отклонить» и есть удаление
-        return actions
-
-    def has_add_permission(self, request):
-        return False
-
-    def has_change_permission(self, request, obj=None):
-        return False
-
-    @admin.display(description='Класс', ordering='profile__join_group__name')
-    def join_class(self, obj):
-        group = obj.profile.join_group
-        return f'{group.name} (ЕГЭ)' if group.is_ege_class else group.name
-
-    @admin.action(description='Принять')
-    def accept(self, request, queryset):
-        for user in queryset:
-            accept_join(user)
-        self.message_user(request, f'Принято: {len(queryset)}')
-
-    @admin.action(description='Принять, сдаёт ЕГЭ')
-    def accept_ege(self, request, queryset):
-        for user in queryset:
-            accept_join(user, ege=True)
-        self.message_user(request, f'Принято со «Сдаёт ЕГЭ»: {len(queryset)}')
-
-    @admin.action(description='Отклонить (аккаунт удаляется)')
-    def reject(self, request, queryset):
-        User.objects.filter(pk__in=[u.pk for u in queryset]).delete()
-        self.message_user(request, f'Отклонено заявок: {len(queryset)}')
 
 # Перерегистрируем User с новыми настройками
 admin.site.unregister(User)

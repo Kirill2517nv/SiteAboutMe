@@ -6,10 +6,10 @@
 
 {% block extra_css %}
 <!-- Highlight.js for code display -->
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+<link rel="stylesheet" href="{% static 'vendor/highlight-11.9.0/atom-one-dark.min.css' %}">
 <!-- CodeMirror -->
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/theme/material-darker.min.css">
+<link rel="stylesheet" href="{% static 'vendor/codemirror-5.65.18/codemirror.css' %}">
+<link rel="stylesheet" href="{% static 'vendor/codemirror-5.65.18/theme/material-darker.css' %}">
 <link rel="stylesheet" href="{% static 'css/codemirror-vscode.css' %}">
 <style>
     /* CodeMirror overrides */
@@ -240,8 +240,8 @@
 </div>
 
 <!-- Highlight.js for code display -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="{% static 'vendor/highlight-11.9.0/highlight.min.js' %}"></script>
+<script src="{% static 'vendor/highlight-11.9.0/languages/python.min.js' %}"></script>
 <script>hljs.highlightAll();</script>
 
 {% else %}
@@ -764,14 +764,14 @@ Alpine ищет данные вверх по дереву, поэтому кно
 {% block pre_alpine_js %}
 {% if not read_only %}
 <!-- CodeMirror -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/python/python.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/clike/clike.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/edit/closebrackets.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/edit/matchbrackets.min.js"></script>
+<script src="{% static 'vendor/codemirror-5.65.18/codemirror.js' %}"></script>
+<script src="{% static 'vendor/codemirror-5.65.18/mode/python/python.js' %}"></script>
+<script src="{% static 'vendor/codemirror-5.65.18/mode/clike/clike.js' %}"></script>
+<script src="{% static 'vendor/codemirror-5.65.18/addon/edit/closebrackets.js' %}"></script>
+<script src="{% static 'vendor/codemirror-5.65.18/addon/edit/matchbrackets.js' %}"></script>
 <!-- Highlight.js for code display in solved answers -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="{% static 'vendor/highlight-11.9.0/highlight.min.js' %}"></script>
+<script src="{% static 'vendor/highlight-11.9.0/languages/python.min.js' %}"></script>
 {% comment %}
 Подсвечиваем ```python в условиях задач и код решённых ответов. В read-only
 ветке этот вызов уже есть; здесь его не было, и код выводился одним цветом.

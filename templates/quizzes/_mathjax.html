@@ -1,3 +1,4 @@
+{% load static %}
 {% comment %}
 MathJax для условий задач. Подключается на каждой странице, где ученик или
 учитель читает условие: вариант, тренировочная сессия, разбор попытки, банк
@@ -24,4 +25,4 @@ window.MathJax = {
     options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre'] }
 };
 </script>
-<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" defer></script>
+<script src="{% static 'vendor/mathjax-3.2.2/tex-chtml.js' %}" defer></script>

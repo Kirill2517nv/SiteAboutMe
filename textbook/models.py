@@ -181,6 +181,9 @@ class Article(models.Model):
         ('material', 'Учебный материал'),
         ('ege', 'Теория ЕГЭ'),
         ('spetskurs', 'Спецкурс'),
+        # Страница выступления: не урок и не «Основы C++» спецкурса, поэтому свой
+        # трек – статья без course_task в треке spetskurs попала бы в «Основы».
+        ('event', 'Мастер-класс'),
     ]
 
     track = models.CharField(

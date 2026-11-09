@@ -25,7 +25,7 @@
                     <svg class="w-5 h-5 text-red-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                     </svg>
-                    {# Текст – из accounts.views.LoginForm: неверный пароль или заявка, которая ждёт учителя #}
+                    {# Текст – из accounts.views.LoginForm: неверный пароль или выключенный аккаунт #}
                     <span class="text-red-700 text-sm">{% for error in form.non_field_errors %}{{ error }}{% empty %}Неверный логин или пароль. Попробуйте снова.{% endfor %}</span>
                 </div>
             </div>
@@ -71,7 +71,7 @@
             <div class="mt-6 text-center">
                 <p class="text-gray-500 text-sm">
                     Нет аккаунта, но учитель дал код класса?
-                    <a href="{% url 'accounts:join' %}" class="text-brand-600 hover:text-brand-700 font-medium">Подать заявку</a>
+                    <a href="{% url 'accounts:join' %}" class="text-brand-600 hover:text-brand-700 font-medium">Зарегистрироваться</a>
                 </p>
             </div>
         </div>

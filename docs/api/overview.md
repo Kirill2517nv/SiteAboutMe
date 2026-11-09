@@ -51,7 +51,7 @@ graph LR
 | GET | `/` | pages | Карта курса с прогрессом |
 | GET | `/about/` | pages | О проекте |
 | GET | `/pages/changelog/` | pages | История версий из `CHANGELOG.md` |
-| GET/POST | `/accounts/join/` | accounts | Заявка в класс по коду |
+| GET/POST | `/accounts/join/` | accounts | Регистрация в классе по коду |
 | GET | `/ege/` | ege | Хаб тренажёра (гостю – демо-прогресс) |
 | GET | `/ege/task/<number>/` | ege | Карточка задания |
 | GET | `/textbook/` | textbook | Главная учебника |
@@ -86,6 +86,8 @@ graph LR
 | POST | `/ege/<id>/finish/` | ege | Завершить вариант |
 | GET | `/ege/<id>/result/` | ege | Результат варианта |
 | POST | `/ege/<id>/save-time/` | ege | Сохранить время задачи |
+| POST | `/ege/<id>/signup/` | ege | Ответ на запись в пробник («буду / не смогу») |
+| POST | `/ege/<id>/mock/` | ege | Настройка пробника: дата, класс-ключ, объявление (superuser) |
 | GET | `/ege/<id>/task/<num>/solution/<user_id>/` | ege | Старый адрес решения – редирект в галерею задачи |
 | GET | `/quizzes/question/<id>/solutions/` | quizzes | «Решения других» – галерея задачи |
 | POST | `/quizzes/question/<id>/solutions/mine/` | quizzes | Своё решение: подпись, разбор, файл, картинка |

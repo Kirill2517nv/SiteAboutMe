@@ -177,7 +177,7 @@ class ProfileView(LoginRequiredMixin, generic.TemplateView):
         # Учителю — переключение между учениками прямо из профиля.
         if self.request.user.is_superuser:
             context['students'] = (
-                # is_active – заявки по коду класса учеником ещё не стали
+                # is_active=False – ученика выключил учитель, в работу его не берём
                 User.objects.filter(is_superuser=False, is_active=True)
                 .select_related('profile__group')
                 .order_by('profile__group__name', 'last_name', 'username')
@@ -220,10 +220,10 @@ class AlumniView(UserPassesTestMixin, generic.ListView):
 
 
 class LoginForm(AuthenticationForm):
-    """Вход, который отличает заявку по коду класса от неверного пароля.
+    """Вход, который отличает выключенный учителем аккаунт от неверного пароля.
 
     Стандартный ModelBackend отбрасывает неактивного пользователя до проверки
-    пароля, и ученик с заявкой видел бы «неверный пароль». Бэкенд не меняем
+    пароля, и ученик видел бы «неверный пароль». Бэкенд не меняем
     (AllowAllUsersModelBackend оставил бы живыми сессии выключенных), а здесь
     сами проверяем пароль неактивного – и только тогда говорим, в чём дело."""
 
@@ -231,8 +231,6 @@ class LoginForm(AuthenticationForm):
         **AuthenticationForm.error_messages,
         'invalid_login': 'Неверный логин или пароль. Попробуйте снова.',
         'inactive': 'Учётная запись отключена – обратитесь к учителю.',
-        'pending': 'Заявка ждёт подтверждения учителя. Как только он её примет, '
-                   'вход откроется с этим же логином и паролем.',
     }
 
     def clean(self):
@@ -240,16 +238,14 @@ class LoginForm(AuthenticationForm):
             return super().clean()
         except ValidationError:
             user = User.objects.filter(username=self.cleaned_data.get('username'),
-                                       is_active=False).select_related('profile').first()
+                                       is_active=False).first()
             if user and user.check_password(self.cleaned_data.get('password') or ''):
-                pending = getattr(getattr(user, 'profile', None), 'join_group_id', None)
-                code = 'pending' if pending else 'inactive'
-                raise ValidationError(self.error_messages[code], code=code)
+                raise ValidationError(self.error_messages['inactive'], code='inactive')
             raise
 
 
 class JoinForm(UserCreationForm):
-    """Заявка по коду класса: ученик заводит себя сам, учитель принимает."""
+    """Регистрация по коду класса: ученик заводит себя сам и сразу входит."""
 
     code = forms.CharField(label='Код класса', max_length=20)
 
@@ -258,9 +254,10 @@ class JoinForm(UserCreationForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Учитель узнаёт ученика в списке заявок по ФИО – без него заявку не принять
+        # Учитель узнаёт ученика в отчётах по ФИО – без него там одни логины
         self.fields['last_name'].required = True
         self.fields['first_name'].required = True
+        self.fields['username'].label = 'Логин'
         self.group = None
 
     def clean_code(self):
@@ -273,15 +270,15 @@ class JoinForm(UserCreationForm):
     @transaction.atomic
     def save(self):
         user = super().save(commit=False)
-        user.is_active = False
+        user.is_active = True
         user.save()
-        Profile.objects.create(user=user, join_group=self.group)
+        Profile.objects.create(user=user, group=self.group,
+                               is_ege=self.group.is_ege_class)
         return user
 
 
 def join_view(request):
-    """/accounts/join/ – регистрация по коду класса. Вход откроется после «Принять»
-    в админке (раздел «Заявки в классы»)."""
+    """/accounts/join/ – регистрация по коду класса: ученик сразу входит на сайт."""
     if request.user.is_authenticated:
         return redirect('home')
     form = JoinForm(request.POST or None)
