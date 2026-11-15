@@ -404,6 +404,7 @@
         <input type="hidden" name="codes" x-ref="finishCodes">
     </form>
     {% if brainrot_hunt %}{% include 'quizzes/_easter_hunt.html' %}{% endif %}
+    {% if streak_on or streak_hunt or streak_debug %}{% include 'quizzes/_streak.html' %}{% endif %}
 </div>
 </div>
 {% endblock content %}
@@ -417,6 +418,7 @@
 <script src="{% static 'js/answer-table.js' %}"></script>
 <script src="{% static 'js/code-run.js' %}"></script>
 <script src="{% static 'js/brainrot-feed.js' %}"></script>
+<script src="{% static 'js/streak.js' %}"></script>
 <script src="{% static 'vendor/codemirror-5.65.18/addon/edit/matchbrackets.js' %}"></script>
 <script src="{% static 'vendor/codemirror-5.65.18/addon/edit/closebrackets.js' %}"></script>
 
@@ -729,6 +731,15 @@ function practiceApp() {
                     this.scores[itemId] = data.score;
                     this.attempts[itemId] = data.attempts;
                     this.locked[itemId] = !!data.locked;
+                    // Серия считает только тренировку; carried – задача связки,
+                    // решённая раньше, её заново не решают.
+                    const it = this._itemById(itemId);
+                    if (this.reveal && !(it && it.carried)) {
+                        window.dispatchEvent(new CustomEvent('task-verdict', {
+                            detail: {id: itemId, correct: data.is_correct === true,
+                                     firstTry: data.attempts <= 1},
+                        }));
+                    }
                 } else if (resp.ok) {
                     this.saved[itemId] = true;   // экзамен: исход не сообщается
                 }
@@ -755,6 +766,12 @@ function practiceApp() {
                     this.correct[itemId] = data.correct_answer;
                     this.verdict[itemId] = false;
                     this.locked[itemId] = true;
+                    const it = this._itemById(itemId);
+                    if (this.reveal && !(it && it.carried)) {
+                        window.dispatchEvent(new CustomEvent('task-verdict', {
+                            detail: {id: itemId, correct: false, firstTry: false},
+                        }));
+                    }
                 }
             } catch (e) {
                 console.error('Не удалось показать ответ:', e);

@@ -1,0 +1,145 @@
+{% comment %}
+Пасхалка «Серия» (streak, accounts/easter_eggs.py): задачи, решённые подряд
+с первой попытки, зажигают огонь по краям экрана. Страницы шлют событие
+`task-verdict` (detail {id, correct, firstTry}); компонент – streakFx в
+static/js/streak.js. Только тренировка тренажёра и практикум блока:
+контекст streak_on / streak_hunt / streak_debug даёт classwork.streak_context.
+
+Пламя – частицы на двух канвах у краёв (streakFire в streak.js), а не CSS-полосы:
+градиент с мерцанием читался как нарисованная плашка, живой огонь дают только
+языки, которые рождаются, колышутся и гаснут каждый сам по себе.
+
+Кегль крупной фразы вне общей шкалы – это display-графика ступени, поэтому
+партиал перечислен в textbook.tests.FontScaleTest.EXCEPTIONS.
+{% endcomment %}
+<style>
+    .streak-fire {
+        position: fixed;
+        bottom: 0;
+        height: 100vh;
+        width: max(72px, 10vw);
+        pointer-events: none;
+        z-index: 40;
+    }
+    /* Внутренний край растворяется в странице, а не обрывается стенкой. */
+    .streak-fire-left {
+        left: 0;
+        -webkit-mask-image: linear-gradient(to right, #000 45%, transparent);
+        mask-image: linear-gradient(to right, #000 45%, transparent);
+    }
+    .streak-fire-right {
+        right: 0;
+        -webkit-mask-image: linear-gradient(to left, #000 45%, transparent);
+        mask-image: linear-gradient(to left, #000 45%, transparent);
+    }
+
+    /* Палитра фразы и рамки по ступени: --p1 верх букв, --p3 низ, --glow ореол. */
+    .streak-l2, .streak-l3 { --p1: #fff7d6; --p2: #ffc64a; --p3: #f0701a; --glow: rgba(255, 150, 40, .75); }
+    .streak-l4, .streak-l5 { --p1: #ffeccc; --p2: #ff9a2e; --p3: #e0480e; --glow: rgba(255, 100, 20, .8); }
+    .streak-l6 { --p1: #ffe0d2; --p2: #ff5a2c; --p3: #b8140c; --glow: rgba(240, 50, 20, .85); }
+    .streak-l8 { --p1: #f0f7ff; --p2: #7cc4ff; --p3: #2a5ee8; --glow: rgba(70, 140, 255, .9); }
+
+    .streak-phrase-wrap {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+        z-index: 40;
+        padding: 0 16px;
+    }
+    .streak-phrase {
+        display: inline-block;
+        font-size: clamp(44px, 9vw, 120px);
+        font-weight: 900;
+        font-style: italic;
+        line-height: 1.05;
+        text-transform: uppercase;
+        text-align: center;
+        letter-spacing: .01em;
+        padding: .1em .15em;
+        background: linear-gradient(to top, var(--p3), var(--p2) 50%, var(--p1));
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        filter: drop-shadow(0 0 22px var(--glow)) drop-shadow(0 4px 0 rgba(0, 0, 0, .3));
+        animation: streak-pop .55s cubic-bezier(.18, 1.5, .4, 1) both;
+    }
+    @keyframes streak-pop {
+        0% { transform: scale(.4) skewX(-8deg); opacity: 0; letter-spacing: .3em; }
+        60% { opacity: 1; }
+        100% { transform: scale(1) skewX(0); opacity: 1; letter-spacing: .01em; }
+    }
+    /* С «Буйства» фраза дрожит – ступень уже не просто считает, а орёт. */
+    .streak-shake { display: inline-block; animation: streak-shake .12s linear .55s infinite; }
+    @keyframes streak-shake {
+        0%, 100% { transform: translate(-2px, 1px) rotate(-.6deg); }
+        50% { transform: translate(2px, -1px) rotate(.6deg); }
+    }
+
+    /* «Бог задачника!» – тлеющая рамка по периметру. */
+    .streak-frame {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 40;
+        box-shadow: inset 0 0 40px 4px var(--glow), inset 0 0 140px rgba(30, 60, 160, .35);
+        animation: streak-ember 2.4s ease-in-out infinite;
+    }
+    @keyframes streak-ember {
+        0%, 100% { opacity: .5; }
+        50% { opacity: 1; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .streak-phrase, .streak-shake, .streak-frame { animation: none; }
+    }
+</style>
+<div x-data="streakFx({{ streak_on|yesno:'true,false' }}, {{ streak_hunt|yesno:'true,false' }}, '{% url 'accounts:easter_egg_found' 'streak' %}', '{{ csrf_token }}')"
+     @task-verdict.window="verdict($event.detail)">
+    <canvas x-ref="fireLeft" class="streak-fire streak-fire-left" aria-hidden="true"></canvas>
+    <canvas x-ref="fireRight" class="streak-fire streak-fire-right" aria-hidden="true"></canvas>
+    <div class="streak-frame streak-l8" aria-hidden="true" x-cloak x-show="on && count >= 8"
+         x-transition.opacity.duration.700ms></div>
+    <div class="streak-phrase-wrap" aria-hidden="true" x-cloak x-show="phrase"
+         x-transition:leave="transition-opacity duration-500" x-transition:leave-end="opacity-0">
+        <span class="streak-phrase" :class="'streak-l' + level">
+            <span :class="level >= 5 ? 'streak-shake' : ''" x-text="label"></span>
+        </span>
+    </div>
+
+    {# Счётчик – в углу; виден, только когда серия жива. #}
+    <div x-cloak x-show="on && count >= 2" x-transition.opacity role="status"
+         class="fixed bottom-20 md:bottom-4 left-4 z-40 flex items-center gap-2 rounded-full bg-slate-900/85 text-white px-3 py-1.5 text-sm shadow-lg">
+        🔥 <span x-text="count"></span>
+    </div>
+
+    {% if streak_debug %}
+    {# Отладка эффектов – только суперпользователю: ступень по кнопке, без решения задач. #}
+    <details class="fixed left-4 bottom-32 md:bottom-16 z-50 rounded-xl border border-gray-200 dark:border-slate-700 bg-white/95 dark:bg-slate-800/95 shadow-lg text-xs">
+        <summary class="cursor-pointer select-none px-3 py-1.5 text-gray-600 dark:text-slate-300">🔥 Серия: отладка</summary>
+        <div class="flex flex-wrap gap-1 px-3 pb-3 max-w-[15rem]">
+            {% for n in "2345678" %}
+            <button type="button" @click="debugSet({{ n }})"
+                    class="w-8 h-8 rounded-lg border border-gray-200 dark:border-slate-600 hover:bg-amber-50 dark:hover:bg-slate-700 text-gray-800 dark:text-slate-100">{{ n }}</button>
+            {% endfor %}
+            <button type="button" @click="debugSet(count + 1)"
+                    class="px-2 h-8 rounded-lg border border-gray-200 dark:border-slate-600 hover:bg-amber-50 dark:hover:bg-slate-700 text-gray-800 dark:text-slate-100">+1</button>
+            <button type="button" @click="debugFail()"
+                    class="px-2 h-8 rounded-lg border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-slate-700">Ошибка</button>
+        </div>
+    </details>
+    {% endif %}
+
+    <div x-show="toast" x-cloak x-transition.opacity role="status"
+         class="fixed bottom-20 md:bottom-6 right-4 left-4 sm:left-auto sm:max-w-sm z-50 flex items-center gap-4 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-slate-800 shadow-lg px-4 py-3">
+        {# Та же картинка, что на карточке в профиле, – цветная: пасхалка уже включена. #}
+        <img :src="toastImage" alt="" width="64" height="64" class="w-16 h-16 rounded-xl shrink-0">
+        <span class="text-sm text-gray-800 dark:text-slate-200">
+            <span class="block font-semibold">Найдена пасхалка: <span x-text="toast"></span></span>
+            <span x-text="toastText"></span>
+            <span class="block">Выключить можно в профиле.</span>
+        </span>
+    </div>
+</div>

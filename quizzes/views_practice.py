@@ -737,6 +737,12 @@ def practice_view(request, pk):
         'nav_rows_json': js_json(_navigator_rows(items)),
         # Лента роликов и её секрет; срез – работа на оценку, его не трогаем.
         **(classwork.brainrot_context(request.user) if session.kind != 'check' else {}),
+        # Серия – только тренировка по теме: экзамен, повтор, работа в классе
+        # и срез идут без неё.
+        **classwork.streak_context(
+            request.user,
+            allowed=session.mode == 'study' and session.kind not in ('retry', 'classroom', 'check'),
+        ),
     })
 
 

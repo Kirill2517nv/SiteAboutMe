@@ -9,7 +9,10 @@ JavaScript страницы и найдётся в исходнике: это и
 """
 from collections import namedtuple
 
-Egg = namedtuple('Egg', 'key title blurb hint image')
+# title/blurb – открытая карточка в профиле, hint – закрытая («???»), toast –
+# строка всплывающего «Найдена пасхалка» (страница получает её в ответе
+# easter_egg_found). Суперпользователь видит все три вида в своём профиле.
+Egg = namedtuple('Egg', 'key title blurb hint image toast')
 
 EGGS = [
     Egg(
@@ -18,6 +21,15 @@ EGGS = [
         blurb='Ролики рядом с задачами',
         hint='Не задерживайся ни на одной задаче',
         image='img/easter-eggs/brainrot.png',
+        toast='Полистал задачи – устал. Пора смотреть тикитоки)',
+    ),
+    Egg(
+        key='streak',
+        title='Серия',
+        blurb='Огонь за задачи подряд',
+        hint='Не ошибайся несколько раз подряд',
+        image='img/easter-eggs/streak.png',
+        toast='Три задачи подряд без ошибки – сайт это заметил.',
     ),
 ]
 EGGS_BY_KEY = {egg.key: egg for egg in EGGS}

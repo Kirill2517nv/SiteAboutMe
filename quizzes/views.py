@@ -1536,6 +1536,9 @@ def quiz_detail_view(request, quiz_id):
         'total_points': sum(q.points for q in all_questions),
         'show_solutions': show_solutions,
         **classwork.brainrot_context(request.user),
+        # Серия – только у практикума блока (show_solutions): в самопроверке
+        # ученик щёлкает варианты, а не решает задачи одну за другой.
+        **classwork.streak_context(request.user, allowed=show_solutions),
     })
 
 @login_required

@@ -756,6 +756,7 @@ Alpine ищет данные вверх по дереву, поэтому кно
         </div>
     </div>
     {% if brainrot_hunt %}{% include 'quizzes/_easter_hunt.html' %}{% endif %}
+    {% if streak_on or streak_hunt or streak_debug %}{% include 'quizzes/_streak.html' %}{% endif %}
 </div> <!-- close x-data="quizApp()" -->
 </div> <!-- close x-data="presentMode()" -->
 {% endif %}
@@ -781,6 +782,7 @@ Alpine ищет данные вверх по дереву, поэтому кно
 <script src="{% static 'js/code-lang.js' %}"></script>
 <script src="{% static 'js/quiz-async.js' %}"></script>
 <script src="{% static 'js/brainrot-feed.js' %}"></script>
+<script src="{% static 'js/streak.js' %}"></script>
 
 <script>
 function quizApp() {
@@ -791,6 +793,8 @@ function quizApp() {
         answers: {},
         codeStatuses: {},
         textVerdicts: {},   // questionId -> true/false, вердикт по кнопке «Проверить ответ»
+        streakFailed: {},   // questionId -> true, на этой странице уже был неверный вердикт
+        _streakSkip: {},    // questionId -> true, задача была решена до загрузки страницы
         textChecking: {},   // questionId -> идёт проверка
         codeErrors: {},
         codeErrorDetails: {},
@@ -819,6 +823,12 @@ function quizApp() {
             // Guard against Alpine calling init() twice
             if (this._initialized) return;
             this._initialized = true;
+
+            // Задача, решённая до загрузки страницы, в серию не идёт: её
+            // первая попытка была в прошлый раз, а не сейчас.
+            for (const task of this.tasks) {
+                if (task.is_solved) this._streakSkip[task.id] = true;
+            }
 
             const lastSubs = {{ last_submissions_json|safe }};
             const lastAttemptCodes = {{ last_attempt_codes_json|safe }};
@@ -988,11 +998,29 @@ function quizApp() {
                     body: JSON.stringify({ answer }),
                 });
                 const data = await resp.json();
-                if (resp.ok) this.textVerdicts[questionId] = data.is_correct;
+                if (resp.ok) {
+                    this.textVerdicts[questionId] = data.is_correct;
+                    this._streakVerdict(questionId, data.is_correct === true);
+                }
             } catch (e) {
                 console.error('Ошибка проверки:', e);
             }
             this.textChecking[questionId] = false;
+        },
+
+        // Серия (пасхалка streak): первая попытка здесь – «на этой странице
+        // по этой задаче ещё не было неверного вердикта». Решённые до
+        // загрузки страницы не шлём вовсе.
+        _streakVerdict(questionId, correct) {
+            if (this._streakSkip[questionId]) return;
+            const firstTry = !this.streakFailed[questionId];
+            if (!correct) this.streakFailed[questionId] = true;
+            // Решённую задачу практикум даёт проверить снова – неверная
+            // перепроверка не должна сжечь серию, за которую уже засчитана.
+            else this._streakSkip[questionId] = true;
+            window.dispatchEvent(new CustomEvent('task-verdict', {
+                detail: {id: questionId, correct: correct, firstTry: correct && firstTry},
+            }));
         },
 
         _langKey() { return `quiz_lang_${this.quizId}`; },
@@ -1137,6 +1165,7 @@ function quizApp() {
         },
 
         handleCodeStatus(questionId, status, isCorrect, errorLog, cpuTimeMs, memoryKb) {
+            const prev = this.codeStatuses[questionId];
             this.codeStatuses[questionId] = status;
             if (errorLog) {
                 this.codeErrors[questionId] = errorLog;
@@ -1172,6 +1201,15 @@ function quizApp() {
                         task.best_memory_code = code;
                     }
                 }
+            }
+
+            // Серия: только финальный вердикт и только переход из очереди –
+            // повторная доставка статуса после переподключения сокета не
+            // должна засчитать задачу второй раз. 'error' – сбой песочницы,
+            // а не ответ ученика: серию он не рвёт.
+            if ((status === 'success' || status === 'failed')
+                && (prev === 'pending' || prev === 'running')) {
+                this._streakVerdict(questionId, status === 'success' && isCorrect === true);
             }
         },
 

@@ -1122,6 +1122,8 @@ class FontScaleTest(SimpleTestCase):
         # Год выпуска (clamp) и стрелки Swiper – декоративные глифы.
         'templates/accounts/alumni.html',
         'templates/about.html',
+        # Пасхалка «Серия»: крупная фраза ступени – display-графика, не текст.
+        'templates/quizzes/_streak.html',
     }
 
     SCALE_PX = {12, 14, 16, 18, 20, 24, 30, 36, 48}

@@ -169,6 +169,9 @@ class ProfileView(LoginRequiredMixin, generic.TemplateView):
             'suggestions_total': user.suggestions.count(),
             'name_visibility_options': Profile.NAME_VISIBILITY_OPTIONS,
             'easter_egg_cards': easter_eggs.cards(user) if is_own else [],
+            # Отладка текстов и картинок: суперпользователь в своём профиле
+            # видит у каждой пасхалки закрытую карточку, открытую и уведомление.
+            'easter_egg_preview': easter_eggs.EGGS if is_own and user.is_superuser else [],
         })
         if is_own and 'name_form' not in context:
             name_form = NameForm(user=user)
@@ -302,7 +305,7 @@ def easter_egg_found_view(request, key):
         return JsonResponse({'error': 'Нет такой пасхалки'}, status=404)
     egg = easter_eggs.EGGS_BY_KEY[key]
     return JsonResponse({'new': easter_eggs.unlock(request.user, key),
-                         'title': egg.title, 'image': static(egg.image)})
+                         'title': egg.title, 'image': static(egg.image), 'toast': egg.toast})
 
 
 @login_required

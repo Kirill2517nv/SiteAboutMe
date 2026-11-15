@@ -12,7 +12,9 @@ from django.utils import timezone
 from PIL import Image
 
 from accounts.models import Profile, StudentGroup
-from quizzes.models import Question, Quiz, UserAnswer, UserResult
+from quizzes.models import (
+    PracticeSession, Question, Quiz, QuizAssignment, UserAnswer, UserResult,
+)
 from textbook.models import Article, ArticleProgress, Section
 from textbook.services import profile_textbook_stats
 
@@ -467,3 +469,78 @@ class EasterEggTests(TestCase):
         self.assertTrue(brainrot_visible(self.student, work))
         work.classwork_brainrot = False
         self.assertFalse(brainrot_visible(self.student, work))
+
+    def test_streak_card_hidden_until_found(self):
+        html = self.client.get(reverse('accounts:profile')).content.decode()
+        self.assertIn('Не ошибайся несколько раз подряд', html)
+        self.assertNotIn('Огонь за задачи подряд', html)
+
+    def test_streak_unlock_from_secret(self):
+        data = self.client.post(reverse('accounts:easter_egg_found', args=['streak'])).json()
+        self.assertTrue(data['new'])
+        self.assertEqual(data['title'], 'Серия')
+        self.assertEqual(data['image'], '/static/img/easter-eggs/streak.png')
+        self.assertEqual(self._eggs(), {'streak': True})
+        html = self.client.get(reverse('accounts:profile')).content.decode()
+        self.assertIn('Огонь за задачи подряд', html)
+
+    def test_streak_context_only_in_study_practice(self):
+        study = PracticeSession.objects.create(
+            user=self.student, kind='topic', mode='study', ege_number=1,
+        )
+        response = self.client.get(reverse('ege:ege_practice', args=[study.pk]))
+        self.assertTrue(response.context['streak_hunt'])
+        self.assertFalse(response.context['streak_on'])
+
+        exam = PracticeSession.objects.create(
+            user=self.student, kind='topic', mode='exam', ege_number=1,
+        )
+        response = self.client.get(reverse('ege:ege_practice', args=[exam.pk]))
+        self.assertFalse(response.context['streak_hunt'])
+        self.assertFalse(response.context['streak_on'])
+
+        self.client.post(reverse('accounts:easter_egg_found', args=['streak']))
+        response = self.client.get(reverse('ege:ege_practice', args=[study.pk]))
+        self.assertTrue(response.context['streak_on'])
+        self.assertFalse(response.context['streak_hunt'])
+
+    def test_streak_partial_only_on_section_practicum(self):
+        practicum = Quiz.objects.create(title='Практикум серии')
+        Question.objects.create(quiz=practicum, text='1+1?', correct_text_answer='2')
+        Section.objects.create(
+            title='Блок серии', slug='blok-serii', order=50, is_published=True,
+            practicum_quiz=practicum,
+        )
+        QuizAssignment.objects.create(quiz=practicum, user=self.student)
+        html = self.client.get(reverse('quizzes:quiz_detail', args=[practicum.id])).content.decode()
+        self.assertIn('streakFx', html)
+
+        ordinary = Quiz.objects.create(title='Обычный тест серии')
+        Question.objects.create(quiz=ordinary, text='2+2?', correct_text_answer='4')
+        QuizAssignment.objects.create(quiz=ordinary, user=self.student)
+        html = self.client.get(reverse('quizzes:quiz_detail', args=[ordinary.id])).content.decode()
+        self.assertNotIn('streakFx', html)
+
+    def test_streak_debug_panel_superuser_only(self):
+        from quizzes.classwork import streak_context
+        admin = User.objects.create_superuser('streak_admin', password='x')
+        self.assertTrue(streak_context(admin)['streak_debug'])
+        self.assertFalse(streak_context(admin, allowed=False)['streak_debug'])
+        self.assertFalse(streak_context(self.student)['streak_debug'])
+
+    def test_preview_of_all_egg_views_superuser_only(self):
+        from accounts.easter_eggs import EGGS_BY_KEY
+        streak = EGGS_BY_KEY['streak']
+        html = self.client.get(reverse('accounts:profile')).content.decode()
+        self.assertNotIn('Предпросмотр всех видов', html)
+
+        admin = User.objects.create_superuser('egg_admin', password='x')
+        self.client.force_login(admin)
+        html = self.client.get(reverse('accounts:profile')).content.decode()
+        self.assertIn('Предпросмотр всех видов', html)
+        for text in (streak.hint, streak.blurb, streak.toast):
+            self.assertIn(text, html)
+
+    def test_found_response_carries_toast_text(self):
+        data = self.client.post(reverse('accounts:easter_egg_found', args=['streak'])).json()
+        self.assertEqual(data['toast'], 'Три задачи подряд без ошибки – сайт это заметил.')

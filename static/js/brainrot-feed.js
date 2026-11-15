@@ -74,6 +74,7 @@ function easterHunt(url, csrf) {
         _sent: false,
         toast: '',
         toastImage: '',
+        toastText: '',
 
         tick() {
             if (this._sent) return;
@@ -91,6 +92,7 @@ function easterHunt(url, csrf) {
                 if (!data.new) return;
                 window.dispatchEvent(new CustomEvent('brainrot', { detail: true }));
                 this.toastImage = data.image;
+                this.toastText = data.toast;
                 this.toast = data.title;
                 setTimeout(() => { this.toast = ''; }, 7000);
             } catch (e) {

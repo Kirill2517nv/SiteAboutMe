@@ -68,6 +68,21 @@ def brainrot_context(user, quiz=None):
     }
 
 
+def streak_context(user, allowed=True):
+    """Контекст партиала серии (_streak.html): включена ли, искать ли её ещё и
+    показывать ли суперпользователю панель отладки эффектов.
+
+    allowed – только тренировка тренажёра и практикум блока; иначе все флаги
+    False, чтобы партиал не появился на экзамене, срезе, самостоятельной и
+    варианте – там вердикт скрыт, и огонь его бы выдал.
+    """
+    return {
+        'streak_on': allowed and easter_eggs.is_on(user, 'streak'),
+        'streak_hunt': allowed and not easter_eggs.is_found(user, 'streak'),
+        'streak_debug': allowed and user.is_superuser,
+    }
+
+
 # Шкала одна на все работы; править здесь.
 GRADE_SCALE = ((85, 5), (65, 4), (45, 3))  # процент от максимума -> оценка, ниже – 2
 DRAFT_LIMIT = 20000
