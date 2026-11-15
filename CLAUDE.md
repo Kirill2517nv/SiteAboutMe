@@ -27,7 +27,7 @@ python manage.py mark_exam_pool --dry-run              # Fill the exam-only rese
 python manage.py kompege_images 12 --dry-run           # Докачать с kompege картинки, потерянные парсером (data:-URI, чужой хост)
 python manage.py ege_pools --dump fixtures/ege-pools.json   # Snapshot pools + EgeTask settings (dev → prod, see docs/ege-bank-deploy.md)
 python manage.py ege_pools --load fixtures/ege-pools.json --dry-run
-python manage.py seed_textbook_structure       # Textbook skeleton: 21 sections + article titles (idempotent); content – seed_textbook_block<N> (1–13)
+python manage.py seed_textbook_structure       # Textbook skeleton: 20 sections + article titles (idempotent); content – seed_textbook_block<N> (1–12)
 python manage.py seed_classwork_block6          # Самостоятельная блока 6: банк 20 задач по 1 баллу, каждому 5
 python manage.py check_articles --track ege    # Lint articles in the DB: formulas, links, block order (material/ege/spetskurs)
 python manage.py fix_dashes --dry-run          # Find em dashes in the DB (without the flag – replace them)

@@ -250,7 +250,7 @@ class Command(BaseCommand):
                 '\n'
                 '- **чтение файла в список чисел** – построчный разбор строк '
                 'в `int`: '
-                + _link('19-2-rabota-s-faylami-v-python',
+                + _link('18-2-rabota-s-faylami-v-python',
                         'работа с файлами в Python') + ';\n'
                 '- **перебор по индексам** – соседняя пара это `a[i]` '
                 'и `a[i + 1]`: '
