@@ -4,7 +4,9 @@
 # без migrate: схема приходит репликой, а запись в реплику невозможна.
 set -euo pipefail
 LBM="ssh -o BatchMode=yes lih@lbm-srv"
-LAPTOP="ssh -o BatchMode=yes -p 2222 admin@192.168.1.199"
+# Ноутбук – по Tailscale, а не по домашнему 192.168.1.199: так выкатка идёт из
+# любой сети. HostKeyAlias сверяет ключ с уже доверенным для локального адреса.
+LAPTOP="ssh -o BatchMode=yes -p 2222 -o HostKeyAlias=[192.168.1.199]:2222 admin@100.77.31.52"
 
 # После failover основной стал ноутбук – эта схема выкатки к нему не подходит.
 if $LAPTOP 'test -e /home/admin/site/.failover'; then
