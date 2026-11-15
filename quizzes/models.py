@@ -64,6 +64,12 @@ class Quiz(models.Model):
                   "рядом с номерами задач. Учитель разрешает на пульте, видят её "
                   "только ученики, включившие пасхалку в профиле.",
     )
+    za_warudo_allowed = models.BooleanField(
+        default=False, verbose_name="Остановка времени разрешена",
+        help_text="Только у среза и самостоятельной: разрешает ученикам, нашедшим "
+                  "пасхалку «Заваруду», останавливать время работы. Учитель включает "
+                  "кнопкой на странице среза и на пульте самостоятельной.",
+    )
     signup_text = models.TextField(
         blank=True, verbose_name="Объявление пробника",
         help_text="Только у варианта: заполнено – вариант объявлен пробником, "
@@ -565,6 +571,9 @@ class PracticeSession(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Начата")
     finished_at = models.DateTimeField(null=True, blank=True, verbose_name="Завершена")
+    # Секунды, выданные пасхалкой «Заваруду»: дедлайн сдвигается ровно на них,
+    # а не только показ таймера в браузере.
+    frozen_seconds = models.PositiveIntegerField(default=0, verbose_name="Секунд остановки времени")
 
     class Meta:
         verbose_name = "Сессия тренировки ЕГЭ"
@@ -596,15 +605,18 @@ class PracticeSession(models.Model):
 
         if self.mode != 'exam':
             return None
+        frozen = timedelta(seconds=self.frozen_seconds)
         if self.check_quiz_id:
             # Срез: свои минуты, но не дольше окна – иначе начавший в последнюю
             # минуту дописывал бы, когда задачи уже открыты в общем банке.
+            # Секунды пасхалки прибавляются уже после min: их дал учитель,
+            # разрешив способность, и окно класса их не отменяет.
             end = self.created_at + timedelta(minutes=self.check_quiz.check_duration())
             window = self.check_quiz.check_window(self.user)
             if window and window.end_date:
                 end = min(end, window.end_date)
-            return end
-        return self.created_at + timedelta(minutes=EXAM_MINUTES)
+            return end + frozen
+        return self.created_at + timedelta(minutes=EXAM_MINUTES) + frozen
 
     @property
     def is_expired(self):

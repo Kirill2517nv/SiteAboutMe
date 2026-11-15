@@ -59,7 +59,8 @@
 {% endblock extra_css %}
 
 {% block content %}
-<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6" x-data="classworkWork()">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6" x-data="classworkWork()"
+     @za-warudo.window="onZaWarudo($event.detail)">
 
     <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div class="min-w-0">
@@ -92,6 +93,8 @@
         Вы проходите работу как ученик – в пульте и отчётах этой попытки нет.
     </div>
     {% endif %}
+
+    {% if zawarudo_on or zawarudo_hunt %}{% include 'quizzes/_za_warudo.html' %}{% endif %}
 
     <div class="flex gap-6">
         <aside class="hidden md:block w-52 shrink-0">
@@ -245,6 +248,7 @@
 <script src="{% static 'js/code-lang.js' %}"></script>
 <script src="{% static 'js/code-run.js' %}"></script>
 <script src="{% static 'js/brainrot-feed.js' %}"></script>
+{% if zawarudo_on or zawarudo_hunt %}<script src="{% static 'js/za-warudo.js' %}"></script>{% endif %}
 {% include 'quizzes/_mathjax.html' %}
 
 <script>
@@ -262,6 +266,10 @@ function classworkWork() {
         showConfirm: false,
         saveState: 'saved',
         pasteHint: false,
+        zaHunt: {% if zawarudo_hunt %}true{% else %}false{% endif %},
+        zaHuntUrl: '{% url "accounts:easter_egg_found" "zawarudo" %}',
+        _freezeUntil: 0,
+        _frozenLeft: 0,
 
         saveUrl: '{% url "classwork:save" attempt.pk %}',
         stateUrl: '{% url "classwork:state" attempt.pk %}',
@@ -349,8 +357,27 @@ function classworkWork() {
         },
 
         tick() {
+            if (this._freezeUntil) {
+                if (Date.now() < this._freezeUntil) {
+                    this.left = this._frozenLeft;
+                    return;
+                }
+                this._freezeUntil = 0;
+            }
             this.left = Math.max(0, Math.round((this._end - Date.now()) / 1000));
             if (this.left === 0 && !this.finishing) this.finish(true);
+        },
+
+        // Остановка времени: сервер сдвинул дедлайн попытки, показ замирает
+        // на выданные секунды и после разморозки идёт с того же места.
+        onZaWarudo(detail) {
+            const seconds = Math.max(0, Number(detail.seconds) || 0);
+            if (!seconds) return;
+            this._frozenLeft = this.left;
+            this._freezeUntil = Date.now() + seconds * 1000;
+            // Свой конец + секунды, а не deadline сервера: часы школьного
+            // компьютера могут расходиться с серверными на минуты.
+            this._end += seconds * 1000;
         },
 
         // --- ответы ---
@@ -419,8 +446,14 @@ function classworkWork() {
                 }
                 // Учитель запретил ленту на пульте – гаснет с этим же опросом.
                 window.dispatchEvent(new CustomEvent('brainrot', { detail: !!data.brainrot }));
-                this._end = Date.now() + data.left * 1000;
-                this.left = data.left;
+                // Пока идёт остановка времени, свой сдвинутый конец важнее
+                // ответа: опрос мог быть отправлен до того, как сервер продлил
+                // дедлайн, и вернул бы старое число.
+                if (!this._freezeUntil || Date.now() >= this._freezeUntil) {
+                    this._freezeUntil = 0;
+                    this._end = Date.now() + data.left * 1000;
+                    this.left = data.left;
+                }
             } catch (e) {
                 // Сеть вернётся – следующий опрос догонит; часы считаем по своему концу.
             }
@@ -495,6 +528,11 @@ function classworkWork() {
             clearInterval(this._tick);
             clearInterval(this._pollTimer);
             clearTimeout(this._saveTimer);
+            // Секрет «Заваруду» – только ручная сдача в последние полминуты.
+            // Ошибка запроса сдачу не срывает: сдаём в любом случае.
+            if (!auto && this.zaHunt && typeof zaWarudoHunt === 'function') {
+                await zaWarudoHunt(this.zaHuntUrl, this.csrf, this.left);
+            }
             try {
                 await fetch(this.finishUrl, {
                     method: 'POST',

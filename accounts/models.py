@@ -128,6 +128,14 @@ class Profile(models.Model):
     # Найденные пасхалки: {ключ: включена}. Нет ключа – не найдена. Список
     # пасхалок – в accounts/easter_eggs.py, новая пасхалка миграции не требует.
     easter_eggs = models.JSONField(default=dict, blank=True, verbose_name="Пасхалки")
+    # «Заваруду»: сколько раз останавливал время и когда в последний раз.
+    # Секунды растут с каждым применением, кулдаун – сутки (easter_eggs.py).
+    za_warudo_uses = models.PositiveIntegerField(
+        default=0, verbose_name="Остановок времени",
+    )
+    za_warudo_used_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="Последняя остановка времени",
+    )
 
     class Meta:
         verbose_name = "Профиль ученика"

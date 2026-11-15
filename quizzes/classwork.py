@@ -83,6 +83,29 @@ def streak_context(user, allowed=True):
     }
 
 
+def za_warudo_context(user, kind, obj_id, allowed=True):
+    """Контекст партиала «Заваруду» (_za_warudo.html).
+
+    allowed – разрешил ли учитель способность на этой работе: у среза и
+    самостоятельной это Quiz.za_warudo_allowed, у экзамена тренажёра и
+    варианта разрешать некому. Секрет же ищется на любой работе с таймером,
+    поэтому zawarudo_hunt от allowed не зависит: открыть пасхалку можно и на
+    срезе, который учитель ещё не разрешил.
+    """
+    profile = getattr(user, 'profile', None)
+    ready = easter_eggs.za_warudo_ready_at(profile)
+    return {
+        # Учитель видит кнопку без пасхалки – проверить, как она работает у
+        # ученика; сервер пускает его без перезарядки.
+        'zawarudo_on': allowed and (user.is_superuser or easter_eggs.is_on(user, 'zawarudo')),
+        'zawarudo_hunt': not easter_eggs.is_found(user, 'zawarudo'),
+        'zawarudo_kind': kind,
+        'zawarudo_id': obj_id,
+        'zawarudo_seconds': easter_eggs.za_warudo_seconds(profile),
+        'zawarudo_ready_at': ready.isoformat() if ready else '',
+    }
+
+
 # Шкала одна на все работы; править здесь.
 GRADE_SCALE = ((85, 5), (65, 4), (45, 3))  # процент от максимума -> оценка, ниже – 2
 DRAFT_LIMIT = 20000

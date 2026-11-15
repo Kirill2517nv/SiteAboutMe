@@ -116,6 +116,8 @@ def work_view(request, pk):
         'left': max(0, int((attempt.deadline - timezone.now()).total_seconds())),
         'frozen': attempt.is_frozen,
         **classwork.brainrot_context(request.user, quiz),
+        **classwork.za_warudo_context(
+            request.user, 'classwork', attempt.pk, allowed=quiz.za_warudo_allowed),
     })
 
 
@@ -315,6 +317,9 @@ def control_view(request, quiz_id):
     elif action == 'brainrot':
         quiz.classwork_brainrot = request.POST.get('on') == '1'
         quiz.save(update_fields=['classwork_brainrot'])
+    elif action == 'zawarudo':
+        quiz.za_warudo_allowed = request.POST.get('on') == '1'
+        quiz.save(update_fields=['za_warudo_allowed'])
 
     # Возврат туда, откуда пришли. Протокол-относительный // не пускаем.
     next_url = request.POST.get('next') or ''

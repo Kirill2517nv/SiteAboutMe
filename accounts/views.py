@@ -309,6 +309,20 @@ def easter_egg_found_view(request, key):
 
 
 @login_required
+@require_POST
+def za_warudo_use_view(request):
+    """Остановить время на идущей работе с таймером. Статус – из логики."""
+    kind = request.POST.get('kind', '')
+    raw = request.POST.get('id', '')
+    obj_id = int(raw) if raw.isdigit() else None
+    # Вариант живёт таймером в браузере: «начат» – это запись в сессии, её
+    # кладёт ege_detail_view. У остальных работ начало видно по объекту.
+    started = bool(obj_id and request.session.get(f'ege_{obj_id}_start'))
+    status, payload = easter_eggs.use_za_warudo(request.user, kind, obj_id, started=started)
+    return JsonResponse(payload, status=status)
+
+
+@login_required
 def notifications_view(request):
     """
     Уведомления ученика. Открыл страницу – значит прочитал: непрочитанные

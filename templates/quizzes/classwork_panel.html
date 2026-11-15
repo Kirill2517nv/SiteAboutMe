@@ -52,6 +52,19 @@
                     Лента видео: {% if quiz.classwork_brainrot %}разрешена{% else %}запрещена{% endif %}
                 </button>
             </form>
+            {# «Заваруду» разрешает учитель: ученик, нашедший пасхалку, иначе не остановит время на самостоятельной. #}
+            <form method="post" action="{% url 'classwork:control' quiz.id %}">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="zawarudo">
+                <input type="hidden" name="on" value="{{ quiz.za_warudo_allowed|yesno:'0,1' }}">
+                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                <button type="submit"
+                        class="px-4 py-2 rounded-lg border text-sm font-medium
+                               {% if quiz.za_warudo_allowed %}border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-800
+                               {% else %}border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-700 dark:text-slate-200 hover:border-indigo-400{% endif %}">
+                    Остановка времени: {% if quiz.za_warudo_allowed %}разрешена{% else %}запрещена{% endif %}
+                </button>
+            </form>
             <a href="{% url 'classwork:edit' quiz.id %}"
                class="px-4 py-2 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-medium text-gray-700 dark:text-slate-200 hover:border-brand-400">
                 Задачи

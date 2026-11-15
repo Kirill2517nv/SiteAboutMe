@@ -82,7 +82,7 @@
 режим показа.
 {% endcomment %}
 <div class="present-root max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6" x-data="presentMode()">
-<div x-data="egeApp()" x-init="init()">
+<div x-data="egeApp()" x-init="init()" @za-warudo.window="onZaWarudo($event.detail)">
     {% include '_present_mode.html' with nav_goto="goToTask" nav_index="currentTask" nav_list="tasks" %}
 
     <!-- Header -->
@@ -106,6 +106,8 @@
         </div>
         {% include '_present_button.html' %}
     </div>
+
+    {% if zawarudo_on or zawarudo_hunt %}{% include 'quizzes/_za_warudo.html' %}{% endif %}
 
     {% if user.is_superuser and mock %}
     <div class="present-hide bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
@@ -457,6 +459,7 @@
 <script src="{% static 'js/code-run.js' %}"></script>
 <!-- EGE timer + localStorage -->
 <script src="{% static 'js/ege-timer.js' %}"></script>
+{% if zawarudo_on or zawarudo_hunt %}<script src="{% static 'js/za-warudo.js' %}"></script>{% endif %}
 
 <script>
 function egeApp() {
@@ -480,6 +483,9 @@ function egeApp() {
         // Timer
         timerDisplay: '--:--',
         timerCritical: false,
+        _timerFreezeUntil: 0,
+        zaHunt: {% if zawarudo_hunt %}true{% else %}false{% endif %},
+        zaHuntUrl: '{% url "accounts:easter_egg_found" "zawarudo" %}',
 
         // Modules
         answerStore: null,
@@ -539,6 +545,12 @@ function egeApp() {
             // Exam timer
             {% if quiz.exam_mode == 'exam' %}
             this.egeTimer = new EgeTimer(this.quizId, 235, (display, critical) => {
+                // «Заваруду»: секунды уже прибавлены к startedAt, а показ на
+                // это время замирает – иначе число прыгнуло бы вверх.
+                if (this._timerFreezeUntil) {
+                    if (Date.now() < this._timerFreezeUntil) return;
+                    this._timerFreezeUntil = 0;
+                }
                 this.timerDisplay = display;
                 this.timerCritical = critical;
             }, () => {
@@ -753,6 +765,23 @@ function egeApp() {
             this.showFinishConfirm = true;
         },
 
+        // «Заваруду»: у варианта таймер только в браузере, поэтому остановка –
+        // это сдвиг startedAt и его localStorage-ключа. Показ замирает на
+        // выданные секунды, после – идёт с того же числа.
+        onZaWarudo(detail) {
+            const seconds = Math.max(0, Number(detail.seconds) || 0);
+            if (!seconds || !this.egeTimer) return;
+            this._timerFreezeUntil = Date.now() + seconds * 1000;
+            this.egeTimer.startedAt += seconds * 1000;
+            localStorage.setItem(this.egeTimer.storageKey, String(this.egeTimer.startedAt));
+        },
+
+        _secondsLeft() {
+            if (!this.egeTimer) return 0;
+            return Math.max(0, this.egeTimer.totalSeconds
+                - Math.floor((Date.now() - this.egeTimer.startedAt) / 1000));
+        },
+
         async finishExam(force = false) {
             this.showFinishConfirm = false;
             this.finishing = true;
@@ -760,6 +789,12 @@ function egeApp() {
             // Stop time tracking
             const prevTask = this.tasks[this.currentTask];
             if (prevTask) this.timeTracker.stopTask(prevTask.id);
+
+            // Секрет «Заваруду» – только ручное завершение в последние
+            // полминуты, не автосдача по нулю. Ошибка запроса не мешает сдать.
+            if (!force && this.zaHunt && typeof zaWarudoHunt === 'function') {
+                await zaWarudoHunt(this.zaHuntUrl, this.csrfToken, this._secondsLeft());
+            }
 
             try {
                 const resp = await fetch(`/ege/${this.quizId}/finish/`, {

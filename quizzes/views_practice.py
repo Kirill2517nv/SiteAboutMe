@@ -743,6 +743,13 @@ def practice_view(request, pk):
             request.user,
             allowed=session.mode == 'study' and session.kind not in ('retry', 'classroom', 'check'),
         ),
+        # «Заваруду» – только на экзамене: у тренировки вердикт открыт, и
+        # остановка времени была бы подсказкой. У среза разрешает учитель.
+        **(classwork.za_warudo_context(
+            request.user, 'practice', session.pk,
+            allowed=(session.check_quiz.za_warudo_allowed
+                     if session.check_quiz_id else True),
+        ) if session.mode == 'exam' else {}),
     })
 
 
@@ -1196,6 +1203,16 @@ def ege_check_report_view(request, quiz_id):
         'has_loose': loose,
         'current_group': current,
     })
+
+
+@login_required
+@require_POST
+def check_zawarudo_view(request, quiz_id):
+    """Учитель включает «Заваруду» на срезе – по образцу ленты видео."""
+    quiz = _teacher_check(request, quiz_id)
+    quiz.za_warudo_allowed = request.POST.get('on') == '1'
+    quiz.save(update_fields=['za_warudo_allowed'])
+    return redirect('ege:ege_check_report', quiz_id=quiz.id)
 
 
 def _local_datetime(value):

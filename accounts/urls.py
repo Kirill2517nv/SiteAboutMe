@@ -1,5 +1,8 @@
 from django.urls import path
-from .views import ProfileView, easter_egg_found_view, join_view, notifications_view
+from .views import (
+    ProfileView, easter_egg_found_view, join_view, notifications_view,
+    za_warudo_use_view,
+)
 
 app_name = 'accounts'
 
@@ -10,4 +13,5 @@ urlpatterns = [
     path('notifications/', notifications_view, name='notifications'),
     path('join/', join_view, name='join'),
     path('easter-eggs/<slug:key>/found/', easter_egg_found_view, name='easter_egg_found'),
+    path('za-warudo/use/', za_warudo_use_view, name='za_warudo_use'),
 ]

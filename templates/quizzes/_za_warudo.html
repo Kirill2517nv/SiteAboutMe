@@ -1,0 +1,290 @@
+{% comment %}
+Пасхалка «Заваруду» (zawarudo, accounts/easter_eggs.py): способность «Мир»
+останавливает время. Открывается сдачей работы в последние 30 секунд таймера,
+потом раз в сутки выдаёт секунды на экзамене – и сервер реально сдвигает
+дедлайн (PracticeSession.frozen_seconds, ClassworkAttempt.deadline), а у
+варианта это делает клиентский EgeTimer. Контекст – classwork.za_warudo_context.
+
+Сцена – CSS в этом же файле, без новых Tailwind-классов: письмена и надпись
+сцены – display-графика, поэтому кегль вне общей шкалы, а партиал перечислен в
+textbook.tests.FontScaleTest.EXCEPTIONS. Звука нет намеренно.
+{% endcomment %}
+{% load static %}
+{% comment %}
+Надпись сцены – Dela Gothic One (OFL, static/vendor), ультражирный
+гротеск. «ドドドド» сверху – не шрифт, а нарисованные SVG-буквы: в манге
+звук рисуют от руки рублеными блоками с обводкой, и шрифтом это не
+передать. Фирменных шрифтов ДжоДжо нет, фанатские копии без лицензии. Взяты только файлы с нужными глифами;
+preload – чтобы первая сцена не мелькнула запасным шрифтом.
+{% endcomment %}
+<link rel="preload" as="font" type="font/woff2" crossorigin href="{% static 'vendor/dela-gothic-one-5.3.0/dela-gothic-one-119-400-normal.woff2' %}">
+<link rel="preload" as="font" type="font/woff2" crossorigin href="{% static 'vendor/dela-gothic-one-5.3.0/dela-gothic-one-latin-400-normal.woff2' %}">
+<style>
+    @font-face {
+        font-family: 'ZW Dela Gothic One';
+        font-display: block;
+        src: url('{% static 'vendor/dela-gothic-one-5.3.0/dela-gothic-one-117-400-normal.woff2' %}') format('woff2');
+        unicode-range: U+4e,U+a0,U+3000,U+300c-300d,U+4e00,U+4e0a,U+4e2d,U+4e8b,U+4eba,U+4f1a,U+5165,U+5168,U+5185,U+51fa,U+5206,U+5229,U+524d,U+52d5,U+5408,U+554f,U+5831,U+5834,U+5927,U+5b9a,U+5e74,U+5f0f,U+60c5,U+65b0,U+65b9,U+6642,U+6700,U+672c,U+682a,U+6b63,U+6c17,U+7121,U+751f,U+7528,U+753b,U+76ee,U+793e,U+884c,U+898b,U+8a18,U+9593,U+95a2,U+ff01,U+ff08-ff09;
+    }
+    @font-face {
+        font-family: 'ZW Dela Gothic One';
+        font-display: block;
+        src: url('{% static 'vendor/dela-gothic-one-5.3.0/dela-gothic-one-118-400-normal.woff2' %}') format('woff2');
+        unicode-range: U+21-22,U+27-2a,U+2c-3b,U+3f,U+41-4d,U+4f-5d,U+61-7b,U+7d,U+ab,U+ae,U+b2-b3,U+b7,U+bb,U+c9,U+cd,U+d6,U+d8,U+dc,U+e0-e5,U+e7-ed,U+ef,U+f1-f4,U+f6,U+f8,U+fa,U+fc-fd,U+103,U+14d,U+1b0,U+300-301,U+1ebf,U+1ec7,U+2013-2014,U+201c-201d,U+2039-203a,U+203c,U+2048-2049,U+2113,U+2122,U+65e5,U+6708,U+70b9;
+    }
+    @font-face {
+        font-family: 'ZW Dela Gothic One';
+        font-display: block;
+        src: url('{% static 'vendor/dela-gothic-one-5.3.0/dela-gothic-one-119-400-normal.woff2' %}') format('woff2');
+        unicode-range: U+20,U+2027,U+3001-3002,U+3041-307f,U+3081-308f,U+3091-3093,U+3099-309a,U+309d-309e,U+30a1-30e1,U+30e3-30ed,U+30ef-30f0,U+30f2-30f4,U+30fb-30fe,U+ff0c,U+ff0e;
+    }
+    @font-face {
+        font-family: 'ZW Dela Gothic One';
+        font-display: block;
+        src: url('{% static 'vendor/dela-gothic-one-5.3.0/dela-gothic-one-latin-400-normal.woff2' %}') format('woff2');
+        unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+    }
+    @font-face {
+        font-family: 'ZW Dela Gothic One';
+        font-display: block;
+        src: url('{% static 'vendor/dela-gothic-one-5.3.0/dela-gothic-one-cyrillic-400-normal.woff2' %}') format('woff2');
+        unicode-range: U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;
+    }
+    .za-scene {
+        position: fixed;
+        inset: 0;
+        z-index: 60;
+        overflow: hidden;
+        font-family: inherit;
+    }
+    /* Фаза 2 уходит к краям и не ловит клики: задачи в центре остаются
+       рабочими, пока время «стоит». */
+    .za-phase-2, .za-phase-3 { pointer-events: none; }
+    .za-phase-3 { opacity: 0; transition: opacity .5s; }
+
+    .za-bg {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(circle at 50% 45%, #1e3a8a 0%, #0b1a4a 70%, #071233 100%);
+        transition: background .5s, backdrop-filter .5s, -webkit-backdrop-filter .5s;
+    }
+    .za-phase-2 .za-bg, .za-phase-3 .za-bg {
+        background: rgba(37, 99, 235, .14);
+        -webkit-backdrop-filter: grayscale(.5);
+        backdrop-filter: grayscale(.5);
+    }
+
+    .za-flash {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        -webkit-backdrop-filter: invert(1) hue-rotate(180deg);
+        backdrop-filter: invert(1) hue-rotate(180deg);
+        animation: za-flash .15s ease-out both;
+    }
+    @keyframes za-flash {
+        0% { opacity: 0; }
+        30% { opacity: 1; }
+        100% { opacity: 0; }
+    }
+
+    .za-figure {
+        position: absolute;
+        bottom: 0;
+        height: 85vh;
+        width: auto;
+        max-width: 50vw;
+        pointer-events: none;
+        user-select: none;
+        filter: drop-shadow(0 10px 30px rgba(0, 0, 0, .45));
+        transition: height .6s ease, transform .6s ease, opacity .4s;
+    }
+    .za-dio { left: 0; }
+    .za-jotaro { right: 0; }
+    .za-phase-2 .za-figure, .za-phase-3 .za-figure { height: 55vh; opacity: .9; }
+    .za-phase-2 .za-dio, .za-phase-3 .za-dio { transform: translateX(-25%); }
+    .za-phase-2 .za-jotaro, .za-phase-3 .za-jotaro { transform: translateX(25%); }
+
+    /* «ドドドド»: буквы-блоки, от крупной у левого края к мелкой – как
+       перспектива звука на развороте. Размер, наклон и задержка – у каждой
+       буквы свои, через переменные. */
+    .za-dodo {
+        position: absolute;
+        top: 2vh;
+        left: 2vw;
+        right: 2vw;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        gap: 1vw;
+        pointer-events: none;
+        transform-origin: top center;
+        transition: transform .5s ease;
+    }
+    .za-phase-2 .za-dodo, .za-phase-3 .za-dodo { transform: scale(.32); }
+    .za-do {
+        height: var(--s);
+        width: auto;
+        overflow: visible;
+        transform: translateY(var(--y)) rotate(var(--r)) skewX(-8deg);
+        animation: za-do-pop .35s cubic-bezier(.2, 1.6, .4, 1) var(--d) both,
+                   za-do-shake .14s linear calc(var(--d) + .35s) infinite;
+        filter: drop-shadow(0 6px 0 rgba(0, 0, 0, .35));
+    }
+    @keyframes za-do-pop {
+        0% { opacity: 0; scale: 1.8; }
+        100% { opacity: 1; scale: 1; }
+    }
+    @keyframes za-do-shake {
+        0%, 100% { translate: -2px 1px; }
+        50% { translate: 2px -1px; }
+    }
+
+    .za-title {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        pointer-events: none;
+        transition: opacity .4s, transform .4s;
+    }
+    .za-phase-2 .za-title, .za-phase-3 .za-title { opacity: 0; transform: scale(1.15); }
+    .za-kana {
+        font-family: 'ZW Dela Gothic One', sans-serif;
+        font-size: clamp(32px, 7vw, 88px);
+        font-weight: 400;
+        letter-spacing: .06em;
+        color: #fff;
+        text-shadow: 0 0 24px rgba(124, 58, 237, .9), 0 4px 0 rgba(0, 0, 0, .5);
+    }
+    .za-romaji {
+        margin-top: .2em;
+        font-family: 'ZW Dela Gothic One', sans-serif;
+        font-size: clamp(28px, 6vw, 76px);
+        font-weight: 400;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        background: linear-gradient(to bottom, #fff, #a5b4fc 45%, #6d28d9);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        filter: drop-shadow(0 0 18px rgba(124, 58, 237, .8));
+    }
+
+    .za-counter {
+        position: absolute;
+        top: 12vh;
+        left: 0;
+        right: 0;
+        text-align: center;
+        font-family: 'ZW Dela Gothic One', sans-serif;
+        font-size: 20px;
+        font-weight: 400;
+        color: #fff;
+        text-shadow: 0 0 12px rgba(37, 99, 235, .9);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity .4s;
+    }
+    .za-phase-2 .za-counter { opacity: 1; }
+
+    .za-toast {
+        position: absolute;
+        bottom: 6vh;
+        left: 50%;
+        transform: translateX(-50%);
+        max-width: 90vw;
+        padding: .6em 1.2em;
+        border-radius: 12px;
+        background: rgba(15, 23, 42, .9);
+        color: #fff;
+        font-size: 14px;
+        text-align: center;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, .4);
+        pointer-events: none;
+    }
+
+    @media (max-width: 767px) {
+        /* На телефоне фигуры закрыли бы задачи – остаются тон и письмена. */
+        .za-phase-2 .za-figure, .za-phase-3 .za-figure { display: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .za-do { animation: none; }
+        .za-flash { display: none; }
+    }
+</style>
+<div x-data="zaWarudo({
+        kind: '{{ zawarudo_kind }}',
+        objId: {{ zawarudo_id|default:'null' }},
+        seconds: {{ zawarudo_seconds|default:15 }},
+        readyAt: '{{ zawarudo_ready_at }}',
+        url: '{% url "accounts:za_warudo_use" %}',
+        csrf: '{{ csrf_token }}'
+    })"
+     @za-warudo-scene.window="playScene($event.detail)">
+
+    {% if zawarudo_on %}
+    <div class="present-hide mb-4 flex flex-wrap items-center gap-2">
+        <button type="button" @click="use()" :disabled="!ready"
+                class="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+            <span x-text="label"></span>
+        </button>
+    </div>
+    {% endif %}
+    {% if zawarudo_on %}
+    <p x-show="error" x-cloak x-text="error"
+       class="mb-4 text-sm text-red-600 dark:text-red-400"></p>
+    {% endif %}
+
+    <div class="za-scene" x-show="sceneShow" x-cloak aria-hidden="true"
+         :class="'za-phase-' + scenePhase">
+        <div class="za-bg"></div>
+        <div class="za-flash" x-show="scenePhase === 1"></div>
+        {% comment %}
+        Буква ド из четырёх блоков: ствол, рука вправо-вниз и два штриха
+        дакутэна. Рисуется трижды тем же #zaDoShape: белый ободок, тёмная
+        обводка, градиентная заливка – так в манге отбивают звук от фона.
+        {% endcomment %}
+        <svg width="0" height="0" style="position:absolute">
+            <defs>
+                <linearGradient id="zaDoFill" x1="0" y1="0" x2="0.3" y2="1">
+                    <stop offset="0" stop-color="#bae6fd"/>
+                    <stop offset=".45" stop-color="#3b82f6"/>
+                    <stop offset="1" stop-color="#1e3a8a"/>
+                </linearGradient>
+                <g id="zaDoShape">
+                    <path d="M16 8 L44 2 L48 106 L20 110 Z"/>
+                    <path d="M46 40 L92 50 L86 78 L46 66 Z"/>
+                    <path d="M58 4 L71 1 L78 28 L65 31 Z"/>
+                    <path d="M78 6 L91 3 L98 30 L85 33 Z"/>
+                </g>
+                <g id="zaDo">
+                    <use href="#zaDoShape" fill="#fff" stroke="#fff" stroke-width="16" stroke-linejoin="miter"/>
+                    <use href="#zaDoShape" fill="#0b1238" stroke="#0b1238" stroke-width="8" stroke-linejoin="miter"/>
+                    <use href="#zaDoShape" fill="url(#zaDoFill)"/>
+                </g>
+            </defs>
+        </svg>
+        <div class="za-dodo">
+            <svg class="za-do" viewBox="-10 -10 120 130" style="--s: min(26vh, 28vw); --r: -10deg; --y: 0; --d: 0s"><use href="#zaDo"/></svg>
+            <svg class="za-do" viewBox="-10 -10 120 130" style="--s: min(21vh, 23vw); --r: -6deg; --y: 2vh; --d: .12s"><use href="#zaDo"/></svg>
+            <svg class="za-do" viewBox="-10 -10 120 130" style="--s: min(17vh, 19vw); --r: -3deg; --y: 3vh; --d: .24s"><use href="#zaDo"/></svg>
+            <svg class="za-do" viewBox="-10 -10 120 130" style="--s: min(14vh, 16vw); --r: 2deg; --y: 4vh; --d: .36s"><use href="#zaDo"/></svg>
+            <svg class="za-do" viewBox="-10 -10 120 130" style="--s: min(11vh, 12vw); --r: 5deg; --y: 5vh; --d: .48s"><use href="#zaDo"/></svg>
+        </div>
+        <img class="za-figure za-dio" src="{% static 'img/easter-eggs/zawarudo-dio.webp' %}"
+             alt="" width="474" height="800">
+        <img class="za-figure za-jotaro" src="{% static 'img/easter-eggs/zawarudo-jotaro.webp' %}"
+             alt="" width="318" height="800">
+        <div class="za-title">
+            <div class="za-kana">ザ・ワールド！</div>
+            <div class="za-romaji">ZA WARUDO!</div>
+        </div>
+        <div class="za-counter" x-text="'Время остановлено: ' + sceneCounter"></div>
+        <div class="za-toast" x-show="sceneToast" x-text="sceneToast"></div>
+    </div>
+</div>

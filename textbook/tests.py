@@ -1124,6 +1124,8 @@ class FontScaleTest(SimpleTestCase):
         'templates/about.html',
         # Пасхалка «Серия»: крупная фраза ступени – display-графика, не текст.
         'templates/quizzes/_streak.html',
+        # Пасхалка «Заваруду»: письмена и надпись сцены – display-графика, не текст.
+        'templates/quizzes/_za_warudo.html',
     }
 
     SCALE_PX = {12, 14, 16, 18, 20, 24, 30, 36, 48}

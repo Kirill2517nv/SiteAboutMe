@@ -32,6 +32,17 @@
                class="px-4 py-2 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-medium text-gray-700 dark:text-slate-200 hover:border-brand-400">
                 Задачи среза
             </a>
+            {# «Заваруду» разрешает учитель: без этого ученик, нашедший пасхалку, время на срезе не остановит. #}
+            <form method="post" action="{% url 'ege:ege_check_zawarudo' quiz.id %}">
+                {% csrf_token %}
+                <input type="hidden" name="on" value="{{ quiz.za_warudo_allowed|yesno:'0,1' }}">
+                <button type="submit"
+                        class="px-4 py-2 rounded-lg border text-sm font-medium
+                               {% if quiz.za_warudo_allowed %}border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-800
+                               {% else %}border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-700 dark:text-slate-200 hover:border-indigo-400{% endif %}">
+                    Остановка времени: {% if quiz.za_warudo_allowed %}разрешена{% else %}запрещена{% endif %}
+                </button>
+            </form>
             {% comment %}
             Учитель проходит срез как ученик: та же сессия, таймер и вид задач.
             Попыток сколько угодно, в отчёт они не попадают.

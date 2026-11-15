@@ -13,7 +13,7 @@ from PIL import Image
 
 from accounts.models import Profile, StudentGroup
 from quizzes.models import (
-    PracticeSession, Question, Quiz, QuizAssignment, UserAnswer, UserResult,
+    ClassworkAttempt, PracticeSession, Question, Quiz, QuizAssignment, UserAnswer, UserResult,
 )
 from textbook.models import Article, ArticleProgress, Section
 from textbook.services import profile_textbook_stats
@@ -544,3 +544,149 @@ class EasterEggTests(TestCase):
     def test_found_response_carries_toast_text(self):
         data = self.client.post(reverse('accounts:easter_egg_found', args=['streak'])).json()
         self.assertEqual(data['toast'], 'Три задачи подряд без ошибки – сайт это заметил.')
+
+
+@NO_MANIFEST_STATIC
+class ZaWarudoTests(TestCase):
+    """Пасхалка «Заваруду»: открытие, растущие секунды, кулдаун и настоящий сдвиг дедлайна."""
+
+    def setUp(self):
+        self.student = User.objects.create_user('dio', password='pw')
+        self.teacher = User.objects.create_superuser('dio-teacher', password='pw')
+        self.client.force_login(self.student)
+        self.url = reverse('accounts:za_warudo_use')
+        self.found = reverse('accounts:easter_egg_found', args=['zawarudo'])
+
+    def _unlock(self, user=None):
+        self.client.force_login(user or self.student)
+        return self.client.post(self.found)
+
+    def _use(self, kind, obj_id, user=None):
+        self.client.force_login(user or self.student)
+        return self.client.post(self.url, {'kind': kind, 'id': obj_id})
+
+    def _profile(self, user=None):
+        return Profile.objects.get(user=user or self.student)
+
+    def _exam(self, user=None, **kwargs):
+        return PracticeSession.objects.create(
+            user=user or self.student, kind='topic', mode='exam', ege_number=1, **kwargs)
+
+    def _ready(self, user=None):
+        """Снять кулдаун, не трогая счётчик применений."""
+        Profile.objects.filter(user=user or self.student).update(za_warudo_used_at=None)
+
+    def test_unlock_from_finishing_click(self):
+        data = self._unlock().json()
+        self.assertTrue(data['new'])
+        self.assertEqual(data['title'], 'Заваруду')
+        self.assertEqual(data['image'], '/static/img/easter-eggs/zawarudo.png')
+        self.assertEqual(data['toast'], 'ZA WARUDO! Время остановлено.')
+        self.assertEqual(self._profile().easter_eggs, {'zawarudo': True})
+        html = self.client.get(reverse('accounts:profile')).content.decode()
+        self.assertIn('Остановка времени на работе с таймером, раз в сутки', html)
+
+    def test_not_enabled_is_forbidden(self):
+        session = self._exam()
+        self.assertEqual(self._use('practice', session.pk).status_code, 403)
+
+    def test_seconds_grow_to_the_cap(self):
+        self._unlock()
+        session = self._exam()
+        first = self._use('practice', session.pk).json()
+        self.assertEqual(first['seconds'], 15)
+        self.assertEqual(first['next_seconds'], 18)
+        self._ready()
+        self.assertEqual(self._use('practice', session.pk).json()['seconds'], 18)
+        Profile.objects.filter(user=self.student).update(
+            za_warudo_uses=50, za_warudo_used_at=None)
+        self.assertEqual(self._use('practice', session.pk).json()['seconds'], 60)
+
+    def test_cooldown_and_teacher_has_none(self):
+        self._unlock()
+        session = self._exam()
+        self.assertEqual(self._use('practice', session.pk).status_code, 200)
+        again = self._use('practice', session.pk)
+        self.assertEqual(again.status_code, 409)
+        self.assertEqual(again.json()['error'], 'cooldown')
+        self.assertIn('ready_at', again.json())
+
+        # Учителю не нужны ни пасхалка, ни кулдаун – он проверяет способность.
+        session = self._exam(user=self.teacher)
+        self.assertEqual(self._use('practice', session.pk, user=self.teacher).status_code, 200)
+        self.assertEqual(self._use('practice', session.pk, user=self.teacher).status_code, 200)
+        self.client.force_login(self.teacher)
+        html = self.client.get(reverse('ege:ege_practice', args=[session.pk])).content.decode()
+        self.assertIn('@click="use()"', html)
+
+    def test_exam_deadline_moves_by_seconds(self):
+        self._unlock()
+        session = self._exam()
+        before = session.deadline
+        data = self._use('practice', session.pk).json()
+        session.refresh_from_db()
+        self.assertEqual(session.frozen_seconds, data['seconds'])
+        self.assertEqual(session.deadline - before, timedelta(seconds=data['seconds']))
+        self.assertEqual(data['deadline'], session.deadline.isoformat())
+
+    def test_study_and_finished_are_not_running(self):
+        self._unlock()
+        study = PracticeSession.objects.create(
+            user=self.student, kind='topic', mode='study', ege_number=1)
+        self.assertEqual(self._use('practice', study.pk).status_code, 409)
+        exam = self._exam()
+        exam.finished_at = timezone.now()
+        exam.save(update_fields=['finished_at'])
+        self.assertEqual(self._use('practice', exam.pk).status_code, 409)
+
+    def test_check_needs_teacher_permission(self):
+        self._unlock()
+        quiz = Quiz.objects.create(title='Срез', quiz_type='check', slug='check-zw')
+        session = PracticeSession.objects.create(
+            user=self.student, kind='check', mode='exam', check_quiz=quiz)
+        self.assertEqual(self._use('practice', session.pk).status_code, 403)
+        quiz.za_warudo_allowed = True
+        quiz.save(update_fields=['za_warudo_allowed'])
+        self.assertEqual(self._use('practice', session.pk).status_code, 200)
+
+    def test_classwork_deadline_moves_when_allowed(self):
+        self._unlock()
+        quiz = Quiz.objects.create(title='Работа', quiz_type='classwork',
+                                   za_warudo_allowed=True)
+        attempt = ClassworkAttempt.objects.create(
+            user=self.student, quiz=quiz,
+            deadline=timezone.now() + timedelta(minutes=20))
+        before = attempt.deadline
+        data = self._use('classwork', attempt.pk).json()
+        attempt.refresh_from_db()
+        self.assertEqual(attempt.deadline - before, timedelta(seconds=data['seconds']))
+
+    def test_classwork_needs_teacher_permission(self):
+        self._unlock()
+        quiz = Quiz.objects.create(title='Без разрешения', quiz_type='classwork')
+        attempt = ClassworkAttempt.objects.create(
+            user=self.student, quiz=quiz,
+            deadline=timezone.now() + timedelta(minutes=20))
+        self.assertEqual(self._use('classwork', attempt.pk).status_code, 403)
+
+    def test_variant_needs_started_session(self):
+        self._unlock()
+        quiz = Quiz.objects.create(title='Вариант', quiz_type='exam',
+                                   exam_mode='exam', is_public=True)
+        self.assertEqual(self._use('variant', quiz.pk).status_code, 409)
+        session = self.client.session
+        session[f'ege_{quiz.id}_start'] = timezone.now().isoformat()
+        session.save()
+        data = self._use('variant', quiz.pk).json()
+        self.assertEqual(data['seconds'], 15)
+        self.assertIsNone(data['deadline'])
+
+    def test_script_only_on_exam_page(self):
+        self._unlock()
+        exam = self._exam()
+        html = self.client.get(reverse('ege:ege_practice', args=[exam.pk])).content.decode()
+        self.assertIn('js/za-warudo.js', html)
+        study = PracticeSession.objects.create(
+            user=self.student, kind='topic', mode='study', ege_number=1)
+        html = self.client.get(reverse('ege:ege_practice', args=[study.pk])).content.decode()
+        self.assertNotIn('js/za-warudo.js', html)

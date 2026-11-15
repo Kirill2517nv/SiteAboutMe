@@ -16,6 +16,8 @@ urlpatterns = [
     path('checks/<int:quiz_id>/', views_practice.ege_check_report_view, name='ege_check_report'),
     path('checks/<int:quiz_id>/start/', views_practice.check_start_view, name='ege_check_start'),
     path('checks/<int:quiz_id>/assign/', views_practice.check_assign_view, name='ege_check_assign'),
+    path('checks/<int:quiz_id>/za-warudo/', views_practice.check_zawarudo_view,
+         name='ege_check_zawarudo'),
     path('checks/<int:quiz_id>/tasks/', views_practice.ege_check_tasks_view, name='ege_check_tasks'),
     path('task/<int:number>/', views_practice.ege_task_view, name='ege_task'),
     path('task/<int:number>/classroom/', views_practice.classroom_toggle_view,

@@ -84,6 +84,27 @@ sequenceDiagram
 |---|---|---|
 | `brainrot` | 10 переключений задач за 15 с | `easterHunt`, `static/js/brainrot-feed.js` |
 | `streak` | 3 задачи подряд верно с первой попытки | `streakFx`, `static/js/streak.js` |
+| `zawarudo` | «Завершить» вручную, когда до конца работы ≤ 30 с | `zaWarudoHunt`, `static/js/za-warudo.js` |
+
+---
+
+### POST `/accounts/za-warudo/use/` – Остановить время
+
+**View:** `za_warudo_use_view` · **Auth:** `login_required`, только POST, CSRF
+
+Способность пасхалки `zawarudo` (`easter_eggs.use_za_warudo`). Поля `kind`
+(`practice` – экзамен тренажёра или срез, `classwork` – самостоятельная,
+`variant` – вариант ЕГЭ) и `id` (сессия, попытка или вариант). Сервер реально
+сдвигает дедлайн: `PracticeSession.frozen_seconds += N`,
+`ClassworkAttempt.deadline += N`; у варианта таймер в браузере, сервер только
+требует, чтобы вариант был начат (`ege_<id>_start` в сессии). N = 15 с, каждое
+применение +3 с, потолок 60 с; перезарядка сутки, профиль под
+`select_for_update`. Суперпользователю не нужны ни пасхалка, ни перезарядка.
+
+Ответ `{"seconds", "deadline", "next_seconds", "ready_at"}`; 403 – пасхалка
+выключена или учитель не разрешил (`Quiz.za_warudo_allowed`, срез и
+самостоятельная), 404 – работа не найдена или чужая, 409 – перезарядка
+(`{"error": "cooldown", "ready_at"}`) или работа не идёт.
 
 ---
 

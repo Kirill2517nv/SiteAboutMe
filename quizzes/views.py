@@ -626,6 +626,11 @@ def ege_detail_view(request, quiz_id):
         'last_submissions_json': js_json(last_submissions),
         'total_points': sum(q.points for q in questions),
     }
+    # «Заваруду» – только на экзамене: у варианта таймер живёт в браузере,
+    # и остановка времени сдвигает его EgeTimer. У тренировки таймера нет.
+    if quiz.exam_mode == 'exam':
+        context.update(classwork.za_warudo_context(
+            request.user, 'variant', quiz.id, allowed=True))
     if request.user.is_superuser:
         from .mock_exam import admin_data
         context['mock'] = admin_data(quiz)

@@ -3603,6 +3603,11 @@ class SolutionGalleryTests(TestCase):
         with self.settings(YANDEX_METRIKA_ID='12345'):
             self.assertNotIn('mc.yandex.ru', self._page(self.classmate))
 
+    # Профиль рисует картинки пасхалок, а манифеста collectstatic в тестах нет.
+    @override_settings(STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    })
     def test_profile_switch(self):
         from accounts.models import Profile
 
@@ -4491,6 +4496,12 @@ class CodeAnswerFieldTests(TestCase):
         })
         self.assertEqual(CodeSubmission.objects.get(question=self.question).code, 'print(3)')
 
+    # Страница экзамена несёт партиал «Заваруду» с картинками сцены, а
+    # манифеста collectstatic в тестах нет.
+    @override_settings(STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    })
     def test_exam_page_carries_no_verdict_of_an_old_snapshot(self):
         self._snap('100 5\n200 7', 'success', True)
         self.session.mode = 'exam'

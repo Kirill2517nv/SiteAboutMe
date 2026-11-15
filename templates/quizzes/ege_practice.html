@@ -69,7 +69,7 @@
 дереву, поэтому кнопки сессии видят и своё состояние, и режим показа.
 {% endcomment %}
 <div id="practice-root" class="present-root max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6" x-data="presentMode()">
-<div x-data="practiceApp()">
+<div x-data="practiceApp()" @za-warudo.window="onZaWarudo($event.detail)">
 
     <!-- Шапка -->
     <div class="present-hide flex flex-wrap items-center justify-between gap-3 mb-5">
@@ -136,6 +136,8 @@
     </div>
 
     {% include '_present_mode.html' with nav_goto="goTo" nav_index="current" nav_list="items" %}
+
+    {% if zawarudo_on or zawarudo_hunt %}{% include 'quizzes/_za_warudo.html' %}{% endif %}
 
     {% if is_retry %}
     <div class="mb-5 p-4 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/40">
@@ -419,6 +421,7 @@
 <script src="{% static 'js/code-run.js' %}"></script>
 <script src="{% static 'js/brainrot-feed.js' %}"></script>
 <script src="{% static 'js/streak.js' %}"></script>
+{% if zawarudo_on or zawarudo_hunt %}<script src="{% static 'js/za-warudo.js' %}"></script>{% endif %}
 <script src="{% static 'vendor/codemirror-5.65.18/addon/edit/matchbrackets.js' %}"></script>
 <script src="{% static 'vendor/codemirror-5.65.18/addon/edit/closebrackets.js' %}"></script>
 
@@ -454,6 +457,10 @@ function practiceApp() {
         clock: '0:00',
         examLeft: {{ seconds_left|default_if_none:"null" }},
         _examEnd: null,
+        _freezeUntil: 0,
+        _frozenLeft: 0,
+        zaHunt: {% if zawarudo_hunt %}true{% else %}false{% endif %},
+        zaHuntUrl: '{% url "accounts:easter_egg_found" "zawarudo" %}',
         _finishing: false,
         _taskStart: null,
         _tick: null,
@@ -521,7 +528,7 @@ function practiceApp() {
                 this._onBack = () => {
                     if (this._finishing) return;
                     if (confirm('Уйти со страницы? Попытка будет завершена и проверена.')) {
-                        this.finish();
+                        this.finish(true);   // уход по «назад» – не ручная сдача
                         return;
                     }
                     history.pushState(null, '', location.href);
@@ -633,12 +640,35 @@ function practiceApp() {
             this.clock = Math.floor(total / 60) + ':' + String(total % 60).padStart(2, '0');
 
             if (this._examEnd === null) return;
+            // «Заваруду»: пока время стоит, показываем прежнее число. Дедлайн
+            // уже сдвинут на те же секунды, поэтому после разморозки счёт
+            // продолжится ровно с этого места.
+            if (this._freezeUntil) {
+                if (Date.now() < this._freezeUntil) {
+                    this.examLeft = this._frozenLeft;
+                    return;
+                }
+                this._freezeUntil = 0;
+            }
             this.examLeft = Math.max(0, Math.round((this._examEnd - Date.now()) / 1000));
             if (this.examLeft === 0 && !this._finishing) {
                 this._finishing = true;
                 this.showFinishConfirm = false;
-                this.finish();
+                this.finish(true);
             }
+        },
+
+        // Остановка времени: сервер уже продлил дедлайн (или прислал готовый),
+        // а показ таймера замирает на выданные секунды.
+        onZaWarudo(detail) {
+            const seconds = Math.max(0, Number(detail.seconds) || 0);
+            if (!seconds) return;
+            this._frozenLeft = this.examLeft;
+            this._freezeUntil = Date.now() + seconds * 1000;
+            if (this._examEnd === null) return;
+            // Свой конец + секунды, а не deadline сервера: часы школьного
+            // компьютера могут расходиться с серверными на минуты.
+            this._examEnd += seconds * 1000;
         },
 
         get examClock() {
@@ -677,10 +707,15 @@ function practiceApp() {
             }
         },
 
-        async finish() {
+        async finish(auto = false) {
             this._finishing = true;   // снимает предупреждение об уходе
             this._flushTime();
             await this.flushAnswers();
+            // Секрет «Заваруду» ищут только по кнопке в последние полминуты:
+            // сдача по часам и так уже опоздала. Ошибка запроса сдачу не срывает.
+            if (!auto && this.zaHunt && typeof zaWarudoHunt === 'function') {
+                await zaWarudoHunt(this.zaHuntUrl, this.csrf, this.examLeft);
+            }
             this.$refs.finishCodes.value = this._codesPayload();
             this.$refs.finishForm.submit();
         },
