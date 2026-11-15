@@ -21,6 +21,10 @@ bash scripts/deepseek-worker.sh -f "$TEMP/task.txt"   # длинное зада�
 в командной строке кавычки и `$` внутри LaTeX превращаются в отдельную
 задачу по экранированию.
 
+Набор инструментов задаёт `--tools` (что вообще уходит модели), а не только
+`--allowed-tools` (что разрешено без вопроса): без него CLI шлёт схемы всех
+встроенных инструментов, и с 2026-11-15 DeepSeek отвечал 400 на схему `Artifact`.
+
 Воркеру выданы `Read Write Edit Glob Grep` и **Bash по списку** (с 2026-10-26):
 `python manage.py …` (тесты, `check`, `makemigrations`, `check_articles`, seed-команды),
 `npm run tw:build`, чтение git (`status/diff/log/show`), `rg`, `ls`, `python -c`.

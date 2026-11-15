@@ -29,6 +29,9 @@ fi
 # ему открыто то, что проверяет его же работу (тесты, check, makemigrations,
 # сборка CSS, чтение git), и закрыто необратимое и внешнее – коммит, push,
 # откат файлов, ssh на прод, очистка базы. Коммитит и выкатывает оркестратор.
+# --tools – сам набор инструментов, а не разрешения: без него в API уходят
+# схемы всех встроенных (Artifact и др.), и DeepSeek отвечал 400 на регулярку
+# в схеме Artifact – воркер падал до первого шага.
 # PYTHONIOENCODING: иначе вывод тестов с кириллицей в консоли Windows – кракозябры.
 printf '%s' "$task" | \
 ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic" \
@@ -39,6 +42,7 @@ claude -p \
     --model "deepseek-flash[1m]" \
     --permission-mode acceptEdits \
     --strict-mcp-config \
+    --tools Read Write Edit Glob Grep Bash \
     --allowed-tools Read Write Edit Glob Grep \
         "Bash(python manage.py:*)" "Bash(npm run tw:build)" \
         "Bash(git status:*)" "Bash(git diff:*)" "Bash(git log:*)" "Bash(git show:*)" \
