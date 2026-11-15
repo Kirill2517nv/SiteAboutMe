@@ -118,6 +118,8 @@ def work_view(request, pk):
         **classwork.brainrot_context(request.user, quiz),
         **classwork.za_warudo_context(
             request.user, 'classwork', attempt.pk, allowed=quiz.za_warudo_allowed),
+        # Заставка «Очень странные задачи» – по попытке: у каждой свой набор.
+        **classwork.stranger_context(request.user, f'classwork:{attempt.pk}'),
     })
 
 

@@ -108,6 +108,7 @@
     </div>
 
     {% if zawarudo_on or zawarudo_hunt %}{% include 'quizzes/_za_warudo.html' %}{% endif %}
+    {% include 'quizzes/_stranger_intro.html' %}
 
     {% if user.is_superuser and mock %}
     <div class="present-hide bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
@@ -201,7 +202,7 @@
                 <div class="grid grid-cols-5 gap-2">
                     <template x-for="(task, i) in tasks" :key="task.id">
                         <button @click="goToTask(i)" class="task-btn"
-                                :class="taskBtnClass(i)"
+                                :class="taskBtnClass(i)" data-stranger-tile
                                 x-text="task.ege_number || (i+1)">
                         </button>
                     </template>
@@ -389,7 +390,7 @@
         <div class="grid grid-cols-7 gap-2">
             <template x-for="(task, i) in tasks" :key="'mob-'+task.id">
                 <button @click="goToTask(i); showMobileSidebar = false" class="task-btn"
-                        :class="taskBtnClass(i)"
+                        :class="taskBtnClass(i)" data-stranger-tile
                         x-text="task.ege_number || (i+1)">
                 </button>
             </template>
@@ -460,6 +461,7 @@
 <!-- EGE timer + localStorage -->
 <script src="{% static 'js/ege-timer.js' %}"></script>
 {% if zawarudo_on or zawarudo_hunt %}<script src="{% static 'js/za-warudo.js' %}"></script>{% endif %}
+{% if stranger_on %}<script src="{% static 'js/stranger-intro.js' %}"></script>{% endif %}
 
 <script>
 function egeApp() {

@@ -25,6 +25,10 @@ ZA_WARUDO_STEP = 3
 ZA_WARUDO_MAX = 60
 ZA_WARUDO_COOLDOWN = timedelta(days=1)
 
+# «Очень странные задачи»: столько различных задач надо закрыть в работе над
+# ошибками, чтобы изнанка вывернулась наружу.
+STRANGER_THRESHOLD = 11
+
 EGGS = [
     Egg(
         key='brainrot',
@@ -49,6 +53,14 @@ EGGS = [
         hint='Сдай работу, когда часы почти на нуле',
         image='img/easter-eggs/zawarudo.png',
         toast='ZA WARUDO! Время остановлено.',
+    ),
+    Egg(
+        key='stranger',
+        title='Очень странные задачи',
+        blurb='Заставка: задачи появляются, как титры сериала',
+        hint='Выверни изнанку наружу – 11 раз',
+        image='img/easter-eggs/stranger.png',
+        toast='Изнанка вывернута: 11 ошибок исправлено.',
     ),
 ]
 EGGS_BY_KEY = {egg.key: egg for egg in EGGS}
@@ -195,3 +207,30 @@ def use_za_warudo(user, kind, obj_id, started=False):
             'next_seconds': za_warudo_seconds(profile),
             'ready_at': next_ready.isoformat() if next_ready else None,
         }
+
+
+def mistakes_closed(user):
+    """
+    Сколько различных задач ученик закрыл в работе над ошибками.
+
+    Считаем distinct question_id, а не строки PracticeItem: одна и та же
+    задача может попасть в несколько сессий «Работы над ошибками», и решённая
+    дважды она всё равно одна. Перенесённая (carried) и открытая через
+    «Показать ответ» (gave_up) задачи закрытыми не считаются – это как раз
+    те, ради которых работа над ошибками и затевается.
+    """
+    from quizzes.models import PracticeItem
+
+    return (PracticeItem.objects
+            .filter(session__user=user, session__kind='mistakes',
+                    is_correct=True, gave_up=False, carried=False)
+            .values('question_id').distinct().count())
+
+
+def check_stranger(user):
+    """Изнанка вывернулась: порог закрытых задач пройден – открыть пасхалку."""
+    if is_found(user, 'stranger'):
+        return False
+    if mistakes_closed(user) >= STRANGER_THRESHOLD:
+        return unlock(user, 'stranger')
+    return False

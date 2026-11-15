@@ -631,6 +631,8 @@ def ege_detail_view(request, quiz_id):
     if quiz.exam_mode == 'exam':
         context.update(classwork.za_warudo_context(
             request.user, 'variant', quiz.id, allowed=True))
+    # Заставка – на варианте любого режима: навигатор задач есть у обоих.
+    context.update(classwork.stranger_context(request.user, f'variant:{quiz.id}'))
     if request.user.is_superuser:
         from .mock_exam import admin_data
         context['mock'] = admin_data(quiz)
@@ -1544,6 +1546,8 @@ def quiz_detail_view(request, quiz_id):
         # Серия – только у практикума блока (show_solutions): в самопроверке
         # ученик щёлкает варианты, а не решает задачи одну за другой.
         **classwork.streak_context(request.user, allowed=show_solutions),
+        # Заставка «Очень странные задачи» – на странице практикума.
+        **classwork.stranger_context(request.user, f'quiz:{quiz.id}'),
     })
 
 @login_required

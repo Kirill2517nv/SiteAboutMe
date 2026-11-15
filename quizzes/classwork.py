@@ -83,6 +83,16 @@ def streak_context(user, allowed=True):
     }
 
 
+def stranger_context(user, key):
+    """Контекст заставки «Очень странные задачи» (_stranger_intro.html). key – строка «вид:id работы»,
+    по ней страница помнит в localStorage, что заставку этой работы уже показала."""
+    return {
+        'stranger_on': user.is_authenticated and (easter_eggs.is_on(user, 'stranger') or user.is_superuser),
+        'stranger_key': key,
+        'stranger_debug': user.is_authenticated and user.is_superuser,
+    }
+
+
 def za_warudo_context(user, kind, obj_id, allowed=True):
     """Контекст партиала «Заваруду» (_za_warudo.html).
 

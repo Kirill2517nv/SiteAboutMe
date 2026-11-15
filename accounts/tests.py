@@ -11,9 +11,11 @@ from django.urls import reverse
 from django.utils import timezone
 from PIL import Image
 
+from accounts import easter_eggs
 from accounts.models import Profile, StudentGroup
 from quizzes.models import (
-    ClassworkAttempt, PracticeSession, Question, Quiz, QuizAssignment, UserAnswer, UserResult,
+    ClassworkAttempt, PracticeItem, PracticeSession, Question, Quiz, QuizAssignment,
+    UserAnswer, UserResult,
 )
 from textbook.models import Article, ArticleProgress, Section
 from textbook.services import profile_textbook_stats
@@ -544,6 +546,100 @@ class EasterEggTests(TestCase):
     def test_found_response_carries_toast_text(self):
         data = self.client.post(reverse('accounts:easter_egg_found', args=['streak'])).json()
         self.assertEqual(data['toast'], 'Три задачи подряд без ошибки – сайт это заметил.')
+
+
+@NO_MANIFEST_STATIC
+class StrangerEggTests(TestCase):
+    """«Очень странные задачи»: 11 различных задач, закрытых в работе над ошибками."""
+
+    def setUp(self):
+        self.student = User.objects.create_user('stranger', password='pw')
+        self.client.force_login(self.student)
+        self.bank = Quiz.objects.create(title='Банк странных', quiz_type='bank',
+                                        slug='bank-stranger')
+        self.questions = [
+            Question.objects.create(
+                quiz=self.bank, text=f'задача {i}', question_type='text',
+                correct_text_answer='1', ege_number=1,
+            )
+            for i in range(11)
+        ]
+
+    def _eggs(self):
+        profile = Profile.objects.filter(user=self.student).first()
+        return profile.easter_eggs if profile else {}
+
+    def _solve(self, count, kind='mistakes', **fields):
+        """Закрыть count различных задач в одной сессии указанного вида."""
+        session = PracticeSession.objects.create(
+            user=self.student, kind=kind, mode='study', finished_at=timezone.now(),
+        )
+        for question in self.questions[:count]:
+            PracticeItem.objects.create(
+                session=session, question=question, is_correct=True,
+                gave_up=False, carried=False, answered_at=timezone.now(),
+                **fields,
+            )
+        return session
+
+    def test_ten_closed_are_not_enough(self):
+        self._solve(10)
+        self.assertFalse(easter_eggs.check_stranger(self.student))
+        self.assertEqual(self._eggs(), {})
+        self.assertFalse(easter_eggs.is_found(self.student, 'stranger'))
+
+    def test_eleven_closed_unlock_once(self):
+        self._solve(11)
+        self.assertTrue(easter_eggs.check_stranger(self.student))
+        self.assertEqual(self._eggs(), {'stranger': True})
+        # Повторный разбор той же работы пасхалку второй раз не открывает.
+        self.assertFalse(easter_eggs.check_stranger(self.student))
+        self.assertEqual(self._eggs(), {'stranger': True})
+
+    def test_carried_gave_up_duplicates_and_other_kinds_do_not_count(self):
+        self._solve(9)
+        session = PracticeSession.objects.create(
+            user=self.student, kind='mistakes', mode='study')
+        PracticeItem.objects.create(session=session, question=self.questions[9],
+                                    is_correct=True, gave_up=True)
+        PracticeItem.objects.create(session=session, question=self.questions[10],
+                                    is_correct=True, carried=True)
+        # Та же задача, закрытая второй раз, – всё ещё одна.
+        again = PracticeSession.objects.create(
+            user=self.student, kind='mistakes', mode='study')
+        PracticeItem.objects.create(session=again, question=self.questions[0],
+                                    is_correct=True)
+        self.assertEqual(easter_eggs.mistakes_closed(self.student), 9)
+        self.assertFalse(easter_eggs.check_stranger(self.student))
+
+        # Тренировка по теме в изнанку не идёт, даже когда задач одиннадцать.
+        self._solve(11, kind='topic')
+        self.assertEqual(easter_eggs.mistakes_closed(self.student), 9)
+        self.assertFalse(easter_eggs.is_found(self.student, 'stranger'))
+
+    def test_result_page_finds_the_egg(self):
+        session = self._solve(11)
+        html = self.client.get(
+            reverse('ege:ege_practice_result', args=[session.pk])).content.decode()
+        self.assertIn('Найдена пасхалка', html)
+        self.assertIn('Очень странные задачи', html)
+        self.assertEqual(self._eggs(), {'stranger': True})
+
+    def test_intro_script_only_when_found(self):
+        session = PracticeSession.objects.create(
+            user=self.student, kind='topic', mode='study', ege_number=1)
+        PracticeItem.objects.create(session=session, question=self.questions[0], order=0)
+        url = reverse('ege:ege_practice', args=[session.pk])
+
+        self.assertNotIn('stranger-intro.js', self.client.get(url).content.decode())
+
+        profile, _ = Profile.objects.get_or_create(user=self.student)
+        profile.easter_eggs = {'stranger': True}
+        profile.save(update_fields=['easter_eggs'])
+
+        html = self.client.get(url).content.decode()
+        self.assertIn('stranger-intro.js', html)
+        self.assertIn(f'data-key="practice:{session.pk}"', html)
 
 
 @NO_MANIFEST_STATIC

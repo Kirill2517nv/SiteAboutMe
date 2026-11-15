@@ -138,6 +138,7 @@
     {% include '_present_mode.html' with nav_goto="goTo" nav_index="current" nav_list="items" %}
 
     {% if zawarudo_on or zawarudo_hunt %}{% include 'quizzes/_za_warudo.html' %}{% endif %}
+    {% include 'quizzes/_stranger_intro.html' %}
 
     {% if is_retry %}
     <div class="mb-5 p-4 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/40">
@@ -169,7 +170,7 @@
                              :style="'grid-template-columns: repeat(' + (row.linked ? row.cells.length : 4) + ', minmax(0, 1fr))'">
                             <template x-for="i in row.cells" :key="i">
                                 <button @click="goTo(i)" class="task-btn" :class="btnClass(items[i], i)"
-                                        x-text="i + 1"></button>
+                                        data-stranger-tile x-text="i + 1"></button>
                             </template>
                         </div>
                     </template>
@@ -205,7 +206,7 @@
             <div class="task-strip flex gap-1.5 overflow-x-auto">
                 <template x-for="(it, i) in items" :key="'m' + it.item_id">
                     <button @click="goTo(i)" class="task-btn shrink-0" :class="btnClass(it, i)"
-                            x-text="i + 1"></button>
+                            data-stranger-tile x-text="i + 1"></button>
                 </template>
             </div>
         </div>
@@ -422,6 +423,7 @@
 <script src="{% static 'js/brainrot-feed.js' %}"></script>
 <script src="{% static 'js/streak.js' %}"></script>
 {% if zawarudo_on or zawarudo_hunt %}<script src="{% static 'js/za-warudo.js' %}"></script>{% endif %}
+{% if stranger_on %}<script src="{% static 'js/stranger-intro.js' %}"></script>{% endif %}
 <script src="{% static 'vendor/codemirror-5.65.18/addon/edit/matchbrackets.js' %}"></script>
 <script src="{% static 'vendor/codemirror-5.65.18/addon/edit/closebrackets.js' %}"></script>
 

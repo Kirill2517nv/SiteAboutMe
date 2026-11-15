@@ -129,7 +129,7 @@
                     {% for q in all_questions %}
                     <a href="#question-{{ q.id }}"
                        class="task-btn {% if q.is_solved %}solved{% else %}default{% endif %}"
-                       title="{{ q.get_title|truncatechars:30 }}">
+                       data-stranger-tile title="{{ q.get_title|truncatechars:30 }}">
                         {{ forloop.counter }}
                     </a>
                     {% endfor %}
@@ -254,6 +254,7 @@ Alpine ищет данные вверх по дереву, поэтому кно
 <div class="present-root max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6" x-data="presentMode()">
 <div x-data="quizApp()">
     {% include '_present_mode.html' with nav_goto="goToTask" nav_index="currentTask" nav_list="tasks" %}
+    {% include 'quizzes/_stranger_intro.html' %}
 
     <!-- Header -->
     <div class="present-hide flex items-center justify-between mb-6">
@@ -288,7 +289,7 @@ Alpine ищет данные вверх по дереву, поэтому кно
                 <div class="grid grid-cols-5 gap-2">
                     <template x-for="(task, i) in tasks" :key="task.id">
                         <button @click="goToTask(i)" class="task-btn"
-                                :class="taskBtnClass(i)"
+                                :class="taskBtnClass(i)" data-stranger-tile
                                 x-text="i+1">
                         </button>
                     </template>
@@ -639,7 +640,7 @@ Alpine ищет данные вверх по дереву, поэтому кно
             <div class="grid grid-cols-7 gap-2">
                 <template x-for="(task, i) in tasks" :key="'mob-'+task.id">
                     <button @click="goToTask(i); showMobileSidebar = false" class="task-btn"
-                            :class="taskBtnClass(i)"
+                            :class="taskBtnClass(i)" data-stranger-tile
                             x-text="i+1">
                     </button>
                 </template>
@@ -783,6 +784,7 @@ Alpine ищет данные вверх по дереву, поэтому кно
 <script src="{% static 'js/quiz-async.js' %}"></script>
 <script src="{% static 'js/brainrot-feed.js' %}"></script>
 <script src="{% static 'js/streak.js' %}"></script>
+{% if stranger_on %}<script src="{% static 'js/stranger-intro.js' %}"></script>{% endif %}
 
 <script>
 function quizApp() {

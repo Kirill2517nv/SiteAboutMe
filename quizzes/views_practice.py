@@ -19,6 +19,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from accounts import easter_eggs
 from accounts.templatetags.profile_tags import surname_first
 from textbook.models import Article, EgeTask
 
@@ -743,6 +744,8 @@ def practice_view(request, pk):
             request.user,
             allowed=session.mode == 'study' and session.kind not in ('retry', 'classroom', 'check'),
         ),
+        # Заставка «Очень странные задачи» – на любой сессии с навигатором.
+        **classwork.stranger_context(request.user, f'practice:{session.pk}'),
         # «Заваруду» – только на экзамене: у тренировки вердикт открыт, и
         # остановка времени была бы подсказкой. У среза разрешает учитель.
         **(classwork.za_warudo_context(
@@ -1051,8 +1054,16 @@ def practice_result_view(request, pk):
     # из головы: смешанная сессия может собрать задачи разной стоимости.
     norm_minutes = sum(row['recommended_min'] for row in rows)
 
+    # «Изнанка вывернута»: 11 различных задач, закрытых в работе над ошибками,
+    # открывают пасхалку именно здесь – на разборе, а не посреди решения.
+    stranger_unlocked = None
+    if (session.kind == 'mistakes' and session.user_id == request.user.id
+            and easter_eggs.check_stranger(request.user)):
+        stranger_unlocked = easter_eggs.EGGS_BY_KEY['stranger']
+
     return render(request, 'quizzes/ege_practice_result.html', {
         'session': session,
+        'stranger_unlocked': stranger_unlocked,
         'hide_answers': hide_answers,
         'rows': rows,
         'total': len(items),

@@ -95,6 +95,7 @@
     {% endif %}
 
     {% if zawarudo_on or zawarudo_hunt %}{% include 'quizzes/_za_warudo.html' %}{% endif %}
+    {% include 'quizzes/_stranger_intro.html' %}
 
     <div class="flex gap-6">
         <aside class="hidden md:block w-52 shrink-0">
@@ -104,7 +105,7 @@
                 <div class="grid grid-cols-4 gap-2">
                     <template x-for="(task, i) in tasks" :key="task.id">
                         <button type="button" @click="goTo(i)" class="task-btn"
-                                :class="taskBtnClass(i)" x-text="i + 1"></button>
+                                :class="taskBtnClass(i)" data-stranger-tile x-text="i + 1"></button>
                     </template>
                 </div>
             </div>
@@ -249,6 +250,7 @@
 <script src="{% static 'js/code-run.js' %}"></script>
 <script src="{% static 'js/brainrot-feed.js' %}"></script>
 {% if zawarudo_on or zawarudo_hunt %}<script src="{% static 'js/za-warudo.js' %}"></script>{% endif %}
+{% if stranger_on %}<script src="{% static 'js/stranger-intro.js' %}"></script>{% endif %}
 {% include 'quizzes/_mathjax.html' %}
 
 <script>
