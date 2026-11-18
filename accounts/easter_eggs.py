@@ -99,6 +99,19 @@ def switch(profile, key, on):
         profile.save(update_fields=['easter_eggs'])
 
 
+def debug_toggle(user, key):
+    """Отладка учителя: открыть ненайденную или забыть найденную, без секрета.
+    Забытая открывается заново как в первый раз – включённой."""
+    from .models import Profile
+
+    profile, _ = Profile.objects.get_or_create(user=user)
+    if key in profile.easter_eggs:
+        del profile.easter_eggs[key]
+        profile.save(update_fields=['easter_eggs'])
+    else:
+        unlock(user, key)
+
+
 def cards(user):
     """Карточки раздела «Пасхалки» в профиле, в порядке EGGS."""
     eggs = _eggs(user)

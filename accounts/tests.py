@@ -427,6 +427,23 @@ class EasterEggTests(TestCase):
         self.assertIn('Не задерживайся ни на одной задаче', html)
         self.assertNotIn('Чемпион по пролистыванию', html)
 
+    def test_debug_toggle_superuser_only(self):
+        url = reverse('accounts:profile')
+        # Ученику отладка закрыта.
+        self.assertEqual(self.client.post(url, {'easter_egg_debug': 'streak'}).status_code, 403)
+        self.assertEqual(self._eggs(), {})
+        self.client.force_login(self.teacher)
+        self.assertIn('Открыть (отладка)', self.client.get(url).content.decode())
+        eggs = lambda: Profile.objects.get(user=self.teacher).easter_eggs
+        self.client.post(url, {'easter_egg_debug': 'streak'})
+        self.assertEqual(eggs(), {'streak': True})
+        self.assertIn('Закрыть (отладка)', self.client.get(url).content.decode())
+        self.client.post(url, {'easter_egg_debug': 'streak'})
+        self.assertEqual(eggs(), {})
+        # Забытая открывается заново включённой, как в первый раз.
+        self.client.post(url, {'easter_egg_debug': 'streak'})
+        self.assertEqual(eggs(), {'streak': True})
+
     def test_found_turns_on_once(self):
         url = reverse('accounts:easter_egg_found', args=['brainrot'])
         data = self.client.post(url).json()
@@ -640,6 +657,24 @@ class StrangerEggTests(TestCase):
         html = self.client.get(url).content.decode()
         self.assertIn('stranger-intro.js', html)
         self.assertIn(f'data-key="practice:{session.pk}"', html)
+
+    def test_teacher_with_egg_on_sees_it_as_student(self):
+        """Учитель без пасхалки – отладка по ?intro=1; открыл и включил – заставка как у ученика,
+        но под своим ключом, чтобы не съесть показ ученику на той же машине."""
+        teacher = User.objects.create_superuser('stranger-teacher', password='pw')
+        self.client.force_login(teacher)
+        session = PracticeSession.objects.create(
+            user=teacher, kind='topic', mode='study', ege_number=1)
+        PracticeItem.objects.create(session=session, question=self.questions[0], order=0)
+        url = reverse('ege:ege_practice', args=[session.pk])
+
+        html = self.client.get(url).content.decode()
+        self.assertIn('data-debug="1"', html)
+
+        easter_eggs.unlock(teacher, 'stranger')
+        html = self.client.get(url).content.decode()
+        self.assertIn('data-debug="0"', html)
+        self.assertIn(f'data-key="teacher:practice:{session.pk}"', html)
 
 
 @NO_MANIFEST_STATIC

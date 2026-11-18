@@ -86,10 +86,15 @@ def streak_context(user, allowed=True):
 def stranger_context(user, key):
     """Контекст заставки «Очень странные задачи» (_stranger_intro.html). key – строка «вид:id работы»,
     по ней страница помнит в localStorage, что заставку этой работы уже показала."""
+    on = user.is_authenticated and easter_eggs.is_on(user, 'stranger')
+    superuser = user.is_authenticated and user.is_superuser
     return {
-        'stranger_on': user.is_authenticated and (easter_eggs.is_on(user, 'stranger') or user.is_superuser),
-        'stranger_key': key,
-        'stranger_debug': user.is_authenticated and user.is_superuser,
+        'stranger_on': on or superuser,
+        # Свой ключ учителя: его показ на этой машине не съедает показ ученику за ней же.
+        'stranger_key': f'teacher:{key}' if superuser else key,
+        # Отладка (только по ?intro=1) – пока учитель пасхалку не открыл; открыл и
+        # включил – видит её как ученик, иначе включение ничего не меняло бы.
+        'stranger_debug': superuser and not on,
     }
 
 

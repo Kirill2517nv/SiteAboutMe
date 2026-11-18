@@ -117,6 +117,12 @@ class ProfileView(LoginRequiredMixin, generic.TemplateView):
                 profile.save(update_fields=['solution_name_visibility'])
             return redirect('accounts:profile')
 
+        if 'easter_egg_debug' in request.POST:
+            if not request.user.is_superuser:
+                raise PermissionDenied
+            easter_eggs.debug_toggle(request.user, request.POST['easter_egg_debug'])
+            return redirect(f"{reverse('accounts:profile')}#easter-eggs")
+
         if 'easter_egg' in request.POST:
             easter_eggs.switch(profile, request.POST['easter_egg'], request.POST.get('on') == '1')
             # Карточка переключается fetch'ем и перерисовывается сама – страница
