@@ -26,7 +26,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from quizzes.ege_practice import EGE_QUIZ_TYPES
-from quizzes.models import PracticeItem, Question, Quiz
+from quizzes.models import PracticeItem, PracticeSession, Question, Quiz
 
 ARCHIVE_SLUG = 'ege-archive'
 ARCHIVE_TITLE = 'Архив задач ЕГЭ (снятые темы)'
@@ -44,6 +44,9 @@ class Command(BaseCommand):
                             help='Убрать задачи из выдачи, сохранив их и статистику')
         parser.add_argument('--delete', action='store_true',
                             help='Удалить задачи вместе с ответами учеников')
+        parser.add_argument('--quiz', action='append', dest='quizzes', metavar='SLUG',
+                            help='Только задачи этого банка или варианта (можно повторять). '
+                                 'Без флага – все банки и варианты с этим номером')
         parser.add_argument('--dry-run', action='store_true',
                             help='Показать, что будет сделано, ничего не меняя')
 
@@ -68,9 +71,17 @@ class Command(BaseCommand):
         if target == source:
             raise CommandError('--to совпадает с --from, менять нечего')
 
-        questions = Question.objects.filter(
-            ege_number=source, quiz__quiz_type__in=EGE_QUIZ_TYPES,
-        ).select_related('quiz')
+        # --quiz нужен, когда номер сменил тему не везде: варианты kompege уже в
+        # новой раскладке, а банки и свои варианты – ещё в старой. Без фильтра
+        # команда увезла бы и правильные задачи.
+        scope = Question.objects.filter(quiz__quiz_type__in=EGE_QUIZ_TYPES)
+        if options['quizzes']:
+            missing = set(options['quizzes']) - set(
+                Quiz.objects.filter(slug__in=options['quizzes']).values_list('slug', flat=True))
+            if missing:
+                raise CommandError(f'Нет квиза со slug: {", ".join(sorted(missing))}')
+            scope = scope.filter(quiz__slug__in=options['quizzes'])
+        questions = scope.filter(ege_number=source).select_related('quiz')
         total = questions.count()
 
         if not total:
@@ -98,9 +109,7 @@ class Command(BaseCommand):
         # слияния «свои» и «переехавшие» задачи в базе ничем не отличаются, и
         # обратный retag_ege утащит назад и те, и другие.
         if target is not None:
-            occupied = Question.objects.filter(
-                ege_number=target, quiz__quiz_type__in=EGE_QUIZ_TYPES,
-            ).count()
+            occupied = scope.filter(ege_number=target).count()
             if occupied:
                 self.stdout.write(self.style.WARNING(
                     f'\nВНИМАНИЕ: на задании {target} уже есть {occupied} задач. '
@@ -123,6 +132,17 @@ class Command(BaseCommand):
             return
 
         with transaction.atomic():
+            # Номер сессии тренажёра едет вместе с её задачами: по нему считаются
+            # «сессий по заданию» и «последний экзамен» на карточке задания. Без
+            # этого переехавшая тема оставила бы историю ученика на старом номере.
+            # У снятой темы номера нет – сессия показывается как «работа без номера».
+            sessions = PracticeSession.objects.filter(
+                ege_number=source, items__question__in=list(questions.values_list('id', flat=True)),
+            ).distinct()
+            relabeled = PracticeSession.objects.filter(id__in=list(sessions.values_list('id', flat=True))
+                                                       ).update(ege_number=target)
+            self.stdout.write(f'Сессий тренажёра перенумеровано: {relabeled}')
+
             if target is not None:
                 updated = questions.update(ege_number=target)
                 message = f'Перевешено на задание {target}: {updated} задач.'

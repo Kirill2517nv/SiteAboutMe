@@ -33,14 +33,14 @@ class EgeTimeColorTests(SimpleTestCase):
     """Пороги цвета времени общие для результатов варианта, отчёта и профиля."""
 
     def test_thresholds(self):
-        # Задание 17: норма 13 минут (спецификация 2027), полторы нормы – 19,5.
-        self.assertEqual(EGE_RECOMMENDED_TIME[17], 13)
+        # Задание 17: норма 14 минут (спецификация 2027 от 13.11.2026), полторы нормы – 21.
+        self.assertEqual(EGE_RECOMMENDED_TIME[17], 14)
         cases = {
             5 * 60: 'green',
-            13 * 60: 'green',    # ровно норма – ещё зелёный
-            14 * 60: 'yellow',
-            19 * 60: 'yellow',   # полторы нормы ещё не пройдены
-            20 * 60: 'red',
+            14 * 60: 'green',    # ровно норма – ещё зелёный
+            15 * 60: 'yellow',
+            21 * 60: 'yellow',   # полторы нормы ещё не пройдены
+            22 * 60: 'red',
         }
         for seconds, expected in cases.items():
             with self.subTest(seconds=seconds):
@@ -6087,3 +6087,57 @@ class MockExamTests(TestCase):
         # Ученику настройки недоступны
         self.client.force_login(self.user)
         self.assertEqual(self.client.post(url, {'signup_text': 'x'}).status_code, 403)
+
+
+class RetagScopeTests(TestCase):
+    """
+    retag_ege --quiz: номер сменил тему не везде (КИМ-2027 от 13.11.2026 –
+    варианты kompege уже в раскладке 2026, банки ещё нет). Переезжают только
+    задачи названных квизов, а сессии тренажёра – вместе со своими задачами.
+    """
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user('retag', password='x')
+        self.bank = Quiz.objects.create(title='Банк 10', slug='bank-10', quiz_type='bank',
+                                        exam_mode='practice', is_public=True)
+        self.variant = Quiz.objects.create(title='Вариант', slug='variant-k', quiz_type='exam',
+                                           exam_mode='exam', is_public=True)
+        self.mask = Question.objects.create(quiz=self.bank, title='Маска', text='маска',
+                                            question_type='text', correct_text_answer='1',
+                                            ege_number=10)
+        self.text = Question.objects.create(quiz=self.variant, title='Поиск', text='слово',
+                                            question_type='text', correct_text_answer='1',
+                                            ege_number=10)
+        self.session = PracticeSession.objects.create(user=self.user, ege_number=10, mode='exam',
+                                                      finished_at=timezone.now())
+        PracticeItem.objects.create(session=self.session, question=self.mask, order=0,
+                                    is_correct=True, answered_at=timezone.now())
+        self.empty = PracticeSession.objects.create(user=self.user, ege_number=10)
+
+    def _retag(self, *args):
+        from io import StringIO
+        from django.core.management import call_command
+        call_command('retag_ege', '--from', '10', *args, '--quiz', 'bank-10', stdout=StringIO())
+
+    def test_only_named_quiz_moves_with_its_sessions(self):
+        self._retag('--to', '13')
+        self.mask.refresh_from_db()
+        self.text.refresh_from_db()
+        self.session.refresh_from_db()
+        self.empty.refresh_from_db()
+        self.assertEqual(self.mask.ege_number, 13)
+        self.assertEqual(self.text.ege_number, 10, 'вариант не назван – не трогается')
+        self.assertEqual(self.session.ege_number, 13, 'последний экзамен едет за темой')
+        self.assertEqual(self.empty.ege_number, 10, 'сессия без перенесённых задач остаётся')
+        self.assertIn(13, ege_stats._last_exam_by_number(self.user))
+
+    def test_archive_unnumbers_sessions(self):
+        self._retag('--archive')
+        self.session.refresh_from_db()
+        self.assertIsNone(self.session.ege_number)
+        self.assertTrue(PracticeItem.objects.filter(question=self.mask).exists())
+
+    def test_unknown_quiz_is_an_error(self):
+        from django.core.management import CommandError, call_command
+        with self.assertRaises(CommandError):
+            call_command('retag_ege', '--from', '10', '--to', '13', '--quiz', 'nope', verbosity=0)

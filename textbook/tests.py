@@ -1341,7 +1341,7 @@ class WidgetMountTests(SimpleTestCase):
         from textbook.management.commands import seed_ege_theory_4 as ege4
         from textbook.management.commands import seed_ege_theory_12 as ege12
         from textbook.management.commands import seed_ege_theory_19 as ege19
-        from textbook.management.commands import seed_ege_theory_23 as ege23
+        from textbook.management.commands import seed_ege_theory_grafy as ege23
         from textbook.management.commands import seed_ege_theory_24 as ege24
         from textbook.management.commands import seed_textbook_block8 as block8
 
