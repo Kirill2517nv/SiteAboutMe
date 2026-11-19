@@ -1941,9 +1941,14 @@ class ArticleFeedbackTests(TestCase):
 
     def test_home_announcement_only_for_logged_in(self):
         """Анонс на главной – только вошедшим: гостю хватает врезки «Что это за сайт»."""
-        self.assertNotContains(self.client.get(reverse('home')), 'news:solutions')
+        self.assertNotContains(self.client.get(reverse('home')), 'news:ege-plan')
         self.client.force_login(self.student)
-        self.assertContains(self.client.get(reverse('home')), 'news:solutions')
+        resp = self.client.get(reverse('home'))
+        self.assertContains(resp, 'news:ege-plan')
+        self.assertContains(resp, reverse('ege:ege_plan'))   # ученику – кнопка «Составить план»
+        self.client.force_login(self.teacher)
+        # Учителю план не нужен: анонс есть, кнопки «Составить план» нет.
+        self.assertNotContains(self.client.get(reverse('home')), reverse('ege:ege_plan'))
 
     def test_student_cannot_change_status(self):
         from textbook.models import Suggestion
