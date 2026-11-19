@@ -40,13 +40,6 @@
         {% endif %}
     </div>
 
-    {% if exam_locked_warning %}
-    <div class="mb-6 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300 text-sm">
-        Экзамен по этому заданию ещё закрыт: решите на тренировках {{ unlock_threshold }} разных
-        задач (сейчас {{ study_solved }}).
-    </div>
-    {% endif %}
-
     {% if empty_warning %}
     <div class="mb-6 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300 text-sm">
         По выбранным условиям задач в банке не нашлось. Попробуйте другую сложность
@@ -346,11 +339,6 @@
                             <div>Последняя попытка: {{ stats.exam.last.correct }} из {{ stats.exam.last.total }}</div>
                             {% if stats.exam.sessions > 1 %}<div>Всего попыток: {{ stats.exam.sessions }}</div>{% endif %}
                             {% if stats.exam.avg_mm_ss %}<div>Среднее время: {{ stats.exam.avg_mm_ss }}</div>{% endif %}
-                        </div>
-                        {% elif not exam_open %}
-                        <div class="text-xs text-gray-400">
-                            Откроется, когда на тренировках будет решено
-                            {{ unlock_threshold }} разных задач
                         </div>
                         {% endif %}
                     </div>

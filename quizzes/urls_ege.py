@@ -1,5 +1,5 @@
 from django.urls import path
-from . import views, views_practice, views_similarity
+from . import views, views_plan, views_practice, views_similarity
 
 app_name = 'ege'
 
@@ -11,6 +11,9 @@ urlpatterns = [
     # Таблица класса. Тоже до '<int:quiz_id>/' – 'class' не число, но пусть
     # учительские страницы лежат рядом с остальными префиксами.
     path('class/', views.ege_class_view, name='ege_class'),
+    path('plan/', views_plan.plan_edit_view, name='ege_plan'),
+    path('plans/', views_plan.plans_view, name='ege_plans'),
+    path('review/start/', views_plan.review_start_view, name='ege_review_start'),
     path('student/<int:user_id>/mistakes/', views.ege_student_mistakes_view,
          name='ege_student_mistakes'),
     path('checks/<int:quiz_id>/', views_practice.ege_check_report_view, name='ege_check_report'),

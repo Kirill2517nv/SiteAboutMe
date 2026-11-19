@@ -57,7 +57,7 @@ json полностью описывает задачу как она пришл
 Чего в json нет и что живёт только в базе:
 
 * `Question.classroom_only` / `exam_only` – в какой пул учитель положил задачу;
-* `EgeTask.exam_size` / `exam_unlock_threshold` / `classroom_enabled`.
+* `EgeTask.exam_size` / `classroom_enabled`.
 
 Это решения, принятые в приложении, а не вывод парсера, поэтому они и не в
 `bank-*.json`: следующая перепарсовка банка их бы стёрла. Их снимает и

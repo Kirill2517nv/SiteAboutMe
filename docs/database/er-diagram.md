@@ -416,7 +416,6 @@ erDiagram
         int order
         bool classroom_enabled "Кнопка «Задачи для урока»"
         int exam_size "nullable - по нормативу времени"
-        int exam_unlock_threshold "default=10, 0 - экзамен сразу"
     }
 
     Article {

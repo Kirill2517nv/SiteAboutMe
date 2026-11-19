@@ -1526,13 +1526,8 @@ class ExamDeadlineTests(TestCase):
         self.assertEqual(resp.status_code, 200)
 
 
-class ExamUnlockTests(TestCase):
-    """
-    Экзамен открывается только после работы в учёбе.
-
-    Порог задаёт админ по каждому заданию: у короткого задания 1 десять задач –
-    это разумная разминка, у задания 27 столько просто нет в банке.
-    """
+class ExamAlwaysOpenTests(TestCase):
+    """Экзамен по заданию открыт сразу, без порога в тренировке."""
 
     def setUp(self):
         self.user = get_user_model().objects.create_user('unlocker', password='pwd')
@@ -1544,50 +1539,16 @@ class ExamUnlockTests(TestCase):
                                     ege_number=1)
             for i in range(6)
         ]
-        self.task = EgeTask.objects.create(number=1, title='Задание 1',
-                                           exam_unlock_threshold=3)
+        EgeTask.objects.create(number=1, title='Задание 1')
         self.client.force_login(self.user)
 
-    def _solve(self, count, mode='study'):
-        session = PracticeSession.objects.create(
-            user=self.user, kind='topic', mode=mode, ege_number=1,
-            finished_at=timezone.now(),
-        )
-        for i, question in enumerate(self.questions[:count]):
-            PracticeItem.objects.create(session=session, question=question, order=i,
-                                        is_correct=True, attempts=1,
-                                        answered_at=timezone.now())
-        return session
-
-    def test_locked_until_threshold(self):
-        self.assertEqual(ege_practice.exam_access(self.user, 1), (False, 0, 3))
-        self._solve(2)
-        self.assertEqual(ege_practice.exam_access(self.user, 1), (False, 2, 3))
-        self._solve(3)
-        self.assertEqual(ege_practice.exam_access(self.user, 1)[0], True)
-
-    def test_same_question_solved_twice_counts_once(self):
-        self._solve(1)
-        self._solve(1)
-        self.assertEqual(ege_practice.exam_access(self.user, 1)[1], 1)
-
-    def test_zero_threshold_opens_immediately(self):
-        self.task.exam_unlock_threshold = 0
-        self.task.save(update_fields=['exam_unlock_threshold'])
-        self.assertEqual(ege_practice.exam_access(self.user, 1), (True, 0, 0))
-
-    def test_exam_start_refused_while_locked(self):
+    def test_exam_starts_without_study_work(self):
         resp = self.client.post('/ege/practice/start/', {
             'kind': 'topic', 'ege_number': '1', 'mode': 'exam',
         })
-        self.assertRedirects(resp, '/ege/task/1/', fetch_redirect_response=False)
-        self.assertFalse(PracticeSession.objects.filter(user=self.user, mode='exam').exists())
-
-    def test_exam_progress_does_not_open_exam(self):
-        # Экзаменационные решения порог не двигают: иначе первый же экзамен
-        # открывал бы сам себя задним числом.
-        self._solve(3, mode='exam')
-        self.assertFalse(ege_practice.exam_access(self.user, 1)[0])
+        self.assertEqual(resp.status_code, 302)
+        self.assertTrue(PracticeSession.objects.filter(
+            user=self.user, mode='exam').exists())
 
 
 class QuestionGroupTests(TestCase):
@@ -1931,38 +1892,51 @@ class ClassroomToggleTests(TestCase):
 
 
 class CoveredToggleTests(TestCase):
-    """Пометка «разобрали на уроке» на карте /ege/ – только учителю."""
+    """
+    Отметки на карте /ege/: ставит учитель, видят все. По кругу:
+    нет → «на следующем уроке» (жёлтая) → «разобрали» (зелёная) → нет.
+    """
 
     def setUp(self):
         self.teacher = get_user_model().objects.create_superuser('teacher', password='pwd')
         self.pupil = get_user_model().objects.create_user('pupil', password='pwd')
         self.task = EgeTask.objects.create(number=5, title='Задание 5')
 
-    def test_teacher_toggles_and_sees_mark(self):
+    def marks(self):
+        self.task.refresh_from_db()
+        return self.task.next_lesson, self.task.covered
+
+    def test_teacher_cycles_three_states(self):
         self.client.force_login(self.teacher)
         self.client.post('/ege/task/5/covered/')
-        self.task.refresh_from_db()
-        self.assertTrue(self.task.covered)
-        self.assertContains(self.client.get('/ege/'), 'Снять отметку «разобрали»')
-
+        self.assertEqual(self.marks(), (True, False))
         self.client.post('/ege/task/5/covered/')
-        self.task.refresh_from_db()
-        self.assertFalse(self.task.covered)
+        self.assertEqual(self.marks(), (False, True))
+        self.client.post('/ege/task/5/covered/')
+        self.assertEqual(self.marks(), (False, False))
 
-    def test_pupil_cannot_toggle_nor_see(self):
+    def test_pupil_sees_marks_but_cannot_toggle(self):
         self.task.covered = True
         self.task.save(update_fields=['covered'])
+        EgeTask.objects.create(number=6, title='Задание 6', next_lesson=True)
         self.client.force_login(self.pupil)
         self.assertEqual(self.client.post('/ege/task/5/covered/').status_code, 403)
         resp = self.client.get('/ege/')
         self.assertNotContains(resp, 'covered/')
-        self.assertNotContains(resp, 'covered: true')
+        self.assertContains(resp, "mark: 'covered'")
+        self.assertContains(resp, "mark: 'next'")
+        self.assertContains(resp, 'уже разобрали на спецкурсе')
+        self.assertContains(resp, 'разберём на следующем уроке')
+
+    def test_no_legend_without_marks(self):
+        self.client.force_login(self.pupil)
+        self.assertNotContains(self.client.get('/ege/'), 'уже разобрали на спецкурсе')
 
     def test_fetch_gets_json_instead_of_redirect(self):
         self.client.force_login(self.teacher)
         resp = self.client.post('/ege/task/5/covered/', HTTP_ACCEPT='application/json')
-        self.assertEqual(resp.json(), {'covered': True})
-        self.assertContains(self.client.get('/ege/'), 'covered: true')
+        self.assertEqual(resp.json(), {'mark': 'next'})
+        self.assertContains(self.client.get('/ege/'), "mark: 'next'")
 
 
 class NoRepeatTests(TestCase):
@@ -3208,7 +3182,7 @@ class TaskStudentsTests(TestCase):
     Таблица задания и разбор ответов ученика глазами учителя.
 
     Счётчики таблицы считаются пачкой на класс (task_student_rows), карточка
-    ученика – по одному (task_stats, exam_access), разбор – своим циклом по
+    ученика – по одному (task_stats), разбор – своим циклом по
     PracticeItem. Три подсчёта одного и того же обязаны совпасть.
     """
 
@@ -3254,8 +3228,6 @@ class TaskStudentsTests(TestCase):
         self.assertEqual((part['solved'], part['first_try'], part['bank_size']),
                          (card['solved'], card['first_try'], card['bank_size']))
         self.assertEqual(row['mistakes'], ege_practice.mistake_count(self.student))
-        self.assertEqual((row['exam_open'], row['study_solved'], row['threshold']),
-                         ege_practice.exam_access(self.student, 17))
 
     def test_last_exam_matches_the_card(self):
         self._answer(self.questions[0], True, mode='exam')

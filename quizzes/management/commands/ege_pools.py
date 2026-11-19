@@ -5,8 +5,8 @@
 
   * в какой пул положена задача (Question.classroom_only / exam_only);
   * сколько задач этого номера идёт в контрольную (EgeTask.exam_size) и
-    сколько нужно решить, чтобы экзамен открылся (exam_unlock_threshold,
-    classroom_enabled).
+    открыт ли набор для урока (classroom_enabled). Старые снимки несут ещё
+    exam_unlock_threshold – поля больше нет, ключ просто пропускается.
 
 Эти решения не выводятся из json и теряются при переезде на другую базу.
 Команда снимает их в отдельный файл и накатывает на другой базе:
@@ -30,7 +30,7 @@ from quizzes.ege_constants import PRACTICE_QUIZ_TYPES
 from quizzes.models import Question
 from textbook.models import EgeTask
 
-TASK_FIELDS = ('exam_size', 'exam_unlock_threshold', 'classroom_enabled')
+TASK_FIELDS = ('exam_size', 'classroom_enabled')
 
 
 class Command(BaseCommand):

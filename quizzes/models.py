@@ -546,6 +546,9 @@ class PracticeSession(models.Model):
         # Срезовая работа: по одной задаче на номер из пачки check_quiz,
         # всегда режим экзамена. В статистику идёт как обычный экзамен.
         ('check', 'Срез'),
+        # Повторение пройденного (ege_plan): по задаче на каждый номер, срок
+        # повторения которого подошёл. В статистику идёт – это настоящая работа.
+        ('review', 'Повторение'),
     ]
     # study – проверка сразу после каждой задачи, можно ответить ещё раз,
     # exam – ответы сохраняются молча, разбор в конце сессии.
@@ -925,3 +928,45 @@ class HintChoice(models.Model):
     def __str__(self):
         verdict = "взял" if self.accepted else "отказался"
         return f"{self.user.username} – задача {self.question_id}: {verdict}"
+
+
+class EgePlan(models.Model):
+    """
+    План подготовки к ЕГЭ: сколько задач каждого номера решить к дедлайну.
+
+    Хранится только то, что ученик выбрал, и снимок исходного графика. Всё
+    остальное – что решено, квота недели, отставание, повторение – считает
+    ege_plan из решений ученика: отдельный журнал разошёлся бы с карточкой
+    задания, которая показывает те же «решено X из Y».
+    """
+    PRESET_CHOICES = [
+        ('easy', 'От простого к сложному'),
+        ('fast', 'От быстрых к долгим'),
+        ('paper', 'Сначала без кода, потом код'),
+        ('own', 'Свой порядок'),
+    ]
+    MIN_PER_TASK = 3
+    # Умолчания формы нового плана; форма подписывает их «по умолчанию».
+    DEFAULT_PER_TASK = 7
+    DEFAULT_PRESET = 'fast'
+    MAX_WEEKS = 104   # дедлайн – не дальше двух лет: длина графика в неделях
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='ege_plan', verbose_name="Ученик")
+    deadline = models.DateField(verbose_name="Дедлайн")
+    per_task = models.PositiveSmallIntegerField(default=DEFAULT_PER_TASK, verbose_name="Задач на номер")
+    preset = models.CharField(max_length=10, choices=PRESET_CHOICES, default=DEFAULT_PRESET, verbose_name="Порядок")
+    order = models.JSONField(default=list, verbose_name="Порядок номеров")
+    started = models.DateField(verbose_name="Понедельник первой недели")
+    # Исходный график: {'weeks': ['YYYY-MM-DD', …], 'cum': [задач к концу недели, …]}.
+    # Отставание считается от него, а не от пересчитанного: пересчёт каждый
+    # понедельник подтягивает график к факту, и долг обнулялся бы сам.
+    baseline = models.JSONField(default=dict, verbose_name="Исходный график")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создан")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Изменён")
+
+    class Meta:
+        verbose_name = "План подготовки к ЕГЭ"
+        verbose_name_plural = "Планы подготовки к ЕГЭ"
+
+    def __str__(self):
+        return f"{self.user.username} – к {self.deadline:%d.%m.%Y}"

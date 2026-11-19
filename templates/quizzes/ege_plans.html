@@ -1,0 +1,97 @@
+{% extends 'base.html' %}
+{% load profile_tags %}
+
+{% block title %}Планы подготовки{% endblock title %}
+
+{% block content %}
+{% comment %}
+Планы подготовки класса: кто идёт по графику, кто отстаёт и насколько.
+Строки по алфавиту, отстающих выделяет красная колонка. Числа считает
+ege_plan.class_rows той же plan_status, что и вкладку «План» ученика, –
+фамилия ведёт туда же, и цифры обязаны совпасть.
+
+Неделя в тепловой карте: зелёная – квота выполнена, жёлтая – частично,
+красная – ничего, серая – квоты не было. Квота каждой недели – та, что была
+на её понедельник, а не нынешняя.
+
+Подсказки – data-tip и одна подсказка на таблицу, как в _ege_progress.html:
+position: fixed, потому что overflow-x-auto обрезал бы абсолютную, а :style –
+объектом, иначе Alpine затёр бы display:none от x-show. Заголовок объясняет
+колонку, ячейка – своё число.
+{% endcomment %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    {% include 'quizzes/_ege_teacher_bar.html' %}
+
+    <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-1">Планы подготовки</h1>
+    <p class="text-base text-gray-600 dark:text-slate-400 mb-6">Отставание считается от исходного графика ученика, неделя – с понедельника по воскресенье.</p>
+
+    {% include 'quizzes/_ege_group_tabs.html' %}
+
+    <div x-data="{ tip: '', x: 0, y: 0, below: false, show(e) { const el = e.target.closest('[data-tip]'); if (!el) { this.tip = ''; return; } const r = el.getBoundingClientRect(); this.tip = el.dataset.tip; this.x = Math.min(Math.max(r.left + r.width / 2, 170), window.innerWidth - 170); this.below = r.top < 140; this.y = this.below ? r.bottom : r.top; } }"
+         @mouseover="show($event)" @mouseleave="tip = ''">
+    <div class="overflow-x-auto rounded-xl border border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800">
+        <table class="w-full text-sm">
+            <thead class="text-xs text-gray-500 dark:text-slate-400 border-b border-gray-100 dark:border-slate-700">
+                <tr>
+                    <th class="text-left font-medium px-4 py-2 cursor-help" data-tip="Фамилия открывает план ученика – вкладку «План» на его хабе, с теми же числами подробно">Ученик</th>
+                    <th class="text-left font-medium px-3 py-2 cursor-help" data-tip="Дата, к которой ученик сам решил пройти все 27 номеров. Жёлтая – дата прошла, а план не выполнен">Дедлайн</th>
+                    <th class="text-right font-medium px-3 py-2 cursor-help" data-tip="Сколько плана сделано, по времени норматива: долгие номера весят больше коротких, поэтому решённые первыми короткие задачи не завышают процент. Число задач – в подсказке ячейки">Пройдено</th>
+                    <th class="text-right font-medium px-3 py-2 cursor-help" data-tip="Насколько ученик позади исходного графика (того, что план составил в день создания): задач не хватает к концу прошлой недели и сколько это недель графика. Текущий график каждый понедельник подтягивается к факту, поэтому отставание считается от исходного">Отставание</th>
+                    <th class="text-right font-medium px-3 py-2 cursor-help" data-tip="Квота текущей недели (Пн–Вс) и сколько из неё решено. У отстающего квота больше: долг каждый понедельник раскладывается по оставшимся неделям">Эта неделя</th>
+                    <th class="text-left font-medium px-3 py-2 cursor-help" data-tip="Восемь последних закончившихся недель, старая слева. Зелёная – квота выполнена, жёлтая – частично, красная – ничего, серая – квоты не было, пунктир – плана ещё не было">8 недель</th>
+                    <th class="text-left font-medium px-3 py-2 cursor-help" data-tip="Когда ученик закончит план, если продолжит в нынешнем темпе. Темп – минуты норматива, решённые с начала плана, на закончившиеся недели. Жёлтый – позже дедлайна больше чем на неделю">Прогноз</th>
+                    <th class="text-right font-medium px-4 py-2 cursor-help" data-tip="Сколько пройденных номеров ждут повторения: срок подошёл (2, 3, затем 4 недели после верного решения). «ош.» – номера, где ученик ошибся на последнем повторении: их стоит спросить на уроке">Повторить</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 dark:divide-slate-700">
+                {% for row in rows %}
+                {% with status=row.plan %}
+                <tr class="{% if not status %}text-gray-400 dark:text-slate-500{% endif %}">
+                    <td class="px-4 py-2 whitespace-nowrap">
+                        <a href="{% url 'ege:ege_list' %}?student={{ row.user.id }}#plan"
+                           class="font-medium {% if status %}text-gray-900 dark:text-white{% endif %} hover:text-brand-600">{{ row.user|surname_first }}</a>
+                    </td>
+                    {% if status %}
+                    <td class="px-3 py-2 whitespace-nowrap {% if status.overdue %}text-amber-600 dark:text-amber-400{% endif %}">{{ status.plan.deadline|date:"j E" }}</td>
+                    <td class="px-3 py-2 text-right tabular-nums cursor-help" data-tip="Решено {{ status.total_done }} из {{ status.total_goal }} задач плана{% if status.total_extra %}; сверх плана ещё {{ status.total_extra }} – решены номера больше нормы, в процент не идут{% endif %}">{{ status.percent }}%{% if status.total_extra %} <span class="text-xs text-emerald-600 dark:text-emerald-400">+{{ status.total_extra }}</span>{% endif %}</td>
+                    <td {% if status.lag %}data-tip="Не хватает {{ status.lag }} задач до исходного графика; решённое соответствует графику примерно {{ status.behind_weeks }} нед. назад"{% endif %} class="px-3 py-2 text-right tabular-nums whitespace-nowrap {% if status.lag %}cursor-help text-red-600 dark:text-red-400 font-medium{% else %}text-emerald-600 dark:text-emerald-400{% endif %}">
+                        {% if status.lag %}−{{ status.lag }}{% if status.behind_weeks %} <span class="text-xs">~{{ status.behind_weeks }} нед.</span>{% endif %}{% else %}нет{% endif %}
+                    </td>
+                    <td class="px-3 py-2 text-right tabular-nums">{{ status.week_got }}/{{ status.week_need }}</td>
+                    <td class="px-3 py-2">
+                        <div class="flex gap-0.5">
+                            {% for cell in row.cells %}
+                            <span class="w-4 h-4 rounded-sm
+                                {% if not cell %}bg-transparent border border-dashed border-gray-200 dark:border-slate-700
+                                {% elif cell.state == 'done' %}bg-emerald-500
+                                {% elif cell.state == 'part' %}bg-amber-400
+                                {% elif cell.state == 'miss' %}bg-red-500
+                                {% else %}bg-gray-200 dark:bg-slate-600{% endif %}"
+                                  {% if cell %}data-tip="Неделя с {{ cell.monday|date:'j E' }}: решено {{ cell.got }} из {{ cell.need }}"{% else %}data-tip="Плана в эту неделю ещё не было"{% endif %}></span>
+                            {% endfor %}
+                        </div>
+                    </td>
+                    <td class="px-3 py-2 whitespace-nowrap {% if status.late_forecast %}text-amber-600 dark:text-amber-400{% endif %}">
+                        {% if status.finished %}выполнен{% elif status.forecast %}{{ status.forecast|date:"j E" }}{% else %}–{% endif %}
+                    </td>
+                    {% else %}
+                    <td colspan="6" class="px-3 py-2 text-xs">нет плана</td>
+                    {% endif %}
+                    <td class="px-4 py-2 text-right tabular-nums whitespace-nowrap">
+                        {% if row.reviews.due %}<span class="text-amber-600 dark:text-amber-400 font-medium">{{ row.reviews.due|length }}</span>{% else %}0{% endif %}
+                        {% if row.reviews.errors %}<span class="text-xs text-red-600 dark:text-red-400" data-tip="Ошибка на последнем повторении: №{{ row.reviews.errors|join:', №' }}">· {{ row.reviews.errors|length }} ош.</span>{% endif %}
+                    </td>
+                </tr>
+                {% endwith %}
+                {% empty %}
+                <tr><td colspan="8" class="px-4 py-6 text-center text-gray-400">В этом классе нет учеников</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div x-show="tip" x-cloak x-text="tip"
+         :style="{ left: x + 'px', top: y + 'px', transform: 'translate(-50%, ' + (below ? '10px' : 'calc(-100% - 10px)') + ')' }"
+         class="fixed z-50 max-w-xs px-3 py-2 rounded-lg bg-gray-900 text-white text-xs leading-snug shadow-lg pointer-events-none"></div>
+    </div>
+</div>
+{% endblock content %}

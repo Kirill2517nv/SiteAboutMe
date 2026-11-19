@@ -69,11 +69,11 @@ class SectionExtensionAdmin(admin.ModelAdmin):
 
 @admin.register(EgeTask)
 class EgeTaskAdmin(admin.ModelAdmin):
-    # Порог правится прямо в списке: это настройка на каждый день,
+    # Настройки правятся прямо в списке: это настройка на каждый день,
     # ради неё заходить в карточку задания незачем.
-    list_display = ('number', 'title', 'classroom_enabled', 'exam_unlock_threshold',
+    list_display = ('number', 'title', 'classroom_enabled',
                     'exam_size', 'order')
-    list_editable = ('classroom_enabled', 'exam_unlock_threshold', 'exam_size', 'order')
+    list_editable = ('classroom_enabled', 'exam_size', 'order')
     ordering = ('number',)
 
 

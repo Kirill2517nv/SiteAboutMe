@@ -79,15 +79,9 @@ def ege_task_view(request, number):
         stats = rows.get(number)
         stats_list = [rows[n] for n in numbers if n in rows]
 
-    # Флаги снимаем при показе: иначе предупреждение висело бы на карточке
+    # Флаг снимаем при показе: иначе предупреждение висело бы на карточке
     # до конца сессии браузера.
     empty = request.session.pop('ege_practice_empty', False)
-    locked_warning = request.session.pop('ege_exam_locked', False)
-
-    exam_open, study_solved, unlock_threshold = (
-        ege_practice.exam_access(request.user, number)
-        if request.user.is_authenticated else (False, 0, 0)
-    )
 
     # Сколько задач в банке всего и сколько ученик уже закрыл: без этой пары
     # «Всего задач: 22» врало бы – часть из них ему больше не выдадут.
@@ -128,10 +122,6 @@ def ege_task_view(request, number):
         'recommended_min': EGE_RECOMMENDED_TIME.get(number, 5),
         'default_size': default_size,
         'exam_size': ege_practice.exam_session_size(number),
-        'exam_open': exam_open,
-        'exam_locked_warning': locked_warning,
-        'study_solved': study_solved,
-        'unlock_threshold': unlock_threshold,
         'classroom_pool': ege_practice.classroom_pool_size(number),
         'classroom_open': ege_practice.classroom_open(number),
         'classroom_enabled': bool(task and task.classroom_enabled),
@@ -175,17 +165,31 @@ def classroom_toggle_view(request, number):
 @login_required
 @require_POST
 def covered_toggle_view(request, number):
-    """Учитель отмечает на карте /ege/, что тип задач уже разобран на уроке."""
+    """
+    Учитель переключает отметку номера на карте /ege/ по кругу:
+    нет → «на следующем уроке» (жёлтая рамка) → «разобрали» (зелёная) → нет.
+    Отметки видят все ученики.
+    """
     if not request.user.is_superuser:
         raise PermissionDenied('Отметку ставит учитель')
 
     task = get_object_or_404(EgeTask, number=number)
-    task.covered = not task.covered
-    task.save(update_fields=['covered'])
+    state = task_mark(task)
+    following = {'': 'next', 'next': 'covered', 'covered': ''}[state]
+    task.next_lesson = following == 'next'
+    task.covered = following == 'covered'
+    task.save(update_fields=['next_lesson', 'covered'])
     # Карта шлёт fetch и перекрашивает карточку сама; без JS – обычный редирект.
     if request.headers.get('Accept') == 'application/json':
-        return JsonResponse({'covered': task.covered})
+        return JsonResponse({'mark': following})
     return redirect('ege:ege_list')
+
+
+def task_mark(task):
+    """Отметка номера на карте: 'covered', 'next' или ''."""
+    if task.covered:
+        return 'covered'
+    return 'next' if task.next_lesson else ''
 
 
 # Три корзины, по которым учитель раскладывает банк. Умолчание – 'study':
@@ -429,7 +433,11 @@ def _save_bank_pools(request, number, questions):
 def practice_start_view(request):
     """Создаёт сессию тренировки по параметрам формы и ведёт на неё."""
     kind = request.POST.get('kind', 'topic')
-    if kind not in dict(PracticeSession.KIND_CHOICES) or kind == 'retry':
+    # Только виды, которые заводит эта форма. retry, check и review идут через
+    # свои вьюхи с проверками (решённая задача, окно среза, пройденный номер):
+    # прямой POST kind=review завёл бы «повторение» случайных задач и накрутил
+    # лестницу повторения и пасхалку stranger.
+    if kind not in ('topic', 'mistakes', 'mixed', 'classroom'):
         kind = 'topic'
 
     mode = request.POST.get('mode', 'study')
@@ -461,14 +469,6 @@ def practice_start_view(request):
         running = ege_practice.active_exam(request.user)
         if running:
             return redirect('ege:ege_practice', pk=running.pk)
-
-    # Экзамен по неразобранной теме измерил бы только незнание. Порог задаёт
-    # админ в справочнике заданий; проверка на сервере, а не только в форме.
-    if mode == 'exam' and kind == 'topic':
-        exam_open, _, _ = ege_practice.exam_access(request.user, number)
-        if not exam_open:
-            request.session['ege_exam_locked'] = True
-            return redirect('ege:ege_task', number=number)
 
     # Ручной состав: сколько задач какой сложности. Пустой микс – значит ученик
     # оставил простой выбор «сложность + количество».
@@ -1054,10 +1054,11 @@ def practice_result_view(request, pk):
     # из головы: смешанная сессия может собрать задачи разной стоимости.
     norm_minutes = sum(row['recommended_min'] for row in rows)
 
-    # «Изнанка вывернута»: 11 различных задач, закрытых в работе над ошибками,
-    # открывают пасхалку именно здесь – на разборе, а не посреди решения.
+    # «Изнанка вывернута»: 11 различных задач, закрытых в работе над ошибками
+    # и на повторении, открывают пасхалку именно здесь – на разборе, а не
+    # посреди решения.
     stranger_unlocked = None
-    if (session.kind == 'mistakes' and session.user_id == request.user.id
+    if (session.kind in easter_eggs.STRANGER_KINDS and session.user_id == request.user.id
             and easter_eggs.check_stranger(request.user)):
         stranger_unlocked = easter_eggs.EGGS_BY_KEY['stranger']
 

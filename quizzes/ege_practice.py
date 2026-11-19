@@ -12,7 +12,7 @@ from django.db.models import (
 )
 
 from .ege_constants import (  # noqa: F401
-    CLASSROOM_POOL_SIZE, DEFAULT_EXAM_UNLOCK, DEFAULT_TASK_MINUTES,
+    CLASSROOM_POOL_SIZE, DEFAULT_TASK_MINUTES,
     EGE_QUIZ_TYPES, EGE_RECOMMENDED_TIME, EXAM_MAX_SIZE, EXAM_MINUTES,
     EXAM_POOL_SIZE, EXCLUDED_KINDS, PRACTICE_QUIZ_TYPES, STUDY_DEFAULT_SIZE, practice_pool_q,
     STUDY_MAX_SIZE, STUDY_MINUTES,
@@ -259,51 +259,6 @@ def classroom_open(ege_number):
     enabled = EgeTask.objects.filter(number=ege_number).values_list(
         'classroom_enabled', flat=True).first()
     return bool(enabled) and classroom_pool_size(ege_number) > 0
-
-
-def study_solved_count(user, ege_number):
-    """
-    Сколько разных задач этого задания ученик решил верно в режиме «Учёба».
-
-    Считаем задачи, а не попытки: иначе порог открытия экзамена закрывался бы
-    одной задачей, решённой десять раз.
-    """
-    if not user.is_authenticated:
-        return 0
-    return (
-        PracticeItem.objects
-        .filter(session__user=user, session__mode='study', is_correct=True,
-                question__ege_number=ege_number,
-                # Тот же фильтр, что в статистике: задачи снятой темы уехали
-                # в архив и открывать экзамен по сегодняшнему заданию не должны.
-                question__quiz__quiz_type__in=EGE_QUIZ_TYPES)
-        # Урок и переписывание решения экзамен не открывают по той же
-        # причине, по которой не идут в статистику: там не решают задачу заново.
-        .exclude(session__kind__in=('classroom', 'retry'))
-        # Перенесённый ответ – копия прошлого зачёта, второй раз он не считается.
-        .exclude(carried=True)
-        .values('question_id').distinct().count()
-    )
-
-
-def exam_unlock_threshold(ege_number):
-    """Порог из справочника заданий; там же его правит админ."""
-    row = _ege_task_field(ege_number, 'exam_unlock_threshold')
-    return DEFAULT_EXAM_UNLOCK if row is None else row
-
-
-def exam_access(user, ege_number):
-    """
-    Открыт ли экзамен по заданию: (открыт, решено, порог).
-
-    Экзамен – проверка, а не первое знакомство с темой: пока ученик не разобрал
-    её на тренировках, контрольная измерит только незнание.
-    """
-    threshold = exam_unlock_threshold(ege_number)
-    if threshold <= 0:
-        return True, 0, 0
-    solved = study_solved_count(user, ege_number)
-    return solved >= threshold, solved, threshold
 
 
 def pick_exam_questions(user, ege_number, size=None):

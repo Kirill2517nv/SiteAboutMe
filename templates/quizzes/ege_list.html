@@ -6,8 +6,8 @@
 
 {% block content %}
 {% comment %}
-Хаб тренажёра ЕГЭ. Три вкладки: карта 27 заданий, готовые варианты, личный
-прогресс.
+Хаб тренажёра ЕГЭ. Четыре вкладки: карта 27 заданий, готовые варианты, личный
+прогресс и план подготовки (ege_plan); карточка недели плана стоит над вкладками.
 
 Карта заданий стоит первой намеренно. Вариант целиком – это 235 минут, как
 ежедневный режим подготовки он не работает. Тренировка по одному заданию
@@ -17,7 +17,7 @@
 /ege/task/<N>/, чтобы теория и задачи по теме лежали на одной странице.
 {% endcomment %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8"
-     x-data="{ tab: (location.hash === '#variants' ? 'variants' : (location.hash === '#progress' ? 'progress' : 'tasks')) }">
+     x-data="{ tab: ({'#variants': 'variants', '#progress': 'progress', '#plan': 'plan'})[location.hash] || 'tasks' }">
 
     {% if students %}{% include 'quizzes/_ege_teacher_bar.html' %}{% endif %}
 
@@ -40,6 +40,8 @@
     </div>
 
     {% include 'quizzes/_ege_checks.html' %}
+
+    {% if user.is_authenticated and plan_status %}{% include 'quizzes/_ege_plan_week.html' %}{% endif %}
 
     {% if user.is_authenticated and overview.score %}
     <!-- Сводка -->
@@ -181,10 +183,30 @@
                 class="px-4 py-2 -mb-px border-b-2 font-medium transition-colors">
             {% if student %}Прогресс: {{ student.last_name|default:student.username }}{% elif user.is_authenticated %}Мой прогресс{% else %}Прогресс – пример{% endif %}
         </button>
+        {% if plan_status %}
+        <button @click="tab = 'plan'; location.hash = 'plan'"
+                :class="tab === 'plan' ? 'border-brand-600 text-brand-600 dark:text-cyan-400 dark:border-cyan-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-slate-400'"
+                class="px-4 py-2 -mb-px border-b-2 font-medium transition-colors">
+            {% if student %}План: {{ student.last_name|default:student.username }}{% elif user.is_authenticated %}План{% else %}План – пример{% endif %}
+        </button>
+        {% endif %}
     </div>
 
     <!-- Вкладка: карта 27 заданий -->
     <div x-show="tab === 'tasks'">
+        {% if has_marks or user.is_superuser %}
+        {# Пояснение к рамкам – всем, кто их видит; учителю и без отметок, чтобы знал, что значит кнопка. #}
+        <div class="flex flex-wrap gap-x-8 gap-y-3 mb-5 text-sm text-gray-600 dark:text-slate-400">
+            <span class="inline-flex items-center gap-3">
+                <span class="shrink-0 w-4 h-4 rounded ring-2 ring-emerald-400 bg-emerald-50 dark:bg-emerald-950/30"></span>
+                уже разобрали на спецкурсе
+            </span>
+            <span class="inline-flex items-center gap-3">
+                <span class="shrink-0 w-4 h-4 rounded ring-2 ring-amber-400 bg-amber-50 dark:bg-amber-950/30"></span>
+                разберём на следующем уроке
+            </span>
+        </div>
+        {% endif %}
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {% for task in overview.tasks %}
             {% if task.linked_first %}
@@ -202,38 +224,52 @@
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {% endif %}
-            {# Пометка учителя «разобрали на уроке»: кнопка – сосед ссылки, форма внутри <a> невалидна. #}
             {% comment %}
-            Классы закраски стоят дважды: в class – для первой отрисовки до Alpine,
-            в :class – для переключения без перезагрузки (fetch, ответ JSON).
+            Отметки учителя видят все: зелёная рамка – номер разобран на
+            спецкурсе, жёлтая – разберём на следующем уроке. Рамка – ring, а не
+            толще border: кольцо не сдвигает сетку карточек.
+            Кнопка учителя – сосед ссылки (форма внутри <a> невалидна) и
+            переключает отметку по кругу: нет → следующий урок → разобрали → нет.
+            Классы стоят дважды: в class – для первой отрисовки до Alpine, в
+            :class – для переключения без перезагрузки (fetch, ответ JSON).
             {% endcomment %}
-            <div class="relative" x-data="{ covered: {% if task.number in covered %}true{% else %}false{% endif %} }">
+            <div class="relative" x-data="{ mark: '{{ task.mark }}' }">
             {% if user.is_superuser %}
             <form method="post" action="{% url 'ege:ege_covered_toggle' task.number %}" class="absolute top-2 right-2 z-10"
                   @submit.prevent="fetch($el.action, { method: 'POST', body: new FormData($el), headers: { Accept: 'application/json' } })
-                      .then(r => r.ok ? r.json() : Promise.reject()).then(d => covered = d.covered)">
+                      .then(r => r.ok ? r.json() : Promise.reject()).then(d => mark = d.mark)">
                 {% csrf_token %}
-                <button type="submit" :title="covered ? 'Снять отметку «разобрали»' : 'Отметить: разобрали на уроке'"
+                <button type="submit"
+                        :title="({'': 'Отметить: разберём на следующем уроке', next: 'Отметить: разобрали на спецкурсе', covered: 'Снять отметку'})[mark]"
+                        title="{% if task.mark == 'covered' %}Снять отметку{% elif task.mark == 'next' %}Отметить: разобрали на спецкурсе{% else %}Отметить: разберём на следующем уроке{% endif %}"
                         class="w-6 h-6 rounded-full flex items-center justify-center border transition-colors
-                        {% if task.number in covered %}bg-emerald-500 border-emerald-500 text-white hover:bg-emerald-600
+                        {% if task.mark == 'covered' %}bg-emerald-500 border-emerald-500 text-white
+                        {% elif task.mark == 'next' %}bg-amber-400 border-amber-400 text-white
                         {% else %}border-gray-300 dark:border-slate-600 text-transparent hover:text-gray-400 hover:border-gray-400{% endif %}"
                         :class="{
-                            'bg-emerald-500 border-emerald-500 text-white hover:bg-emerald-600': covered,
-                            'border-gray-300 dark:border-slate-600 text-transparent hover:text-gray-400 hover:border-gray-400': !covered }"
-                        title="{% if task.number in covered %}Снять отметку «разобрали»{% else %}Отметить: разобрали на уроке{% endif %}">
-                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            'bg-emerald-500 border-emerald-500 text-white': mark === 'covered',
+                            'bg-amber-400 border-amber-400 text-white': mark === 'next',
+                            'border-gray-300 dark:border-slate-600 text-transparent hover:text-gray-400 hover:border-gray-400': !mark }">
+                    <svg x-show="mark !== 'next'" {% if task.mark == 'next' %}style="display: none"{% endif %} class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    <svg x-show="mark === 'next'" {% if task.mark != 'next' %}style="display: none"{% endif %} class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        {# Часы на весь кружок: стрелки без циферблата в 14px читались точкой. #}
+                        <circle cx="12" cy="12" r="8.5" stroke-width="2"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 7.5V12l3 2"/>
                     </svg>
                 </button>
             </form>
             {% endif %}
             <a href="{% url 'ege:ege_task' task.page_number %}"
                class="group block h-full rounded-xl border p-4 hover:border-brand-300 dark:hover:border-cyan-500 hover:shadow-md transition-all
-               {% if task.number in covered %}bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800
+               {% if task.mark == 'covered' %}bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800 ring-2 ring-emerald-400 dark:ring-emerald-600
+               {% elif task.mark == 'next' %}bg-amber-50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-800 ring-2 ring-amber-400 dark:ring-amber-500
                {% else %}bg-white dark:bg-slate-800 border-gray-100 dark:border-slate-700{% endif %}"
                :class="{
-                   'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800': covered,
-                   'bg-white dark:bg-slate-800 border-gray-100 dark:border-slate-700': !covered }">
+                   'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800 ring-2 ring-emerald-400 dark:ring-emerald-600': mark === 'covered',
+                   'bg-amber-50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-800 ring-2 ring-amber-400 dark:ring-amber-500': mark === 'next',
+                   'bg-white dark:bg-slate-800 border-gray-100 dark:border-slate-700': !mark }">
                 <div class="flex items-start gap-3">
                     {# Цвет – по последнему экзамену, как на карточке задания; без экзамена серый. #}
                     <span class="shrink-0 w-10 h-10 rounded-lg flex items-center justify-center font-bold
@@ -398,5 +434,17 @@
 
         {% include 'quizzes/_ege_progress.html' with overview=overview %}
     </div>
+
+    <!-- Вкладка: план подготовки -->
+    {% if plan_status %}
+    <div x-show="tab === 'plan'" x-cloak>
+        {% if not user.is_authenticated %}
+        <p class="mb-4 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
+            Это пример плана выдуманного ученика. <a href="{% url 'login' %}?next={% url 'ege:ege_list' %}%23plan" class="font-medium underline">Войдите</a>, чтобы составить свой.
+        </p>
+        {% endif %}
+        {% include 'quizzes/_ege_plan_tab.html' %}
+    </div>
+    {% endif %}
 </div>
 {% endblock content %}

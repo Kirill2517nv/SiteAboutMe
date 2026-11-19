@@ -634,6 +634,20 @@ class StrangerEggTests(TestCase):
         self.assertEqual(easter_eggs.mistakes_closed(self.student), 9)
         self.assertFalse(easter_eggs.is_found(self.student, 'stranger'))
 
+    def test_review_counts_together_with_mistakes(self):
+        """Повторение пройденного (ege_plan) – та же изнанка, что работа над ошибками."""
+        self._solve(5)
+        review = PracticeSession.objects.create(
+            user=self.student, kind='review', mode='study', finished_at=timezone.now())
+        for question in self.questions[5:11]:
+            PracticeItem.objects.create(session=review, question=question, is_correct=True,
+                                        answered_at=timezone.now())
+        self.assertEqual(easter_eggs.mistakes_closed(self.student), 11)
+        html = self.client.get(
+            reverse('ege:ege_practice_result', args=[review.pk])).content.decode()
+        self.assertIn('Найдена пасхалка', html)
+        self.assertEqual(self._eggs(), {'stranger': True})
+
     def test_result_page_finds_the_egg(self):
         session = self._solve(11)
         html = self.client.get(

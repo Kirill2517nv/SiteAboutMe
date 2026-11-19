@@ -43,7 +43,7 @@ graph TD
 ```
 
 - **accounts** зависит от `django.contrib.auth` (User)
-- **quizzes** зависит от `accounts` (`StudentGroup` в назначениях) и от `textbook`: задачи ЕГЭ нельзя отобрать, не зная `EgeTask.exam_size` и `exam_unlock_threshold`, а статьи теории ЕГЭ лежат на `Article(track='ege')`
+- **quizzes** зависит от `accounts` (`StudentGroup` в назначениях) и от `textbook`: задачи ЕГЭ нельзя отобрать, не зная `EgeTask.exam_size`, а статьи теории ЕГЭ лежат на `Article(track='ege')`
 - **textbook** зависит от `quizzes` (`Section.practicum_quiz`, `ArticleQuiz.quiz`) и от `accounts` (классы в отчёте учителя); связь с quizzes двусторонняя, поэтому импорты внутри функций, а не на уровне модуля
 - **textbook ↔ spetskurs**: `Article.course_task` ссылается на `spetskurs.CourseTask` строкой (иначе приложения импортировали бы друг друга по кругу), а `spetskurs.views` читает `textbook.Article` – одна модель статьи на весь сайт
 - **pages** зависит от `accounts` и `textbook.services` (карта курса на главной)
@@ -168,7 +168,7 @@ graph LR
 |--------|----------|
 | `Section` | Блок курса: дедлайн, практикум (`quizzes.Quiz`), пороги оценок, рубильник подсказок |
 | `SectionExtension` | Личное продление дедлайна блока одному ученику |
-| `EgeTask` | Справочник заданий ЕГЭ 1–27: `exam_size`, `exam_unlock_threshold`, `classroom_enabled` |
+| `EgeTask` | Справочник заданий ЕГЭ 1–27: `exam_size`, `classroom_enabled`, `covered`, `next_lesson` |
 | `Article` | Статья; якоря трека: `section` (материал), `ege_task` (ЕГЭ), `course_task` (`spetskurs.CourseTask`) |
 | `ArticleBlock` | Блок статьи: text / code / image / video / formula / widget, плюс ось `visibility` для разбора |
 | `ArticleQuiz` | Привязка самопроверки (`quizzes.Quiz`) к статье |

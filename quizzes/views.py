@@ -4,7 +4,7 @@ from django.contrib.auth.decorators import login_required, user_passes_test
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.contrib.auth.models import User
-from django.db.models import Max, Count, Sum
+from django.db.models import Max, Count, Q, Sum
 from django.http import FileResponse, Http404, JsonResponse
 from django.conf import settings
 from django.core.exceptions import PermissionDenied
@@ -478,8 +478,6 @@ def ege_list_view(request):
     # Панель учителя: список учеников для переключения и ссылка на таблицу класса.
     if request.user.is_superuser:
         context['students'] = _student_list()
-        # Пометка «разобрали на уроке» – только для учителя, ученик карту видит как прежде.
-        context['covered'] = set(EgeTask.objects.filter(covered=True).values_list('number', flat=True))
 
     # Срезы: ученику – назначенные и открытые сейчас, учителю – последние
     # срезы со ссылкой на отчёт. На чужом прогрессе (?student=) плашки нет:
@@ -489,6 +487,15 @@ def ege_list_view(request):
     elif request.user.is_authenticated:
         from .ege_practice import open_checks
         context['checks'] = open_checks(request.user)
+
+    # План подготовки и повторение: карточка недели над вкладками и вкладка
+    # «План». Гостю – пример той же формы, как у прогресса. Учителю на своём
+    # хабе плана нет – он не готовится к ЕГЭ; план ученика он видит по ?student=.
+    from . import ege_plan
+    if not target.is_authenticated:
+        context['plan_status'] = ege_plan.demo_status()
+    elif not target.is_superuser:
+        context['plan_status'] = ege_plan.status(target)
 
     if target.is_authenticated:
         context['overview'] = ege_stats.overview(target)
@@ -501,6 +508,15 @@ def ege_list_view(request):
             'tasks': ege_stats.task_stats(request.user),
             **ege_stats.demo_overview(),
         }
+
+    # Отметки учителя на карте видят все: зелёная рамка – номер разобран на
+    # спецкурсе, жёлтая – разберём на следующем уроке.
+    from .views_practice import task_mark
+    marks = {t.number: task_mark(t) for t in EgeTask.objects.filter(
+        Q(covered=True) | Q(next_lesson=True))}
+    for task in context['overview']['tasks']:
+        task['mark'] = marks.get(task['number'], '')
+    context['has_marks'] = bool(marks)
 
     return render(request, 'quizzes/ege_list.html', context)
 

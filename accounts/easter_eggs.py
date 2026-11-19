@@ -28,6 +28,9 @@ ZA_WARUDO_COOLDOWN = timedelta(days=1)
 # «Очень странные задачи»: столько различных задач надо закрыть в работе над
 # ошибками, чтобы изнанка вывернулась наружу.
 STRANGER_THRESHOLD = 11
+# Где задачи «вытаскивают из изнанки»: работа над ошибками и повторение
+# пройденного (ege_plan) – там и там возвращают то, что не получилось или забылось.
+STRANGER_KINDS = ('mistakes', 'review')
 
 EGGS = [
     Egg(
@@ -224,7 +227,8 @@ def use_za_warudo(user, kind, obj_id, started=False):
 
 def mistakes_closed(user):
     """
-    Сколько различных задач ученик закрыл в работе над ошибками.
+    Сколько различных задач ученик закрыл в работе над ошибками и на
+    повторении (STRANGER_KINDS) – вместе, одним счётом.
 
     Считаем distinct question_id, а не строки PracticeItem: одна и та же
     задача может попасть в несколько сессий «Работы над ошибками», и решённая
@@ -235,7 +239,7 @@ def mistakes_closed(user):
     from quizzes.models import PracticeItem
 
     return (PracticeItem.objects
-            .filter(session__user=user, session__kind='mistakes',
+            .filter(session__user=user, session__kind__in=STRANGER_KINDS,
                     is_correct=True, gave_up=False, carried=False)
             .values('question_id').distinct().count())
 

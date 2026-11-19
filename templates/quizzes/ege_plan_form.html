@@ -1,0 +1,159 @@
+{% extends 'base.html' %}
+{% load profile_tags %}
+
+{% block title %}План подготовки к ЕГЭ{% endblock title %}
+
+{% block content %}
+{% comment %}
+Форма плана: дедлайн, сколько задач на номер, порядок номеров. Под формой
+сразу видна нагрузка – минут в неделю по нормативу: ученик выбирает дату,
+глядя на цену, а не узнаёт её через неделю. Расчёт тут же в Alpine – тот же
+EGE_RECOMMENDED_TIME, что и у ege_plan.spread, но только итог, без раскладки.
+
+Свой порядок – перетаскиванием на pointer-событиях, а не на HTML5 drag and
+drop: тот на телефоне не срабатывает вовсе. Номер под пальцем ищется через
+elementFromPoint, список переставляется на лету. Перетащить можно при любом
+пресете – порядок сразу становится своим. Связка 19–21 едет одним блоком.
+{% endcomment %}
+<div class="max-w-3xl mx-auto px-4 sm:px-6 py-8"
+     x-data="planForm(PLAN_FORM)">
+    <a href="{{ hub_url }}" class="text-sm text-gray-500 dark:text-slate-400 hover:text-brand-600">← К тренажёру</a>
+    <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mt-2 mb-1">
+        {% if plan %}Изменить план{% else %}План подготовки{% endif %}
+    </h1>
+    <p class="text-base text-gray-600 dark:text-slate-400 mb-6">
+        {% if student %}Ученик: <span class="font-semibold">{{ student|surname_first }}</span>. {% endif %}
+        План раскладывает все 27 номеров по неделям до выбранной даты. Решённые раньше задачи уже засчитаны.
+    </p>
+
+    {% if errors %}
+    <div class="mb-4 rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+        {% for error in errors %}<div>{{ error }}</div>{% endfor %}
+    </div>
+    {% endif %}
+
+    <form method="post" class="space-y-6">
+        {% csrf_token %}
+        <div class="grid sm:grid-cols-2 gap-4">
+            <label class="block">
+                <span class="text-sm font-medium text-gray-700 dark:text-slate-300">Пройти все номера к</span>
+                <input type="date" name="deadline" x-model="deadline" min="{{ today }}" required
+                       class="mt-1 w-full rounded-lg border-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white">
+                <span class="text-xs text-gray-400">по умолчанию – {{ default_deadline|date:"j E Y" }}</span>
+            </label>
+            <label class="block">
+                <span class="text-sm font-medium text-gray-700 dark:text-slate-300">Задач на каждый номер: <span class="tabular-nums" x-text="perTask"></span></span>
+                <input type="range" name="per_task" x-model.number="perTask" min="{{ min_per_task }}" max="{{ max_per_task }}"
+                       class="mt-3 w-full accent-brand-600">
+                <span class="text-xs text-gray-400">по умолчанию – {{ default_per_task }}; от {{ min_per_task }} до {{ max_per_task }}, у номера с меньшим банком – весь банк</span>
+            </label>
+        </div>
+
+        <div>
+            <span class="text-sm font-medium text-gray-700 dark:text-slate-300">Порядок номеров</span>
+            <div class="mt-2 grid sm:grid-cols-2 gap-2">
+                {% for key, label in preset_choices %}
+                <label class="flex items-start gap-2 rounded-lg border px-3 py-2 cursor-pointer"
+                       :class="preset === '{{ key }}' ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/20' : 'border-gray-200 dark:border-slate-700'">
+                    <input type="radio" name="preset" value="{{ key }}" x-model="preset" @change="choose('{{ key }}')" class="mt-1">
+                    <span>
+                        <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ label }}{% if key == default_preset %} <span class="text-xs font-normal text-gray-400">· по умолчанию</span>{% endif %}</span>
+                        <span class="block text-xs text-gray-500 dark:text-slate-400">
+                            {% if key == 'easy' %}по кодификатору: базовые, повышенные, высокие
+                            {% elif key == 'fast' %}сначала номера, которые решаются за пару минут
+                            {% elif key == 'paper' %}сначала номера без программы, потом с кодом
+                            {% else %}перетащите номера в нужном порядке{% endif %}
+                        </span>
+                    </span>
+                </label>
+                {% endfor %}
+            </div>
+            <input type="hidden" name="order" :value="order.join(',')">
+            <ol class="mt-3 flex flex-wrap gap-1.5 select-none"
+                @pointermove.window="dragMove($event)" @pointerup.window="dragging = null"
+                @pointercancel.window="dragging = null">
+                <template x-for="(block, i) in blocks()" :key="block.join('-')">
+                    <li :data-i="i" @pointerdown.prevent="dragging = i"
+                        class="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm touch-none cursor-grab active:cursor-grabbing transition-colors"
+                        :class="dragging === i
+                            ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/30 shadow-md'
+                            : 'border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-brand-400'">
+                        <svg class="w-3 h-3 text-gray-300 dark:text-slate-600" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><circle cx="4" cy="3" r="1"/><circle cx="8" cy="3" r="1"/><circle cx="4" cy="6" r="1"/><circle cx="8" cy="6" r="1"/><circle cx="4" cy="9" r="1"/><circle cx="8" cy="9" r="1"/></svg>
+                        <span class="text-xs text-gray-400 tabular-nums" x-text="(i + 1) + '.'"></span>
+                        <span class="font-semibold text-gray-900 dark:text-white tabular-nums"
+                              x-text="block.length > 1 ? block[0] + '–' + block[block.length - 1] : block[0]"></span>
+                    </li>
+                </template>
+            </ol>
+            <p class="mt-2 text-xs text-gray-400">Перетащите номер, чтобы поставить его раньше или позже.</p>
+        </div>
+
+        <div class="rounded-xl bg-gray-50 dark:bg-slate-800 px-4 py-3 text-sm text-gray-700 dark:text-slate-300">
+            Всего <span class="font-semibold tabular-nums" x-text="tasks()"></span> задач,
+            ~<span class="font-semibold tabular-nums" x-text="Math.round(totalMinutes() / 60)"></span> ч по нормативу.
+            <template x-if="weeks() > 0">
+                <span>Это <span class="font-semibold tabular-nums" x-text="weeks()"></span> нед. по
+                ~<span class="font-semibold tabular-nums" x-text="Math.round(totalMinutes() / weeks())"></span> мин.</span>
+            </template>
+            <span class="block text-xs text-gray-400 mt-1">Без учёта уже решённого – с ним выйдет меньше.</span>
+        </div>
+
+        <button type="submit" class="px-5 py-2.5 rounded-lg bg-brand-600 text-white font-medium hover:bg-brand-700 transition-colors">
+            Сохранить план
+        </button>
+    </form>
+</div>
+{% endblock content %}
+
+{% block pre_alpine_js %}
+<script>
+const PLAN_FORM = {{ form_json|safe }};
+function planForm(data) {
+    return {
+        preset: data.preset, perTask: data.perTask, deadline: data.deadline,
+        order: data.order,
+        choose(key) {
+            if (key !== 'own') this.order = data.presets[key].slice();
+        },
+        // Связка 19–21 – один блок: двигается и считается целиком.
+        blocks() {
+            const out = [];
+            for (const n of this.order) {
+                const last = out[out.length - 1];
+                if (n >= 20 && n <= 21 && last && last[last.length - 1] === n - 1) last.push(n);
+                else out.push([n]);
+            }
+            return out;
+        },
+        dragging: null,
+        // Номер под указателем – на его место встаёт перетаскиваемый блок.
+        // Касание неявно захватывается исходным элементом, поэтому цель ищется
+        // по координатам, а не по event.target.
+        dragMove(event) {
+            if (this.dragging === null) return;
+            const over = document.elementFromPoint(event.clientX, event.clientY);
+            const li = over && over.closest('[data-i]');
+            if (!li) return;
+            const to = Number(li.dataset.i);
+            if (to === this.dragging) return;
+            const blocks = this.blocks();
+            const [block] = blocks.splice(this.dragging, 1);
+            blocks.splice(to, 0, block);
+            this.order = blocks.flat();
+            this.dragging = to;
+            this.preset = 'own';
+        },
+        goal(n) { return Math.min(this.perTask, data.bank[n] || 0); },
+        tasks() { return this.order.reduce((s, n) => s + this.goal(n), 0); },
+        totalMinutes() { return this.order.reduce((s, n) => s + this.goal(n) * data.minutes[n], 0); },
+        weeks() {
+            if (!this.deadline) return 0;
+            const end = new Date(this.deadline + 'T00:00');
+            const start = new Date(data.monday + 'T00:00');
+            const days = Math.floor((end - start) / 86400000);
+            return days < 0 ? 0 : Math.floor(days / 7) + 1;
+        },
+    };
+}
+</script>
+{% endblock pre_alpine_js %}

@@ -1460,14 +1460,10 @@ def task_student_rows(users, numbers):
       решено / с первой попытки – _solved_by_number (задачи банка, не попытки)
       ошибки                    – mistake_count: исход последней попытки
       время                     – mode_rows: среднее по выдачам с засечённым временем
-      экзамен открыт            – study_solved_count против порога номера
       последний экзамен         – _last_exam_by_number
     """
-    from .ege_practice import exam_unlock_threshold
-
     users = list(users)
     ids = [u.id for u in users]
-    lead = min(numbers)
     if not ids:
         return []
 
@@ -1477,12 +1473,11 @@ def task_student_rows(users, numbers):
         .exclude(classroom_only=True)
         .values_list('ege_number').annotate(n=Count('id'))
     )
-    threshold = exam_unlock_threshold(lead)
 
     def _part():
         return {'best': {}, 'last': {}, 'time': {'study': [0, 0], 'exam': [0, 0]}}
 
-    stats = {uid: {'parts': {n: _part() for n in numbers}, 'study': set(), 'active': None}
+    stats = {uid: {'parts': {n: _part() for n in numbers}, 'active': None}
              for uid in ids}
     # Решённое и долг считаются по тренировочному пулу – как _solved_by_number
     # и mistake_count; срез входит в него, только когда окно закрылось.
@@ -1506,9 +1501,6 @@ def task_student_rows(users, numbers):
         if seconds and mode in part['time']:
             part['time'][mode][0] += seconds
             part['time'][mode][1] += 1
-        # Экзамен связки открывают только задачи 19-го – ровно как exam_access.
-        if mode == 'study' and correct and number == lead:
-            row['study'].add(qid)
         if qid not in pool:
             continue
         part['last'][qid] = correct
@@ -1566,16 +1558,12 @@ def task_student_rows(users, numbers):
                 'accuracy': round(correct / agg['total'] * 100) if agg['total'] else None,
                 'finished_at': session['finished_at'],
             }
-        study_solved = len(row['study'])
         last = row['active']
         rows.append({
             'user': user,
             'group': getattr(getattr(user, 'profile', None), 'group', None),
             'parts': parts,
             'mistakes': sum(part['mistakes'] for part in parts),
-            'study_solved': study_solved,
-            'threshold': threshold,
-            'exam_open': threshold <= 0 or study_solved >= threshold,
             'exam': exam,
             'last_active': last,
             'days_ago': (today - timezone.localtime(last).date()).days if last else None,

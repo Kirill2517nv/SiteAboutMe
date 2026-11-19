@@ -1,0 +1,149 @@
+{% load textbook_tags %}
+{% comment %}
+Вкладка «План» хаба: весь график по неделям, ход выполнения и повторение.
+Карточка недели над вкладками отвечает на «что сегодня», вкладка – на «как я
+иду к дедлайну». Числа – из ege_plan.plan_status, той же функции, что считает
+страницу учителя /ege/plans/.
+{% endcomment %}
+{% with status=plan_status.plan reviews=plan_status.reviews %}
+{% if status %}
+<div class="space-y-6">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+        <p class="text-sm text-gray-500 dark:text-slate-400">
+            {{ status.plan.per_task }} задач{{ status.plan.per_task|plural:"а,и," }} на номер к {{ status.plan.deadline|date:"j E Y" }}
+            · {{ status.plan.get_preset_display|default:"От простого к сложному" }}
+        </p>
+        {% if user.is_authenticated %}
+        <a href="{% url 'ege:ege_plan' %}{% if student %}?student={{ student.id }}{% endif %}"
+           class="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-gray-700 dark:text-slate-300 hover:border-brand-400">Изменить план</a>
+        {% endif %}
+    </div>
+
+    {# Четыре числа хода плана #}
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 p-4">
+            <div class="text-2xl font-bold tabular-nums text-gray-900 dark:text-white">{{ status.percent }}%</div>
+            <div class="text-sm text-gray-500 dark:text-slate-400" title="Процент – по времени норматива: долгие номера весят больше коротких">плана · {{ status.total_done }} из {{ status.total_goal }} задач</div>
+            {% if status.total_extra %}<div class="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5">+{{ status.total_extra }} сверх плана</div>{% endif %}
+        </div>
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 p-4">
+            {% if status.lag %}
+            <div class="text-2xl font-bold tabular-nums text-red-600 dark:text-red-400">−{{ status.lag }}</div>
+            <div class="text-sm text-gray-500 dark:text-slate-400">отставание{% if status.behind_weeks %}, ~{{ status.behind_weeks }} нед.{% endif %}</div>
+            {% else %}
+            <div class="text-2xl font-bold text-emerald-600 dark:text-emerald-400">по графику</div>
+            <div class="text-sm text-gray-500 dark:text-slate-400">отставания нет</div>
+            {% endif %}
+        </div>
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 p-4">
+            {% if status.forecast %}
+            <div class="text-2xl font-bold tabular-nums {% if status.late_forecast %}text-amber-600 dark:text-amber-400{% else %}text-gray-900 dark:text-white{% endif %}">{{ status.forecast|date:"j E" }}</div>
+            <div class="text-sm text-gray-500 dark:text-slate-400" title="Темп – минуты норматива, решённые с начала плана, на закончившиеся недели">закончите при нынешнем темпе</div>
+            {% else %}
+            <div class="text-2xl font-bold text-gray-300 dark:text-slate-600">–</div>
+            <div class="text-sm text-gray-500 dark:text-slate-400">прогноз после первых задач</div>
+            {% endif %}
+        </div>
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 p-4">
+            <div class="text-2xl font-bold tabular-nums text-gray-900 dark:text-white">{{ status.streak }}</div>
+            <div class="text-sm text-gray-500 dark:text-slate-400">недел{{ status.streak|plural:"я,и,ь" }} подряд по плану</div>
+        </div>
+    </div>
+
+    {% if status.history %}
+    <div>
+        <h3 class="text-xl font-semibold text-gray-900 dark:text-white mb-2">Прошедшие недели</h3>
+        <div class="flex flex-wrap gap-1.5">
+            {% for week in status.history %}
+            <div class="w-14 rounded-lg px-1 py-1.5 text-center text-xs
+                {% if week.state == 'done' %}bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300
+                {% elif week.state == 'part' %}bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300
+                {% elif week.state == 'miss' %}bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300
+                {% else %}bg-gray-100 text-gray-400 dark:bg-slate-700 dark:text-slate-500{% endif %}"
+                 title="Неделя с {{ week.monday|date:'j E' }}: {{ week.got }} из {{ week.need }}">
+                <div>{{ week.monday|date:"j.m" }}</div>
+                <div class="font-semibold tabular-nums">{{ week.got }}/{{ week.need }}</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <div>
+        <h3 class="text-xl font-semibold text-gray-900 dark:text-white mb-2">График до дедлайна</h3>
+        <p class="text-sm text-gray-500 dark:text-slate-400 mb-3">Каждый понедельник остаток раскладывается заново по оставшимся неделям.</p>
+        <div class="divide-y divide-gray-100 dark:divide-slate-700 rounded-xl border border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800">
+            {% for week in status.schedule %}
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2.5 {% if forloop.first %}bg-brand-50/50 dark:bg-brand-900/10{% endif %}">
+                <div class="w-28 shrink-0 text-sm {% if forloop.first %}font-semibold text-brand-700 dark:text-brand-300{% else %}text-gray-600 dark:text-slate-400{% endif %}">
+                    {% if forloop.first %}эта неделя{% else %}с {{ week.monday|date:"j E" }}{% endif %}
+                </div>
+                <div class="flex-1 flex flex-wrap gap-1.5">
+                    {% for number, count in week.items %}
+                    <span class="px-2 py-0.5 rounded-md bg-gray-100 dark:bg-slate-700 text-sm tabular-nums text-gray-700 dark:text-slate-300">№{{ number }} × {{ count }}</span>
+                    {% empty %}
+                    <span class="text-sm text-gray-400">–</span>
+                    {% endfor %}
+                </div>
+                {% if week.minutes %}<div class="text-xs text-gray-400 tabular-nums">~{{ week.minutes }} мин</div>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div>
+        <h3 class="text-xl font-semibold text-gray-900 dark:text-white mb-2">По номерам</h3>
+        <div class="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-9 gap-1.5">
+            {% for row in status.by_number %}
+            <div class="rounded-lg border px-2 py-1.5 text-center
+                {% if row.goal and row.done >= row.goal %}border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-900/20{% else %}border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800{% endif %}">
+                <div class="text-xs text-gray-400">№{{ row.number }}</div>
+                <div class="text-sm font-semibold tabular-nums text-gray-900 dark:text-white">{{ row.done }}/{{ row.goal }}{% if row.extra %} <span class="text-xs font-medium text-emerald-600 dark:text-emerald-400" title="Сверх плана: ещё {{ row.extra }} задач{{ row.extra|plural:'а,и,' }}">+{{ row.extra }}</span>{% endif %}</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="rounded-xl border border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800 p-6 text-center">
+    <p class="text-gray-600 dark:text-slate-400 mb-3">
+        {% if student %}Ученик ещё не составил план.{% else %}План раскладывает все 27 номеров по неделям до вашей даты и пересчитывается, если неделя не задалась.{% endif %}
+    </p>
+    <a href="{% url 'ege:ege_plan' %}{% if student %}?student={{ student.id }}{% endif %}"
+       class="inline-block px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700">Составить план</a>
+</div>
+{% endif %}
+
+{% if reviews.learned %}
+<div class="mt-6">
+    <h3 class="text-xl font-semibold text-gray-900 dark:text-white mb-1">Повторение</h3>
+    <p class="text-sm text-gray-500 dark:text-slate-400 mb-3">
+        Пройденный номер просит задачу через 2, потом 3 и 4 недели; ошибка на повторении – через неделю.
+        {% if reviews.total %}Точность на повторениях: {{ reviews.accuracy }}% ({{ reviews.ok }} из {{ reviews.total }}).{% endif %}
+    </p>
+    <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
+        {% for row in reviews.learned %}
+        <div class="rounded-lg border px-3 py-2
+            {% if row.error %}border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20
+            {% elif row.is_due %}border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20
+            {% else %}border-gray-100 bg-white dark:border-slate-700 dark:bg-slate-800{% endif %}">
+            <div class="flex items-center justify-between gap-2">
+                <span class="font-semibold text-gray-900 dark:text-white">№{{ row.number }}</span>
+                <span class="text-xs text-gray-400">{{ row.interval }} нед.</span>
+            </div>
+            <div class="text-xs mt-0.5 {% if row.is_due %}text-amber-700 dark:text-amber-300{% else %}text-gray-500 dark:text-slate-400{% endif %}">
+                {% if row.error %}ошибка{% elif row.is_due %}пора{% else %}с {{ row.due|date:"j E" }}{% endif %}
+            </div>
+            {% if user.is_authenticated and not student %}
+            <form method="post" action="{% url 'ege:ege_review_start' %}" class="mt-1.5">
+                {% csrf_token %}
+                <input type="hidden" name="numbers" value="{{ row.number }}">
+                <button type="submit" class="text-xs font-medium text-brand-600 dark:text-cyan-400 hover:underline">Повторить</button>
+            </form>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+{% endwith %}

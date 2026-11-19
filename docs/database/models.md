@@ -657,7 +657,6 @@ classDiagram
         +int order
         +bool classroom_enabled
         +int exam_size
-        +int exam_unlock_threshold
     }
 
     class Article {
@@ -775,7 +774,6 @@ classDiagram
 | `order` | PositiveIntegerField | Порядок, default=0 |
 | `classroom_enabled` | BooleanField | Показывать задачи для урока, default=False. Пока выключено, кнопка ученикам не видна |
 | `exam_size` | PositiveSmallIntegerField | Сколько задач давать в режиме «Экзамен», nullable. Пусто – по нормативу времени |
-| `exam_unlock_threshold` | PositiveSmallIntegerField | Сколько задач решить верно в режиме «Тренировка», чтобы открылся «Экзамен», default=10. 0 – доступен сразу |
 
 **Meta:** `ordering = ['number']`
 

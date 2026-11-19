@@ -1,8 +1,7 @@
 {% load textbook_tags %}
 {% comment %}
 Форма запуска сессии. Ожидает: number, counts, default_size, exam_size,
-max_size, recommended_min, exam_pool, exam_open, study_solved,
-unlock_threshold, classroom_pool, stats.
+max_size, recommended_min, exam_pool, classroom_pool, stats.
 
 Два режима устроены по-разному не для симметрии:
   * на тренировке состав выбирает ученик – хоть «две базовых и две высокой»,
@@ -32,7 +31,6 @@ unlock_threshold, classroom_pool, stats.
                     Разбираемся в теме, ошибаться нормально
                 </span>
             </button>
-            {% if exam_open %}
             <button type="button" @click="mode = 'exam'"
                     class="text-left p-3 rounded-lg border transition-colors"
                     :class="mode === 'exam'
@@ -44,28 +42,6 @@ unlock_threshold, classroom_pool, stats.
                     задач{{ exam_size|plural:"а,и," }} за час
                 </span>
             </button>
-            {% else %}
-            {% comment %}
-            Экзамен закрыт, пока тема не разобрана: контрольная по незнакомому
-            заданию измеряет не готовность, а то, что ученик к ней не приступал.
-            {% endcomment %}
-            <div class="text-left p-3 rounded-lg border border-dashed border-gray-200 dark:border-slate-700 opacity-70">
-                <span class="flex items-center gap-1.5 font-medium text-gray-500 dark:text-slate-400 text-sm">
-                    <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                              d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
-                    </svg>
-                    Экзамен закрыт
-                </span>
-                <span class="block text-xs text-gray-400 mt-0.5">
-                    Решите {{ unlock_threshold }} разных задач: {{ study_solved }} из {{ unlock_threshold }}
-                </span>
-                <div class="h-1.5 mt-2 rounded-full bg-gray-100 dark:bg-slate-700 overflow-hidden">
-                    <div class="h-full rounded-full bg-brand-400"
-                         style="width: {% widthratio study_solved unlock_threshold 100 %}%"></div>
-                </div>
-            </div>
-            {% endif %}
         </div>
     </div>
 

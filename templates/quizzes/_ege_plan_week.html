@@ -1,0 +1,111 @@
+{% load textbook_tags %}
+{% comment %}
+Карточка «Эта неделя» над вкладками хаба: что решить на неделе и что пора
+повторить. Одна карточка, а не блок вкладки: ученик открывает хаб, чтобы сесть
+решать, и первое, что он видит, – это ответ на «что сегодня».
+
+Ожидает plan_status (ege_plan.status) и student: на чужом прогрессе кнопок нет –
+они запустили бы сессию учителю.
+{% endcomment %}
+{% with status=plan_status.plan reviews=plan_status.reviews %}
+<div class="mb-8 bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 p-4 sm:p-5">
+    {% if status %}
+    <div class="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+        <h2 class="text-xl font-semibold text-gray-900 dark:text-white">
+            Эта неделя <span class="text-sm font-normal text-gray-400 dark:text-slate-500">· до воскресенья</span>
+        </h2>
+        <div class="text-sm text-gray-500 dark:text-slate-400">
+            {% if status.week_need %}
+            <span class="font-semibold tabular-nums {% if status.week_got >= status.week_need %}text-emerald-600 dark:text-emerald-400{% else %}text-gray-900 dark:text-white{% endif %}">{{ status.week_got }} из {{ status.week_need }}</span>
+            задач{% if status.week_minutes %} · ~{{ status.week_minutes }} мин{% endif %}
+            {% endif %}
+        </div>
+    </div>
+
+    {% if status.finished %}
+    <p class="text-sm text-emerald-700 dark:text-emerald-400">План выполнен: все {{ status.total_goal }} задач решены. Дальше – повторение и варианты.</p>
+    {% elif status.overdue %}
+    <p class="mb-3 text-sm text-amber-700 dark:text-amber-400">
+        Дедлайн {{ status.plan.deadline|date:"j E" }} прошёл, осталось {{ status.left }} задач.
+        {% if not student %}<a href="{% url 'ege:ege_plan' %}" class="underline font-medium">Поставить новую дату</a>{% endif %}
+    </p>
+    {% elif status.lag %}
+    <p class="mb-3 text-sm text-red-600 dark:text-red-400">
+        Отставание от исходного графика: {{ status.lag }} задач{% if status.behind_weeks %} (~{{ status.behind_weeks }} нед.){% endif %}. Неделя уже пересчитана с учётом долга.
+    </p>
+    {% endif %}
+
+    {% if status.week %}
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+        {% for row in status.week %}
+        <div class="flex items-center gap-3 rounded-lg border border-gray-100 dark:border-slate-700 px-3 py-2">
+            <a href="{% url 'ege:ege_task' row.number %}" class="shrink-0 w-9 h-9 rounded-lg bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-300 font-bold flex items-center justify-center hover:bg-brand-100">{{ row.number }}</a>
+            <div class="flex-1 min-w-0">
+                <div class="text-sm tabular-nums {% if row.done >= row.quota %}text-emerald-600 dark:text-emerald-400 font-medium{% else %}text-gray-700 dark:text-slate-300{% endif %}">{{ row.done }} из {{ row.quota }}</div>
+                <div class="mt-1 h-1.5 rounded-full bg-gray-100 dark:bg-slate-700 overflow-hidden">
+                    <div class="h-full rounded-full {% if row.done >= row.quota %}bg-emerald-500{% else %}bg-brand-500{% endif %}" style="width: {% widthratio row.done row.quota 100 %}%"></div>
+                </div>
+            </div>
+            {% if not student and row.done < row.quota %}
+            <form method="post" action="{% url 'ege:ege_practice_start' %}" class="shrink-0">
+                {% csrf_token %}
+                <input type="hidden" name="kind" value="topic">
+                <input type="hidden" name="mode" value="study">
+                <input type="hidden" name="ege_number" value="{% if row.number == 20 or row.number == 21 %}19{% else %}{{ row.number }}{% endif %}">
+                <input type="hidden" name="size" value="{{ row.left }}">
+                <button type="submit" class="px-3 py-1.5 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 transition-colors">Решать</button>
+            </form>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% elif not status.finished %}
+    <p class="text-sm text-gray-500 dark:text-slate-400">На этой неделе по плану ничего нет.</p>
+    {% endif %}
+
+    {% else %}
+    <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-white">План подготовки</h2>
+            <p class="text-sm text-gray-500 dark:text-slate-400 mt-0.5">
+                {% if student %}Ученик ещё не составил план.{% else %}Выберите дату и число задач – план разложит все 27 номеров по неделям.{% endif %}
+            </p>
+        </div>
+        <a href="{% url 'ege:ege_plan' %}{% if student %}?student={{ student.id }}{% endif %}"
+           class="px-4 py-2 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 transition-colors">Составить план</a>
+    </div>
+    {% endif %}
+
+    {% if reviews.due or reviews.errors %}
+    <div class="mt-4 pt-4 border-t border-gray-100 dark:border-slate-700 flex flex-wrap items-center gap-2">
+        {% if reviews.due %}
+        <span class="text-sm font-medium text-gray-700 dark:text-slate-300">Пора повторить:</span>
+        {% for number in reviews.batch %}
+        <span class="px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 text-sm font-medium tabular-nums">№{{ number }}</span>
+        {% endfor %}
+        {% if reviews.more %}<span class="text-sm text-gray-400" title="Самые просроченные идут первыми; остальные – в следующий заход">и ещё {{ reviews.more }}</span>{% endif %}
+        {% if not student %}
+        <form method="post" action="{% url 'ege:ege_review_start' %}">
+            {% csrf_token %}
+            <button type="submit" class="px-3 py-1.5 rounded-lg border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 text-sm font-medium hover:bg-amber-50 dark:hover:bg-amber-900/30 transition-colors">
+                Повторить {{ reviews.batch|length }} задач{{ reviews.batch|length|plural:"у,и," }}
+            </button>
+        </form>
+        {% endif %}
+        {% endif %}
+        {% for number in reviews.errors %}
+        {% if number not in reviews.due %}
+        <span class="text-sm text-red-600 dark:text-red-400 sm:ml-2">Ошибка на повторении №{{ number }}</span>
+        {% if not student %}
+        <form method="post" action="{% url 'ege:ege_review_start' %}">
+            {% csrf_token %}
+            <input type="hidden" name="numbers" value="{{ number }}">
+            <button type="submit" class="px-3 py-1.5 rounded-lg border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm font-medium hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors">Ещё одну</button>
+        </form>
+        {% endif %}
+        {% endif %}
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+{% endwith %}

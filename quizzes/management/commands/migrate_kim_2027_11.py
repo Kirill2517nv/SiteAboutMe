@@ -39,7 +39,7 @@ DEMO = 'variant-fipi-demo-2027'
 DONE_MARK = 'fipi-demo-2027-11-10'  # external_id новой задачи 10 – признак, что переезд был
 FILES = f'ege/{DEMO}/files'
 DEMO_27_MD5 = '80517f8a'  # начало md5 demo_27.txt редакции 13.11.2026
-EGE_TASK_FIELDS = ('exam_unlock_threshold', 'exam_size', 'classroom_enabled', 'covered')
+EGE_TASK_FIELDS = ('exam_size', 'classroom_enabled', 'covered')
 
 NEW_10 = (
     'Задание выполняется с использованием прилагаемого файла.\n\n'

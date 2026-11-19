@@ -9,7 +9,7 @@
 
 Числа считает ege_stats.task_student_rows теми же правилами, что ученическая
 карточка задания: «решено X из Y» – разные задачи банка, ошибки – исход
-последней попытки, экзамен – порог решённых в тренировке и итог последнего.
+последней попытки, экзамен – итог последнего.
 Фамилия ведёт в разбор ответов, число ошибок – в тот же разбор, только ошибки.
 {% endcomment %}
 <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -68,7 +68,7 @@
                         </th>
                         <th class="px-3 py-3 font-medium text-gray-500 dark:text-slate-400 text-center">
                             Экзамен
-                            <div class="text-xs font-normal text-gray-400">доступ · последний</div>
+                            <div class="text-xs font-normal text-gray-400">последний экзамен</div>
                         </th>
                         <th class="px-3 py-3 font-medium text-gray-500 dark:text-slate-400 text-center">
                             Последняя попытка
@@ -154,10 +154,8 @@
                             {% if row.exam %}
                             <span class="font-semibold text-gray-900 dark:text-white">{{ row.exam.correct }} / {{ row.exam.total }}</span>
                             <div class="text-xs text-gray-400">{{ row.exam.finished_at|date:"d.m" }}</div>
-                            {% elif row.exam_open %}
-                            <span class="text-xs text-emerald-600 dark:text-emerald-400">открыт, не писал</span>
                             {% else %}
-                            <span class="text-xs text-gray-400">закрыт · {{ row.study_solved }} / {{ row.threshold }}</span>
+                            <span class="text-xs text-emerald-600 dark:text-emerald-400">не писал</span>
                             {% endif %}
                         </td>
 
